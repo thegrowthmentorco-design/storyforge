@@ -1,6 +1,9 @@
-import React from 'react'
-import { Badge, Card, IconTile } from '../components/primitives.jsx'
-import { Shield, Sparkles, Sun } from '../components/icons.jsx'
+import React, { useState } from 'react'
+import { testApiKey } from '../api.js'
+import { getSettings, setSettings } from '../lib/settings.js'
+import { useToast } from '../components/Toast.jsx'
+import { Badge, Button, Card, IconTile } from '../components/primitives.jsx'
+import { Eye, Shield, Sparkles, Sun } from '../components/icons.jsx'
 
 function Section({ icon, tone, title, description, comingIn, children }) {
   return (
@@ -51,6 +54,174 @@ function Section({ icon, tone, title, description, comingIn, children }) {
   )
 }
 
+function ApiKeyForm() {
+  const { toast } = useToast()
+  const [savedKey, setSavedKey] = useState(() => getSettings().anthropicKey)
+  const [key, setKey] = useState(savedKey)
+  const [shown, setShown] = useState(false)
+  const [testing, setTesting] = useState(false)
+
+  const dirty = key !== savedKey
+  const hasSavedKey = !!savedKey
+  const trimmed = key.trim()
+
+  const onSave = () => {
+    setSettings({ anthropicKey: trimmed })
+    setSavedKey(trimmed)
+    setKey(trimmed)
+    toast.success(trimmed ? 'API key saved' : 'API key cleared')
+  }
+
+  const onRemove = () => {
+    setSettings({ anthropicKey: '' })
+    setSavedKey('')
+    setKey('')
+    toast.success('API key removed — falling back to server config')
+  }
+
+  const onTest = async () => {
+    if (!trimmed) {
+      toast.warn('Enter a key first')
+      return
+    }
+    setTesting(true)
+    try {
+      const result = await testApiKey(trimmed)
+      toast.success(`Key works — Claude is reachable (${result.models_visible} models visible)`)
+    } catch (e) {
+      toast.error(e.message || 'Test failed')
+    } finally {
+      setTesting(false)
+    }
+  }
+
+  return (
+    <div>
+      {/* Status */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          marginBottom: 12,
+          fontSize: 12,
+        }}
+      >
+        <span
+          style={{
+            width: 8,
+            height: 8,
+            borderRadius: 999,
+            background: hasSavedKey ? 'var(--success)' : 'var(--text-soft)',
+          }}
+        />
+        <span style={{ color: 'var(--text-muted)' }}>
+          {hasSavedKey
+            ? 'Active — using your key for extractions'
+            : 'Inactive — using server config (env key or mock mode)'}
+        </span>
+      </div>
+
+      {/* Input */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          padding: '0 10px',
+          background: 'var(--bg-elevated)',
+          border: '1px solid var(--border)',
+          borderRadius: 'var(--radius)',
+          gap: 6,
+          boxShadow: 'var(--shadow-xs)',
+        }}
+      >
+        <input
+          type={shown ? 'text' : 'password'}
+          value={key}
+          onChange={(e) => setKey(e.target.value)}
+          placeholder="sk-ant-api03-…"
+          spellCheck={false}
+          autoComplete="off"
+          style={{
+            flex: 1,
+            height: 38,
+            border: 'none',
+            background: 'transparent',
+            fontSize: 13,
+            fontFamily: 'var(--font-mono)',
+            outline: 'none',
+            color: 'var(--text-strong)',
+            minWidth: 0,
+          }}
+        />
+        <button
+          type="button"
+          onClick={() => setShown((s) => !s)}
+          aria-label={shown ? 'Hide key' : 'Show key'}
+          title={shown ? 'Hide key' : 'Show key'}
+          style={{
+            background: 'transparent',
+            border: 'none',
+            padding: 4,
+            borderRadius: 4,
+            color: 'var(--text-muted)',
+            cursor: 'pointer',
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Eye size={14} />
+        </button>
+      </div>
+
+      {/* Actions */}
+      <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
+        <Button variant="secondary" size="sm" loading={testing} onClick={onTest} disabled={!trimmed}>
+          {testing ? 'Testing…' : 'Test connection'}
+        </Button>
+        <Button variant="primary" size="sm" disabled={!dirty} onClick={onSave}>
+          {dirty ? 'Save' : 'Saved'}
+        </Button>
+        {hasSavedKey && (
+          <Button variant="ghost" size="sm" onClick={onRemove}>
+            Remove
+          </Button>
+        )}
+      </div>
+
+      <p
+        style={{
+          fontSize: 11.5,
+          color: 'var(--text-soft)',
+          marginTop: 14,
+          marginBottom: 0,
+          lineHeight: 1.55,
+        }}
+      >
+        Stored in your browser's localStorage and sent on each extraction via the{' '}
+        <code
+          style={{
+            fontFamily: 'var(--font-mono)',
+            fontSize: 10.5,
+            padding: '1px 5px',
+            background: 'var(--bg-subtle)',
+            border: '1px solid var(--border)',
+            borderRadius: 3,
+          }}
+        >
+          X-Anthropic-Key
+        </code>{' '}
+        header. Get a key at{' '}
+        <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener noreferrer">
+          console.anthropic.com
+        </a>
+        .
+      </p>
+    </div>
+  )
+}
+
 export default function Settings() {
   return (
     <div
@@ -91,8 +262,9 @@ export default function Settings() {
           tone="info"
           title="API"
           description="Bring your own Anthropic API key. The key is stored locally in your browser and sent on each extraction request."
-          comingIn="M1.4.2"
-        />
+        >
+          <ApiKeyForm />
+        </Section>
         <Section
           icon={<Sparkles size={16} />}
           tone="purple"

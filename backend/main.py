@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 load_dotenv(Path(__file__).parent / ".env")
 
 import anthropic
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, Header, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pypdf import PdfReader
@@ -74,11 +74,41 @@ def health():
     return {"ok": True, "live": bool(os.environ.get("ANTHROPIC_API_KEY"))}
 
 
+@app.post("/api/test-key")
+def test_key(x_anthropic_key: str | None = Header(default=None, alias="X-Anthropic-Key")):
+    """Validate an Anthropic API key by making a tiny authenticated call.
+
+    Used by the Settings page "Test connection" button. Falls back to the
+    server's env key when no header is provided. Cost: one models.list call,
+    no token usage.
+    """
+    key = x_anthropic_key or os.environ.get("ANTHROPIC_API_KEY")
+    if not key:
+        raise HTTPException(status_code=400, detail="No API key provided.")
+    try:
+        client = anthropic.Anthropic(api_key=key)
+        models = client.models.list()
+        count = len(getattr(models, "data", []) or [])
+        return {"ok": True, "models_visible": count, "source": "byok" if x_anthropic_key else "env"}
+    except anthropic.AuthenticationError:
+        raise HTTPException(status_code=401, detail="Invalid API key.")
+    except anthropic.PermissionDeniedError:
+        raise HTTPException(status_code=403, detail="Key lacks required permissions.")
+    except anthropic.APIConnectionError:
+        raise HTTPException(status_code=503, detail="Could not reach Anthropic.")
+    except anthropic.APIStatusError as e:
+        raise HTTPException(status_code=502, detail=f"Anthropic error ({e.status_code}): {e.message}")
+    except Exception as e:
+        log.exception("test_key failed")
+        raise HTTPException(status_code=500, detail=f"Test failed: {e}")
+
+
 @app.post("/api/extract", response_model=ExtractionResult)
 async def extract(
     file: UploadFile | None = File(default=None),
     text: str | None = Form(default=None),
     filename: str | None = Form(default=None),
+    x_anthropic_key: str | None = Header(default=None, alias="X-Anthropic-Key"),
 ) -> ExtractionResult:
     if file is None and not text:
         raise HTTPException(status_code=400, detail="Provide either a file or text.")
@@ -110,15 +140,17 @@ async def extract(
         raise HTTPException(status_code=422, detail="No readable text in the input.")
 
     try:
-        return extract_requirements(source_name, raw_text)
+        return extract_requirements(source_name, raw_text, api_key=x_anthropic_key)
 
     # Anthropic-specific errors get readable messages and accurate status codes
     except anthropic.AuthenticationError:
         log.warning("anthropic authentication failed")
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid ANTHROPIC_API_KEY. Check the key in backend/.env and restart.",
+        detail = (
+            "Invalid Anthropic API key from request. Update the key in Settings."
+            if x_anthropic_key
+            else "Invalid ANTHROPIC_API_KEY in server env. Check backend/.env and restart."
         )
+        raise HTTPException(status_code=401, detail=detail)
     except anthropic.RateLimitError as e:
         retry_after = e.response.headers.get("retry-after", "60") if e.response else "60"
         log.warning("anthropic rate limit hit; retry after %ss", retry_after)

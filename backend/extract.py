@@ -114,12 +114,15 @@ def _mock(filename: str, raw_text: str) -> ExtractionResult:
     )
 
 
-def extract_requirements(filename: str, raw_text: str) -> ExtractionResult:
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
-    if not api_key:
+def extract_requirements(
+    filename: str, raw_text: str, api_key: str | None = None
+) -> ExtractionResult:
+    # BYOK key (from request header) takes precedence over the server's env key
+    effective_key = api_key or os.environ.get("ANTHROPIC_API_KEY")
+    if not effective_key:
         return _mock(filename, raw_text)
 
-    client = anthropic.Anthropic()
+    client = anthropic.Anthropic(api_key=effective_key)
 
     # System prompt is stable across runs — mark it cacheable. (It's short today;
     # the cache kicks in once it crosses the per-model minimum. Harmless either way.)
