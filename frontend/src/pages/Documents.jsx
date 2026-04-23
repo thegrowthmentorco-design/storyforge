@@ -1,10 +1,10 @@
-import React, { useState } from 'react'
+import React, { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { deleteExtraction, insertExtraction, listExtractions } from '../lib/store.js'
 import { useApp } from '../lib/AppContext.jsx'
 import { useToast } from '../components/Toast.jsx'
 import { Badge, Button, Card, IconTile } from '../components/primitives.jsx'
-import { AlertTriangle, FileText, Plus, Sparkles, Trash, Users } from '../components/icons.jsx'
+import { AlertTriangle, FileText, Plus, Search, Sparkles, Trash, Users, X } from '../components/icons.jsx'
 
 /** Format an ISO timestamp as a human-friendly relative string. */
 function timeAgo(iso) {
@@ -81,14 +81,29 @@ export default function Documents() {
   const { restoreExtraction } = useApp()
   const { toast } = useToast()
   const [records, setRecords] = useState(() => listExtractions())
+  const [query, setQuery] = useState('')
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    if (!q) return records
+    return records.filter((r) => {
+      const fname = (r.filename || '').toLowerCase()
+      const summary = (r.payload?.brief?.summary || '').toLowerCase()
+      const tags = (r.payload?.brief?.tags || []).map((t) => String(t).toLowerCase())
+      return fname.includes(q) || summary.includes(q) || tags.some((t) => t.includes(q))
+    })
+  }, [records, query])
 
   const onOpen = (record) => {
     restoreExtraction(record.payload)
     navigate('/')
   }
 
-  const onDelete = (record, idx, e) => {
+  const onDelete = (record, e) => {
     e.stopPropagation()
+    // Compute idx in the FULL list (records), not the filtered list,
+    // so undo restores at the original position.
+    const originalIdx = records.findIndex((r) => r.id === record.id)
     deleteExtraction(record.id)
     setRecords(listExtractions())
     toast.success(`Deleted "${record.filename}"`, {
@@ -96,7 +111,7 @@ export default function Documents() {
       action: {
         label: 'Undo',
         onClick: () => {
-          insertExtraction(record, idx)
+          insertExtraction(record, originalIdx >= 0 ? originalIdx : 0)
           setRecords(listExtractions())
         },
       },
@@ -110,7 +125,7 @@ export default function Documents() {
   return (
     <div style={{ flex: 1, overflow: 'auto', padding: '24px 28px 40px', background: 'var(--bg)' }}>
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 22 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
         <h1
           style={{
             fontFamily: 'var(--font-display)',
@@ -123,16 +138,115 @@ export default function Documents() {
         >
           Documents
         </h1>
-        <Badge tone="neutral">{records.length}</Badge>
+        <Badge tone="neutral">
+          {query ? `${filtered.length} of ${records.length}` : records.length}
+        </Badge>
         <div style={{ flex: 1 }} />
         <Button variant="primary" size="sm" icon={<Plus size={13} />} onClick={() => navigate('/')}>
           New extraction
         </Button>
       </div>
 
-      {/* List */}
+      {/* Search */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          padding: '0 12px',
+          background: 'var(--bg-elevated)',
+          border: '1px solid var(--border)',
+          borderRadius: 'var(--radius)',
+          marginBottom: 14,
+          boxShadow: 'var(--shadow-xs)',
+          transition: 'border-color .12s, box-shadow .12s',
+        }}
+        onFocus={(e) => {
+          e.currentTarget.style.borderColor = 'var(--accent)'
+          e.currentTarget.style.boxShadow = 'var(--shadow-focus)'
+        }}
+        onBlur={(e) => {
+          e.currentTarget.style.borderColor = 'var(--border)'
+          e.currentTarget.style.boxShadow = 'var(--shadow-xs)'
+        }}
+      >
+        <Search size={15} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+        <input
+          type="text"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search by filename, brief, or tag…"
+          style={{
+            flex: 1,
+            height: 38,
+            border: 'none',
+            background: 'transparent',
+            fontSize: 13,
+            outline: 'none',
+            color: 'var(--text-strong)',
+            fontFamily: 'inherit',
+          }}
+        />
+        {query && (
+          <button
+            type="button"
+            onClick={() => setQuery('')}
+            aria-label="Clear search"
+            title="Clear"
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: 'var(--text-muted)',
+              cursor: 'pointer',
+              padding: 4,
+              borderRadius: 4,
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+            }}
+          >
+            <X size={13} />
+          </button>
+        )}
+      </div>
+
+      {/* List or empty-search state */}
+      {filtered.length === 0 && (
+        <div
+          style={{
+            padding: '32px 16px',
+            textAlign: 'center',
+            color: 'var(--text-muted)',
+            fontSize: 13,
+            border: '1px dashed var(--border)',
+            borderRadius: 'var(--radius)',
+            background: 'var(--bg-subtle)',
+          }}
+        >
+          No documents match <strong style={{ color: 'var(--text-strong)' }}>"{query}"</strong>.
+          <br />
+          <button
+            type="button"
+            onClick={() => setQuery('')}
+            style={{
+              marginTop: 10,
+              background: 'transparent',
+              border: 'none',
+              color: 'var(--accent-strong)',
+              cursor: 'pointer',
+              fontSize: 12.5,
+              fontWeight: 500,
+              padding: 0,
+            }}
+          >
+            Clear search
+          </button>
+        </div>
+      )}
+
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {records.map((r, i) => {
+        {filtered.map((r, i) => {
           const stories = r.payload?.stories?.length ?? 0
           const gaps = r.payload?.gaps?.length ?? 0
           const actors = r.payload?.actors?.length ?? 0
@@ -209,7 +323,7 @@ export default function Documents() {
                 className="row-delete"
                 aria-label={`Delete ${r.filename}`}
                 title="Delete"
-                onClick={(e) => onDelete(r, i, e)}
+                onClick={(e) => onDelete(r, e)}
                 style={{
                   background: 'transparent',
                   border: 'none',
