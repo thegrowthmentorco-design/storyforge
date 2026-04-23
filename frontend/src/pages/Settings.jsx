@@ -1,9 +1,10 @@
 import React, { useState } from 'react'
 import { testApiKey } from '../api.js'
 import { getSettings, setSettings } from '../lib/settings.js'
+import { useApp } from '../lib/AppContext.jsx'
 import { useToast } from '../components/Toast.jsx'
 import { Badge, Button, Card, IconTile } from '../components/primitives.jsx'
-import { Eye, Shield, Sparkles, Sun } from '../components/icons.jsx'
+import { Eye, Monitor, Moon, Shield, Sparkles, Sun } from '../components/icons.jsx'
 
 function Section({ icon, tone, title, description, comingIn, children }) {
   return (
@@ -184,6 +185,92 @@ function ModelPicker() {
                   {opt.pricing}
                 </div>
               )}
+            </div>
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+const THEME_OPTIONS = [
+  { id: 'light', name: 'Light', description: 'Warm off-white background.', icon: <Sun size={16} /> },
+  { id: 'dark', name: 'Dark', description: 'Easier on the eyes after sundown.', icon: <Moon size={16} /> },
+  {
+    id: 'system',
+    name: 'System',
+    description: 'Match your operating-system preference; updates as it changes.',
+    icon: <Monitor size={16} />,
+  },
+]
+
+function ThemePicker() {
+  const { theme, setTheme } = useApp()
+  const { toast } = useToast()
+
+  const onSelect = (id) => {
+    if (id === theme) return
+    setTheme(id)
+    const opt = THEME_OPTIONS.find((o) => o.id === id)
+    toast.success(`Theme set to ${opt.name}`)
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      {THEME_OPTIONS.map((opt) => {
+        const isSelected = theme === opt.id
+        return (
+          <button
+            key={opt.id}
+            type="button"
+            onClick={() => onSelect(opt.id)}
+            style={{
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: 12,
+              padding: 14,
+              border: `1px solid ${isSelected ? 'var(--accent)' : 'var(--border)'}`,
+              borderRadius: 'var(--radius)',
+              background: isSelected ? 'var(--accent-soft)' : 'var(--bg-elevated)',
+              cursor: 'pointer',
+              textAlign: 'left',
+              transition: 'border-color .12s, background .12s, box-shadow .12s',
+              boxShadow: isSelected
+                ? '0 0 0 1px var(--accent), var(--shadow-xs)'
+                : 'var(--shadow-xs)',
+              fontFamily: 'inherit',
+              color: 'inherit',
+            }}
+          >
+            <span
+              aria-hidden
+              style={{
+                width: 18,
+                height: 18,
+                borderRadius: 999,
+                border: `1.5px solid ${isSelected ? 'var(--accent)' : 'var(--border-strong)'}`,
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+                marginTop: 1,
+                background: 'var(--bg-elevated)',
+              }}
+            >
+              {isSelected && (
+                <span style={{ width: 9, height: 9, borderRadius: 999, background: 'var(--accent)' }} />
+              )}
+            </span>
+            <IconTile tone={isSelected ? 'accent' : 'neutral'} size={32}>
+              {opt.icon}
+            </IconTile>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text-strong)', marginBottom: 3 }}>
+                {opt.name}
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                {opt.description}
+              </div>
             </div>
           </button>
         )
@@ -415,9 +502,10 @@ export default function Settings() {
           icon={<Sun size={16} />}
           tone="warn"
           title="Appearance"
-          description="Light or dark theme. Persists across sessions once M1.4.6 ships."
-          comingIn="M1.4.5"
-        />
+          description="Light, dark, or follow your system preference. Persists across sessions."
+        >
+          <ThemePicker />
+        </Section>
       </div>
     </div>
   )

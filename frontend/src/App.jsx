@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import { extract } from './api.js'
 import { saveExtraction } from './lib/store.js'
+import { getSettings, setSettings } from './lib/settings.js'
 import { AppProvider } from './lib/AppContext.jsx'
 import { useToast } from './components/Toast.jsx'
 import Documents from './pages/Documents.jsx'
@@ -134,7 +135,7 @@ export default function App() {
   const [extraction, setExtraction] = useState(null)
   const [loading, setLoading] = useState(false)
   const [showGaps, setShowGaps] = useState(true)
-  const [theme, setTheme] = useState('light')
+  const [theme, setThemeRaw] = useState(() => getSettings().theme || 'light')
   const [pendingName, setPendingName] = useState('')
 
   const location = useLocation()
@@ -142,8 +143,30 @@ export default function App() {
   const { toast } = useToast()
   const isHome = location.pathname === '/'
 
+  // Centralized theme setter: persists to settings + lets useEffect apply it.
+  const setTheme = (next) => {
+    setThemeRaw(next)
+    setSettings({ theme: next })
+  }
+
+  // Apply theme to <html data-theme>. 'system' resolves via prefers-color-scheme,
+  // and we listen for OS-level theme changes while 'system' is selected.
   useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme)
+    const apply = (mode) => {
+      if (mode === 'system') {
+        const dark = window.matchMedia?.('(prefers-color-scheme: dark)').matches
+        document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light')
+      } else {
+        document.documentElement.setAttribute('data-theme', mode)
+      }
+    }
+    apply(theme)
+
+    if (theme !== 'system' || !window.matchMedia) return
+    const mq = window.matchMedia('(prefers-color-scheme: dark)')
+    const onChange = () => apply('system')
+    mq.addEventListener('change', onChange)
+    return () => mq.removeEventListener('change', onChange)
   }, [theme])
 
   const handleExtract = async ({ file, text, filename }) => {
@@ -173,7 +196,7 @@ export default function App() {
     if (!isHome) navigate('/')
   }
 
-  const appCtx = { restoreExtraction, reset }
+  const appCtx = { restoreExtraction, reset, theme, setTheme }
 
   return (
     <AppProvider value={appCtx}>
