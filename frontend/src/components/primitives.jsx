@@ -1,0 +1,303 @@
+import React from 'react'
+
+/* =========================================================================
+   Button
+   ========================================================================= */
+const BUTTON_SIZES = {
+  sm: { padding: '6px 10px', fontSize: 12, gap: 6, height: 28 },
+  md: { padding: '8px 14px', fontSize: 13, gap: 8, height: 36 },
+  lg: { padding: '10px 18px', fontSize: 14, gap: 8, height: 42 },
+}
+
+export function Button({
+  children,
+  variant = 'secondary',
+  size = 'md',
+  icon,
+  iconRight,
+  fullWidth,
+  loading,
+  style,
+  disabled,
+  ...rest
+}) {
+  const sz = BUTTON_SIZES[size] ?? BUTTON_SIZES.md
+  const isPrimary = variant === 'primary'
+  const isGhost = variant === 'ghost'
+
+  const base = {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: sz.gap,
+    padding: sz.padding,
+    height: sz.height,
+    fontSize: sz.fontSize,
+    fontWeight: 500,
+    borderRadius: 'var(--radius)',
+    border: '1px solid transparent',
+    transition: 'background .15s, border-color .15s, color .15s, box-shadow .15s',
+    width: fullWidth ? '100%' : undefined,
+    whiteSpace: 'nowrap',
+    opacity: disabled || loading ? 0.55 : 1,
+    cursor: disabled || loading ? 'not-allowed' : 'pointer',
+    ...style,
+  }
+
+  let variantStyle = {}
+  if (isPrimary) {
+    variantStyle = {
+      background: 'var(--accent-strong)',
+      color: 'white',
+      borderColor: 'var(--accent-strong)',
+      boxShadow: 'var(--shadow-xs)',
+    }
+  } else if (isGhost) {
+    variantStyle = {
+      background: 'transparent',
+      color: 'var(--text)',
+      borderColor: 'transparent',
+    }
+  } else {
+    // secondary
+    variantStyle = {
+      background: 'var(--bg-elevated)',
+      color: 'var(--text-strong)',
+      borderColor: 'var(--border)',
+      boxShadow: 'var(--shadow-xs)',
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      disabled={disabled || loading}
+      {...rest}
+      onMouseEnter={(e) => {
+        if (disabled || loading) return
+        if (isPrimary) e.currentTarget.style.background = 'var(--accent)'
+        else if (isGhost) e.currentTarget.style.background = 'var(--bg-hover)'
+        else e.currentTarget.style.borderColor = 'var(--border-strong)'
+      }}
+      onMouseLeave={(e) => {
+        if (isPrimary) e.currentTarget.style.background = 'var(--accent-strong)'
+        else if (isGhost) e.currentTarget.style.background = 'transparent'
+        else e.currentTarget.style.borderColor = 'var(--border)'
+      }}
+      style={{ ...base, ...variantStyle }}
+    >
+      {loading ? <Spinner size={14} color={isPrimary ? 'white' : 'currentColor'} /> : icon}
+      {children}
+      {iconRight}
+    </button>
+  )
+}
+
+/* =========================================================================
+   IconButton — square, icon-only
+   ========================================================================= */
+export function IconButton({ children, label, size = 32, active, ...rest }) {
+  return (
+    <button
+      type="button"
+      title={label}
+      aria-label={label}
+      {...rest}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.background = 'var(--bg-hover)'
+        e.currentTarget.style.color = 'var(--text-strong)'
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.background = active ? 'var(--bg-hover)' : 'transparent'
+        e.currentTarget.style.color = active ? 'var(--text-strong)' : 'var(--text-muted)'
+      }}
+      style={{
+        width: size,
+        height: size,
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: active ? 'var(--bg-hover)' : 'transparent',
+        border: 'none',
+        borderRadius: 'var(--radius-sm)',
+        color: active ? 'var(--text-strong)' : 'var(--text-muted)',
+        transition: 'background .15s, color .15s',
+        cursor: 'pointer',
+      }}
+    >
+      {children}
+    </button>
+  )
+}
+
+/* =========================================================================
+   Badge — solid pill with tone + optional dot/icon
+   ========================================================================= */
+const BADGE_TONES = {
+  neutral: { bg: 'var(--bg-subtle)', fg: 'var(--text)', bd: 'var(--border)' },
+  accent: { bg: 'var(--accent-soft)', fg: 'var(--accent-ink)', bd: 'transparent' },
+  success: { bg: 'var(--success-soft)', fg: 'var(--success-ink)', bd: 'transparent' },
+  warn: { bg: 'var(--warn-soft)', fg: 'var(--warn-ink)', bd: 'transparent' },
+  danger: { bg: 'var(--danger-soft)', fg: 'var(--danger-ink)', bd: 'transparent' },
+  info: { bg: 'var(--info-soft)', fg: 'var(--info-ink)', bd: 'transparent' },
+  purple: { bg: 'var(--purple-soft)', fg: 'var(--purple-ink)', bd: 'transparent' },
+  outline: { bg: 'transparent', fg: 'var(--text-muted)', bd: 'var(--border-strong)' },
+}
+
+export function Badge({ children, tone = 'neutral', icon, dot, size = 'md', style }) {
+  const t = BADGE_TONES[tone] ?? BADGE_TONES.neutral
+  const sz =
+    size === 'sm'
+      ? { padding: '2px 8px', fontSize: 11, gap: 5 }
+      : { padding: '3px 10px', fontSize: 12, gap: 6 }
+  return (
+    <span
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: sz.gap,
+        padding: sz.padding,
+        background: t.bg,
+        color: t.fg,
+        border: `1px solid ${t.bd}`,
+        borderRadius: 'var(--radius-pill)',
+        fontSize: sz.fontSize,
+        fontWeight: 500,
+        whiteSpace: 'nowrap',
+        lineHeight: 1.4,
+        ...style,
+      }}
+    >
+      {dot && (
+        <span
+          style={{
+            width: 6,
+            height: 6,
+            borderRadius: 999,
+            background: 'currentColor',
+          }}
+        />
+      )}
+      {icon}
+      {children}
+    </span>
+  )
+}
+
+/* =========================================================================
+   Card — surface with optional hover lift
+   ========================================================================= */
+export function Card({ children, hover, accent, className, style, padding = 16, as: Tag = 'div', ...rest }) {
+  const baseCls = `card${hover ? ' hover' : ''}${accent ? ' accent' : ''}`
+  const cls = className ? `${baseCls} ${className}` : baseCls
+  return (
+    <Tag className={cls} style={{ padding, ...style }} {...rest}>
+      {children}
+    </Tag>
+  )
+}
+
+/* =========================================================================
+   IconTile — pastel-tinted square holding an icon
+   ========================================================================= */
+const TILE_TONES = {
+  accent: { bg: 'var(--accent-soft)', fg: 'var(--accent-strong)' },
+  success: { bg: 'var(--success-soft)', fg: 'var(--success-ink)' },
+  warn: { bg: 'var(--warn-soft)', fg: 'var(--warn-ink)' },
+  danger: { bg: 'var(--danger-soft)', fg: 'var(--danger-ink)' },
+  info: { bg: 'var(--info-soft)', fg: 'var(--info-ink)' },
+  purple: { bg: 'var(--purple-soft)', fg: 'var(--purple-ink)' },
+  pink: { bg: 'var(--pink-soft)', fg: 'var(--pink-ink)' },
+  neutral: { bg: 'var(--bg-subtle)', fg: 'var(--text-muted)' },
+}
+
+export function IconTile({ children, tone = 'accent', size = 36, style }) {
+  const t = TILE_TONES[tone] ?? TILE_TONES.accent
+  return (
+    <span
+      className="icon-tile"
+      style={{
+        width: size,
+        height: size,
+        background: t.bg,
+        color: t.fg,
+        ...style,
+      }}
+    >
+      {children}
+    </span>
+  )
+}
+
+/* =========================================================================
+   Spinner
+   ========================================================================= */
+export function Spinner({ size = 16, color = 'var(--accent-strong)', strokeWidth = 2 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" style={{ animation: 'spin 0.9s linear infinite' }}>
+      <circle
+        cx="12"
+        cy="12"
+        r="9"
+        fill="none"
+        stroke={color}
+        strokeOpacity="0.18"
+        strokeWidth={strokeWidth}
+      />
+      <path
+        d="M21 12a9 9 0 0 1-9 9"
+        fill="none"
+        stroke={color}
+        strokeWidth={strokeWidth}
+        strokeLinecap="round"
+      />
+    </svg>
+  )
+}
+
+/* =========================================================================
+   Section divider w/ centered label
+   ========================================================================= */
+export function Divider({ label, style }) {
+  if (!label) {
+    return <div style={{ height: 1, background: 'var(--border)', ...style }} />
+  }
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 12, color: 'var(--text-soft)', fontSize: 11, ...style }}>
+      <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+      <span style={{ textTransform: 'uppercase', letterSpacing: 0.6 }}>{label}</span>
+      <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+    </div>
+  )
+}
+
+/* =========================================================================
+   Section label (small uppercase header used in sidebars / artifact headings)
+   ========================================================================= */
+export function SectionLabel({ children, action, style }) {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        padding: '0 12px',
+        marginBottom: 6,
+        ...style,
+      }}
+    >
+      <span
+        style={{
+          fontSize: 10.5,
+          letterSpacing: 0.8,
+          textTransform: 'uppercase',
+          color: 'var(--text-soft)',
+          fontWeight: 600,
+        }}
+      >
+        {children}
+      </span>
+      {action}
+    </div>
+  )
+}

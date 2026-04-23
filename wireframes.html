@@ -1,0 +1,1891 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Requirements → User Stories · Wireframes</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;600;700&family=Kalam:wght@300;400;700&family=Architects+Daughter&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+  <style>
+    :root {
+      --paper: #FAF7F2;
+      --paper-2: #F3EEE5;
+      --ink: #1E1B16;
+      --ink-soft: #7A7468;
+      --ink-faint: #D9D1C1;
+
+      --accent: oklch(0.72 0.14 55);
+      --accent-soft: oklch(0.92 0.05 65);
+      --accent-ink: oklch(0.42 0.14 55);
+
+      --warn: oklch(0.65 0.14 25);
+      --warn-soft: oklch(0.93 0.05 30);
+      --warn-ink: oklch(0.42 0.16 25);
+
+      --font-display: 'Kalam', cursive;
+      --font-ui: 'Architects Daughter', cursive;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+    html[data-theme="dark"] {
+      --paper: #1E1B16;
+      --paper-2: #282420;
+      --ink: #F2ECDF;
+      --ink-soft: #9A9286;
+      --ink-faint: #3A342B;
+      --accent: oklch(0.78 0.14 65);
+      --accent-soft: oklch(0.32 0.08 65);
+      --accent-ink: oklch(0.88 0.1 65);
+      --warn: oklch(0.72 0.14 25);
+      --warn-soft: oklch(0.32 0.08 25);
+      --warn-ink: oklch(0.88 0.1 25);
+    }
+    html, body { margin: 0; padding: 0; background: var(--paper); color: var(--ink); font-family: var(--font-ui); }
+    * { box-sizing: border-box; }
+
+    #tweaks-panel {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      width: 260px;
+      z-index: 100;
+      background: var(--paper);
+      border: 1.5px solid var(--ink);
+      border-radius: 10px;
+      box-shadow: 4px 4px 0 rgba(0,0,0,0.15);
+      padding: 14px 14px 12px;
+      font-family: var(--font-ui);
+      color: var(--ink);
+      display: none;
+    }
+    #tweaks-panel.visible { display: block; }
+    #tweaks-panel h3 { margin: 0 0 10px; font-family: var(--font-display); font-size: 16px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+    #tweaks-panel .row { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; font-size: 12px; }
+    #tweaks-panel label { color: var(--ink-soft); font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
+    #tweaks-panel .seg { display: flex; gap: 0; border: 1.2px dashed var(--ink-soft); border-radius: 6px; overflow: hidden; }
+    #tweaks-panel .seg button {
+      flex: 1;
+      background: transparent;
+      border: 0;
+      font-family: var(--font-ui);
+      font-size: 11.5px;
+      padding: 6px 4px;
+      color: var(--ink);
+      cursor: pointer;
+      border-right: 1.2px dashed var(--ink-soft);
+    }
+    #tweaks-panel .seg button:last-child { border-right: 0; }
+    #tweaks-panel .seg button.on { background: var(--ink); color: var(--paper); }
+    #tweaks-panel .toggle { display: flex; align-items: center; justify-content: space-between; font-size: 12px; padding: 2px 0; }
+    #tweaks-panel .toggle input { accent-color: var(--accent); }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <div id="tweaks-panel">
+    <h3>✎ Tweaks</h3>
+
+    <div class="row">
+      <label>Sidebar</label>
+      <div class="seg" data-key="sidebarMode">
+        <button data-val="full">full</button>
+        <button data-val="narrow">narrow</button>
+        <button data-val="icon">icon</button>
+      </div>
+    </div>
+
+    <div class="row">
+      <label>Density</label>
+      <div class="seg" data-key="density">
+        <button data-val="compact">compact</button>
+        <button data-val="regular">regular</button>
+        <button data-val="cozy">cozy</button>
+      </div>
+    </div>
+
+    <div class="row">
+      <label>Theme</label>
+      <div class="seg" data-key="theme">
+        <button data-val="light">light paper</button>
+        <button data-val="dark">dark ink</button>
+      </div>
+    </div>
+
+    <div class="row">
+      <label>States</label>
+      <div class="toggle">
+        <span>Show gaps panel</span>
+        <input type="checkbox" data-toggle="showGaps" />
+      </div>
+      <div class="toggle">
+        <span>Upload in progress</span>
+        <input type="checkbox" data-toggle="uploading" />
+      </div>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+  <script type="text/babel" data-presets="react">
+
+// DesignCanvas.jsx — Figma-ish design canvas wrapper
+// Warm gray grid bg + Sections + Artboards + PostIt notes.
+
+const DC = {
+  bg: '#f0eee9',
+  grid: 'rgba(0,0,0,0.06)',
+  label: 'rgba(60,50,40,0.7)',
+  title: 'rgba(40,30,20,0.85)',
+  subtitle: 'rgba(60,50,40,0.6)',
+  postitBg: '#fef4a8',
+  postitText: '#5a4a2a',
+  font: '-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
+};
+
+if (typeof document !== 'undefined' && !document.getElementById('dc-styles')) {
+  const s = document.createElement('style');
+  s.id = 'dc-styles';
+  s.textContent = [
+    '.dc-editable{cursor:text;outline:none;white-space:nowrap;border-radius:3px;padding:0 2px;margin:0 -2px}',
+    '.dc-editable:focus{background:#fff;box-shadow:0 0 0 1.5px #c96442}',
+    '[data-dc-slot]{transition:transform .18s cubic-bezier(.2,.7,.3,1)}',
+    '[data-dc-slot].dc-dragging{transition:none;z-index:10;pointer-events:none}',
+    '[data-dc-slot].dc-dragging .dc-card{box-shadow:0 12px 40px rgba(0,0,0,.25),0 0 0 2px #c96442;transform:scale(1.02)}',
+    '.dc-card{transition:box-shadow .15s,transform .15s}',
+    '.dc-card *{scrollbar-width:none}',
+    '.dc-card *::-webkit-scrollbar{display:none}',
+    '.dc-labelrow{display:flex;align-items:center;gap:4px;height:24px}',
+    '.dc-grip{cursor:grab;display:flex;align-items:center;padding:5px 4px;border-radius:4px;transition:background .12s}',
+    '.dc-grip:hover{background:rgba(0,0,0,.08)}',
+    '.dc-grip:active{cursor:grabbing}',
+    '.dc-labeltext{cursor:pointer;border-radius:4px;padding:3px 6px;display:flex;align-items:center;transition:background .12s}',
+    '.dc-labeltext:hover{background:rgba(0,0,0,.05)}',
+    '.dc-expand{position:absolute;bottom:100%;right:0;margin-bottom:5px;z-index:2;opacity:0;transition:opacity .12s,background .12s;',
+    '  width:22px;height:22px;border-radius:5px;border:none;cursor:pointer;padding:0;',
+    '  background:transparent;color:rgba(60,50,40,.7);display:flex;align-items:center;justify-content:center}',
+    '.dc-expand:hover{background:rgba(0,0,0,.06);color:#2a251f}',
+    '[data-dc-slot]:hover .dc-expand{opacity:1}',
+  ].join('\n');
+  document.head.appendChild(s);
+}
+
+const DCCtx = React.createContext(null);
+
+const DC_STATE_FILE = '.design-canvas.state.json';
+
+function DesignCanvas({ children, minScale, maxScale, style }) {
+  const [state, setState] = React.useState({ sections: {}, focus: null });
+  const [ready, setReady] = React.useState(false);
+  const didRead = React.useRef(false);
+  const skipNextWrite = React.useRef(false);
+
+  React.useEffect(() => {
+    let off = false;
+    fetch('./' + DC_STATE_FILE)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((saved) => {
+        if (off || !saved || !saved.sections) return;
+        skipNextWrite.current = true;
+        setState((s) => ({ ...s, sections: saved.sections }));
+      })
+      .catch(() => {})
+      .finally(() => { didRead.current = true; if (!off) setReady(true); });
+    const t = setTimeout(() => { if (!off) setReady(true); }, 150);
+    return () => { off = true; clearTimeout(t); };
+  }, []);
+
+  React.useEffect(() => {
+    if (!didRead.current) return;
+    if (skipNextWrite.current) { skipNextWrite.current = false; return; }
+    const t = setTimeout(() => {
+      window.omelette?.writeFile(DC_STATE_FILE, JSON.stringify({ sections: state.sections })).catch(() => {});
+    }, 250);
+    return () => clearTimeout(t);
+  }, [state.sections]);
+
+  const registry = {};
+  const sectionMeta = {};
+  const sectionOrder = [];
+  React.Children.forEach(children, (sec) => {
+    if (!sec || sec.type !== DCSection) return;
+    const sid = sec.props.id ?? sec.props.title;
+    if (!sid) return;
+    sectionOrder.push(sid);
+    const persisted = state.sections[sid] || {};
+    const srcIds = [];
+    React.Children.forEach(sec.props.children, (ab) => {
+      if (!ab || ab.type !== DCArtboard) return;
+      const aid = ab.props.id ?? ab.props.label;
+      if (!aid) return;
+      registry[`${sid}/${aid}`] = { sectionId: sid, artboard: ab };
+      srcIds.push(aid);
+    });
+    const kept = (persisted.order || []).filter((k) => srcIds.includes(k));
+    sectionMeta[sid] = {
+      title: persisted.title ?? sec.props.title,
+      subtitle: sec.props.subtitle,
+      slotIds: [...kept, ...srcIds.filter((k) => !kept.includes(k))],
+    };
+  });
+
+  const api = React.useMemo(() => ({
+    state,
+    section: (id) => state.sections[id] || {},
+    patchSection: (id, p) => setState((s) => ({
+      ...s,
+      sections: { ...s.sections, [id]: { ...s.sections[id], ...(typeof p === 'function' ? p(s.sections[id] || {}) : p) } },
+    })),
+    setFocus: (slotId) => setState((s) => ({ ...s, focus: slotId })),
+  }), [state]);
+
+  React.useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') api.setFocus(null); };
+    const onPd = (e) => {
+      const ae = document.activeElement;
+      if (ae && ae.isContentEditable && !ae.contains(e.target)) ae.blur();
+    };
+    document.addEventListener('keydown', onKey);
+    document.addEventListener('pointerdown', onPd, true);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.removeEventListener('pointerdown', onPd, true);
+    };
+  }, [api]);
+
+  return (
+    <DCCtx.Provider value={api}>
+      <DCViewport minScale={minScale} maxScale={maxScale} style={style}>{ready && children}</DCViewport>
+      {state.focus && registry[state.focus] && (
+        <DCFocusOverlay entry={registry[state.focus]} sectionMeta={sectionMeta} sectionOrder={sectionOrder} />
+      )}
+    </DCCtx.Provider>
+  );
+}
+
+function DCViewport({ children, minScale = 0.1, maxScale = 8, style = {} }) {
+  const vpRef = React.useRef(null);
+  const worldRef = React.useRef(null);
+  const tf = React.useRef({ x: 0, y: 0, scale: 1 });
+
+  const apply = React.useCallback(() => {
+    const { x, y, scale } = tf.current;
+    const el = worldRef.current;
+    if (el) el.style.transform = `translate3d(${x}px, ${y}px, 0) scale(${scale})`;
+  }, []);
+
+  React.useEffect(() => {
+    const vp = vpRef.current;
+    if (!vp) return;
+
+    const zoomAt = (cx, cy, factor) => {
+      const r = vp.getBoundingClientRect();
+      const px = cx - r.left, py = cy - r.top;
+      const t = tf.current;
+      const next = Math.min(maxScale, Math.max(minScale, t.scale * factor));
+      const k = next / t.scale;
+      t.x = px - (px - t.x) * k;
+      t.y = py - (py - t.y) * k;
+      t.scale = next;
+      apply();
+    };
+
+    const isMouseWheel = (e) =>
+      e.deltaMode !== 0 ||
+      (e.deltaX === 0 && Number.isInteger(e.deltaY) && Math.abs(e.deltaY) >= 40);
+
+    const onWheel = (e) => {
+      e.preventDefault();
+      if (isGesturing) return;
+      if (e.ctrlKey) {
+        zoomAt(e.clientX, e.clientY, Math.exp(-e.deltaY * 0.01));
+      } else if (isMouseWheel(e)) {
+        zoomAt(e.clientX, e.clientY, Math.exp(-Math.sign(e.deltaY) * 0.18));
+      } else {
+        tf.current.x -= e.deltaX;
+        tf.current.y -= e.deltaY;
+        apply();
+      }
+    };
+
+    let gsBase = 1;
+    let isGesturing = false;
+    const onGestureStart = (e) => { e.preventDefault(); isGesturing = true; gsBase = tf.current.scale; };
+    const onGestureChange = (e) => {
+      e.preventDefault();
+      zoomAt(e.clientX, e.clientY, (gsBase * e.scale) / tf.current.scale);
+    };
+    const onGestureEnd = (e) => { e.preventDefault(); isGesturing = false; };
+
+    let drag = null;
+    const onPointerDown = (e) => {
+      const onBg = !e.target.closest('[data-dc-slot], .dc-editable');
+      if (!(e.button === 1 || (e.button === 0 && onBg))) return;
+      e.preventDefault();
+      vp.setPointerCapture(e.pointerId);
+      drag = { id: e.pointerId, lx: e.clientX, ly: e.clientY };
+      vp.style.cursor = 'grabbing';
+    };
+    const onPointerMove = (e) => {
+      if (!drag || e.pointerId !== drag.id) return;
+      tf.current.x += e.clientX - drag.lx;
+      tf.current.y += e.clientY - drag.ly;
+      drag.lx = e.clientX; drag.ly = e.clientY;
+      apply();
+    };
+    const onPointerUp = (e) => {
+      if (!drag || e.pointerId !== drag.id) return;
+      vp.releasePointerCapture(e.pointerId);
+      drag = null;
+      vp.style.cursor = '';
+    };
+
+    vp.addEventListener('wheel', onWheel, { passive: false });
+    vp.addEventListener('gesturestart', onGestureStart, { passive: false });
+    vp.addEventListener('gesturechange', onGestureChange, { passive: false });
+    vp.addEventListener('gestureend', onGestureEnd, { passive: false });
+    vp.addEventListener('pointerdown', onPointerDown);
+    vp.addEventListener('pointermove', onPointerMove);
+    vp.addEventListener('pointerup', onPointerUp);
+    vp.addEventListener('pointercancel', onPointerUp);
+    return () => {
+      vp.removeEventListener('wheel', onWheel);
+      vp.removeEventListener('gesturestart', onGestureStart);
+      vp.removeEventListener('gesturechange', onGestureChange);
+      vp.removeEventListener('gestureend', onGestureEnd);
+      vp.removeEventListener('pointerdown', onPointerDown);
+      vp.removeEventListener('pointermove', onPointerMove);
+      vp.removeEventListener('pointerup', onPointerUp);
+      vp.removeEventListener('pointercancel', onPointerUp);
+    };
+  }, [apply, minScale, maxScale]);
+
+  const gridSvg = `url("data:image/svg+xml,%3Csvg width='120' height='120' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M120 0H0v120' fill='none' stroke='${encodeURIComponent(DC.grid)}' stroke-width='1'/%3E%3C/svg%3E")`;
+  return (
+    <div
+      ref={vpRef}
+      className="design-canvas"
+      style={{
+        height: '100vh', width: '100vw',
+        background: DC.bg,
+        overflow: 'hidden',
+        overscrollBehavior: 'none',
+        touchAction: 'none',
+        position: 'relative',
+        fontFamily: DC.font,
+        boxSizing: 'border-box',
+        ...style,
+      }}
+    >
+      <div
+        ref={worldRef}
+        style={{
+          position: 'absolute', top: 0, left: 0,
+          transformOrigin: '0 0',
+          willChange: 'transform',
+          width: 'max-content', minWidth: '100%',
+          minHeight: '100%',
+          padding: '60px 0 80px',
+        }}
+      >
+        <div style={{ position: 'absolute', inset: -6000, backgroundImage: gridSvg, backgroundSize: '120px 120px', pointerEvents: 'none', zIndex: -1 }} />
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function DCSection({ id, title, subtitle, children, gap = 48 }) {
+  const ctx = React.useContext(DCCtx);
+  const sid = id ?? title;
+  const all = React.Children.toArray(children);
+  const artboards = all.filter((c) => c && c.type === DCArtboard);
+  const rest = all.filter((c) => !(c && c.type === DCArtboard));
+  const srcOrder = artboards.map((a) => a.props.id ?? a.props.label);
+  const sec = (ctx && sid && ctx.section(sid)) || {};
+
+  const order = React.useMemo(() => {
+    const kept = (sec.order || []).filter((k) => srcOrder.includes(k));
+    return [...kept, ...srcOrder.filter((k) => !kept.includes(k))];
+  }, [sec.order, srcOrder.join('|')]);
+
+  const byId = Object.fromEntries(artboards.map((a) => [a.props.id ?? a.props.label, a]));
+
+  return (
+    <div data-dc-section={sid} style={{ marginBottom: 80, position: 'relative' }}>
+      <div style={{ padding: '0 60px 56px' }}>
+        <DCEditable tag="div" value={sec.title ?? title}
+          onChange={(v) => ctx && sid && ctx.patchSection(sid, { title: v })}
+          style={{ fontSize: 28, fontWeight: 600, color: DC.title, letterSpacing: -0.4, marginBottom: 6, display: 'inline-block' }} />
+        {subtitle && <div style={{ fontSize: 16, color: DC.subtitle }}>{subtitle}</div>}
+      </div>
+      <div style={{ display: 'flex', gap, padding: '0 60px', alignItems: 'flex-start', width: 'max-content' }}>
+        {order.map((k) => (
+          <DCArtboardFrame key={k} sectionId={sid} artboard={byId[k]} order={order}
+            label={(sec.labels || {})[k] ?? byId[k].props.label}
+            onRename={(v) => ctx && ctx.patchSection(sid, (x) => ({ labels: { ...x.labels, [k]: v } }))}
+            onReorder={(next) => ctx && ctx.patchSection(sid, { order: next })}
+            onFocus={() => ctx && ctx.setFocus(`${sid}/${k}`)} />
+        ))}
+      </div>
+      {rest}
+    </div>
+  );
+}
+
+function DCArtboard() { return null; }
+
+function DCArtboardFrame({ sectionId, artboard, label, order, onRename, onReorder, onFocus }) {
+  const { id: rawId, label: rawLabel, width = 260, height = 480, children, style = {} } = artboard.props;
+  const id = rawId ?? rawLabel;
+  const ref = React.useRef(null);
+
+  const onGripDown = (e) => {
+    e.preventDefault(); e.stopPropagation();
+    const me = ref.current;
+    const scale = me.getBoundingClientRect().width / me.offsetWidth || 1;
+    const peers = Array.from(document.querySelectorAll(`[data-dc-section="${sectionId}"] [data-dc-slot]`));
+    const homes = peers.map((el) => ({ el, id: el.dataset.dcSlot, x: el.getBoundingClientRect().left }));
+    const slotXs = homes.map((h) => h.x);
+    const startIdx = order.indexOf(id);
+    const startX = e.clientX;
+    let liveOrder = order.slice();
+    me.classList.add('dc-dragging');
+
+    const layout = () => {
+      for (const h of homes) {
+        if (h.id === id) continue;
+        const slot = liveOrder.indexOf(h.id);
+        h.el.style.transform = `translateX(${(slotXs[slot] - h.x) / scale}px)`;
+      }
+    };
+
+    const move = (ev) => {
+      const dx = ev.clientX - startX;
+      me.style.transform = `translateX(${dx / scale}px)`;
+      const cur = homes[startIdx].x + dx;
+      let nearest = 0, best = Infinity;
+      for (let i = 0; i < slotXs.length; i++) {
+        const d = Math.abs(slotXs[i] - cur);
+        if (d < best) { best = d; nearest = i; }
+      }
+      if (liveOrder.indexOf(id) !== nearest) {
+        liveOrder = order.filter((k) => k !== id);
+        liveOrder.splice(nearest, 0, id);
+        layout();
+      }
+    };
+
+    const up = () => {
+      document.removeEventListener('pointermove', move);
+      document.removeEventListener('pointerup', up);
+      const finalSlot = liveOrder.indexOf(id);
+      me.classList.remove('dc-dragging');
+      me.style.transform = `translateX(${(slotXs[finalSlot] - homes[startIdx].x) / scale}px)`;
+      setTimeout(() => {
+        for (const h of homes) { h.el.style.transition = 'none'; h.el.style.transform = ''; }
+        if (liveOrder.join('|') !== order.join('|')) onReorder(liveOrder);
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+          for (const h of homes) h.el.style.transition = '';
+        }));
+      }, 180);
+    };
+    document.addEventListener('pointermove', move);
+    document.addEventListener('pointerup', up);
+  };
+
+  return (
+    <div ref={ref} data-dc-slot={id} style={{ position: 'relative', flexShrink: 0 }}>
+      <div className="dc-labelrow" style={{ position: 'absolute', bottom: '100%', left: -4, marginBottom: 4, color: DC.label }}>
+        <div className="dc-grip" onPointerDown={onGripDown} title="Drag to reorder">
+          <svg width="9" height="13" viewBox="0 0 9 13" fill="currentColor"><circle cx="2" cy="2" r="1.1"/><circle cx="7" cy="2" r="1.1"/><circle cx="2" cy="6.5" r="1.1"/><circle cx="7" cy="6.5" r="1.1"/><circle cx="2" cy="11" r="1.1"/><circle cx="7" cy="11" r="1.1"/></svg>
+        </div>
+        <div className="dc-labeltext" onClick={onFocus} title="Click to focus">
+          <DCEditable value={label} onChange={onRename} onClick={(e) => e.stopPropagation()}
+            style={{ fontSize: 15, fontWeight: 500, color: DC.label, lineHeight: 1 }} />
+        </div>
+      </div>
+      <button className="dc-expand" onClick={onFocus} onPointerDown={(e) => e.stopPropagation()} title="Focus">
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"><path d="M7 1h4v4M5 11H1V7M11 1L7.5 4.5M1 11l3.5-3.5"/></svg>
+      </button>
+      <div className="dc-card"
+        style={{ borderRadius: 2, boxShadow: '0 1px 3px rgba(0,0,0,.08),0 4px 16px rgba(0,0,0,.06)', overflow: 'hidden', width, height, background: '#fff', ...style }}>
+        {children || <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#bbb', fontSize: 13, fontFamily: DC.font }}>{id}</div>}
+      </div>
+    </div>
+  );
+}
+
+function DCEditable({ value, onChange, style, tag = 'span', onClick }) {
+  const T = tag;
+  return (
+    <T className="dc-editable" contentEditable suppressContentEditableWarning
+      onClick={onClick}
+      onPointerDown={(e) => e.stopPropagation()}
+      onBlur={(e) => onChange && onChange(e.currentTarget.textContent)}
+      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur(); } }}
+      style={style}>{value}</T>
+  );
+}
+
+function DCFocusOverlay({ entry, sectionMeta, sectionOrder }) {
+  const ctx = React.useContext(DCCtx);
+  const { sectionId, artboard } = entry;
+  const sec = ctx.section(sectionId);
+  const meta = sectionMeta[sectionId];
+  const peers = meta.slotIds;
+  const aid = artboard.props.id ?? artboard.props.label;
+  const idx = peers.indexOf(aid);
+  const secIdx = sectionOrder.indexOf(sectionId);
+
+  const go = (d) => { const n = peers[(idx + d + peers.length) % peers.length]; if (n) ctx.setFocus(`${sectionId}/${n}`); };
+  const goSection = (d) => {
+    const ns = sectionOrder[(secIdx + d + sectionOrder.length) % sectionOrder.length];
+    const first = sectionMeta[ns] && sectionMeta[ns].slotIds[0];
+    if (first) ctx.setFocus(`${ns}/${first}`);
+  };
+
+  React.useEffect(() => {
+    const k = (e) => {
+      if (e.key === 'ArrowLeft') { e.preventDefault(); go(-1); }
+      if (e.key === 'ArrowRight') { e.preventDefault(); go(1); }
+      if (e.key === 'ArrowUp') { e.preventDefault(); goSection(-1); }
+      if (e.key === 'ArrowDown') { e.preventDefault(); goSection(1); }
+    };
+    document.addEventListener('keydown', k);
+    return () => document.removeEventListener('keydown', k);
+  });
+
+  const { width = 260, height = 480, children } = artboard.props;
+  const [vp, setVp] = React.useState({ w: window.innerWidth, h: window.innerHeight });
+  React.useEffect(() => { const r = () => setVp({ w: window.innerWidth, h: window.innerHeight }); window.addEventListener('resize', r); return () => window.removeEventListener('resize', r); }, []);
+  const scale = Math.max(0.1, Math.min((vp.w - 200) / width, (vp.h - 260) / height, 2));
+
+  const [ddOpen, setDd] = React.useState(false);
+  const Arrow = ({ dir, onClick }) => (
+    <button onClick={(e) => { e.stopPropagation(); onClick(); }}
+      style={{ position: 'absolute', top: '50%', [dir]: 28, transform: 'translateY(-50%)',
+        border: 'none', background: 'rgba(255,255,255,.08)', color: 'rgba(255,255,255,.9)',
+        width: 44, height: 44, borderRadius: 22, fontSize: 18, cursor: 'pointer',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background .15s' }}
+      onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,.18)')}
+      onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,.08)')}>
+      <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+        <path d={dir === 'left' ? 'M11 3L5 9l6 6' : 'M7 3l6 6-6 6'} /></svg>
+    </button>
+  );
+
+  return ReactDOM.createPortal(
+    <div onClick={() => ctx.setFocus(null)}
+      onWheel={(e) => e.preventDefault()}
+      style={{ position: 'fixed', inset: 0, zIndex: 100, background: 'rgba(24,20,16,.6)', backdropFilter: 'blur(14px)',
+        fontFamily: DC.font, color: '#fff' }}>
+
+      <div onClick={(e) => e.stopPropagation()}
+        style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 72, display: 'flex', alignItems: 'flex-start', padding: '16px 20px 0', gap: 16 }}>
+        <div style={{ position: 'relative' }}>
+          <button onClick={() => setDd((o) => !o)}
+            style={{ border: 'none', background: 'transparent', color: '#fff', cursor: 'pointer', padding: '6px 8px',
+              borderRadius: 6, textAlign: 'left', fontFamily: 'inherit' }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 18, fontWeight: 600, letterSpacing: -0.3 }}>{meta.title}</span>
+              <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" style={{ opacity: .7 }}><path d="M2 4l3.5 3.5L9 4"/></svg>
+            </span>
+            {meta.subtitle && <span style={{ display: 'block', fontSize: 13, opacity: .6, fontWeight: 400, marginTop: 2 }}>{meta.subtitle}</span>}
+          </button>
+          {ddOpen && (
+            <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 4, background: '#2a251f', borderRadius: 8,
+              boxShadow: '0 8px 32px rgba(0,0,0,.4)', padding: 4, minWidth: 200, zIndex: 10 }}>
+              {sectionOrder.map((sid) => (
+                <button key={sid} onClick={() => { setDd(false); const f = sectionMeta[sid].slotIds[0]; if (f) ctx.setFocus(`${sid}/${f}`); }}
+                  style={{ display: 'block', width: '100%', textAlign: 'left', border: 'none', cursor: 'pointer',
+                    background: sid === sectionId ? 'rgba(255,255,255,.1)' : 'transparent', color: '#fff',
+                    padding: '8px 12px', borderRadius: 5, fontSize: 14, fontWeight: sid === sectionId ? 600 : 400, fontFamily: 'inherit' }}>
+                  {sectionMeta[sid].title}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        <div style={{ flex: 1 }} />
+        <button onClick={() => ctx.setFocus(null)}
+          onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,.12)')}
+          onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+          style={{ border: 'none', background: 'transparent', color: 'rgba(255,255,255,.7)', width: 32, height: 32,
+            borderRadius: 16, fontSize: 20, cursor: 'pointer', lineHeight: 1, transition: 'background .12s' }}>×</button>
+      </div>
+
+      <div
+        style={{ position: 'absolute', top: 64, bottom: 56, left: 100, right: 100, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16 }}>
+        <div onClick={(e) => e.stopPropagation()} style={{ width: width * scale, height: height * scale, position: 'relative' }}>
+          <div style={{ width, height, transform: `scale(${scale})`, transformOrigin: 'top left', background: '#fff', borderRadius: 2, overflow: 'hidden',
+            boxShadow: '0 20px 80px rgba(0,0,0,.4)' }}>
+            {children || <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#bbb' }}>{aid}</div>}
+          </div>
+        </div>
+        <div onClick={(e) => e.stopPropagation()} style={{ fontSize: 14, fontWeight: 500, opacity: .85, textAlign: 'center' }}>
+          {(sec.labels || {})[aid] ?? artboard.props.label}
+          <span style={{ opacity: .5, marginLeft: 10, fontVariantNumeric: 'tabular-nums' }}>{idx + 1} / {peers.length}</span>
+        </div>
+      </div>
+
+      <Arrow dir="left" onClick={() => go(-1)} />
+      <Arrow dir="right" onClick={() => go(1)} />
+
+      <div onClick={(e) => e.stopPropagation()}
+        style={{ position: 'absolute', bottom: 20, left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: 8 }}>
+        {peers.map((p, i) => (
+          <button key={p} onClick={() => ctx.setFocus(`${sectionId}/${p}`)}
+            style={{ border: 'none', padding: 0, cursor: 'pointer', width: 6, height: 6, borderRadius: 3,
+              background: i === idx ? '#fff' : 'rgba(255,255,255,.3)' }} />
+        ))}
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+function DCPostIt({ children, top, left, right, bottom, rotate = -2, width = 180 }) {
+  return (
+    <div style={{
+      position: 'absolute', top, left, right, bottom, width,
+      background: DC.postitBg, padding: '14px 16px',
+      fontFamily: '"Comic Sans MS", "Marker Felt", "Segoe Print", cursive',
+      fontSize: 14, lineHeight: 1.4, color: DC.postitText,
+      boxShadow: '0 2px 8px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.08)',
+      transform: `rotate(${rotate}deg)`,
+      zIndex: 5,
+    }}>{children}</div>
+  );
+}
+
+Object.assign(window, { DesignCanvas, DCSection, DCArtboard, DCPostIt });
+
+
+/* Shared low-fi wireframe primitives used across all three directions. */
+
+const Squiggle = ({ w = 200, h = 8, color = "currentColor", strokeWidth = 1.5, style }) => (
+  <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} style={{ display: "block", ...style }}>
+    <path
+      d={`M 0 ${h / 2} Q ${w * 0.1} 0, ${w * 0.2} ${h / 2} T ${w * 0.4} ${h / 2} T ${w * 0.6} ${h / 2} T ${w * 0.8} ${h / 2} T ${w} ${h / 2}`}
+      fill="none"
+      stroke={color}
+      strokeWidth={strokeWidth}
+      strokeLinecap="round"
+    />
+  </svg>
+);
+
+const Scribble = ({ w = 40, h = 40, color = "currentColor", style }) => (
+  <svg width={w} height={h} viewBox="0 0 40 40" style={{ display: "block", ...style }}>
+    <path
+      d="M 5 10 Q 10 5, 15 10 T 25 10 M 5 18 Q 12 14, 20 18 T 34 18 M 5 26 Q 10 22, 18 26 T 30 26 M 5 34 Q 12 30, 22 34"
+      fill="none"
+      stroke={color}
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      opacity="0.6"
+    />
+  </svg>
+);
+
+const PlaceLine = ({ w = "100%", thick = 1.5, dashed = true, color = "currentColor", style }) => (
+  <div
+    style={{
+      width: w,
+      height: 0,
+      borderTop: `${thick}px ${dashed ? "dashed" : "solid"} ${color}`,
+      opacity: 0.55,
+      ...style,
+    }}
+  />
+);
+
+const TextBar = ({ w = 140, h = 10, color, style }) => (
+  <div
+    style={{
+      width: w,
+      height: h,
+      background: color || "var(--ink-soft)",
+      borderRadius: 3,
+      opacity: 0.85,
+      ...style,
+    }}
+  />
+);
+
+const Pill = ({ children, tone = "ink", style }) => {
+  const tones = {
+    ink: { bg: "transparent", fg: "var(--ink)", bd: "var(--ink)" },
+    accent: { bg: "var(--accent-soft)", fg: "var(--accent-ink)", bd: "var(--accent)" },
+    muted: { bg: "transparent", fg: "var(--ink-soft)", bd: "var(--ink-soft)" },
+    warn: { bg: "var(--warn-soft)", fg: "var(--warn-ink)", bd: "var(--warn)" },
+  }[tone];
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 6,
+        padding: "3px 10px",
+        border: `1.2px dashed ${tones.bd}`,
+        borderRadius: 999,
+        background: tones.bg,
+        color: tones.fg,
+        fontFamily: "var(--font-ui)",
+        fontSize: 11,
+        letterSpacing: 0.2,
+        ...style,
+      }}
+    >
+      {children}
+    </span>
+  );
+};
+
+const SketchBtn = ({ children, primary, style, ...rest }) => (
+  <button
+    {...rest}
+    style={{
+      fontFamily: "var(--font-ui)",
+      fontSize: 13,
+      padding: "8px 14px",
+      borderRadius: 6,
+      border: `1.5px solid var(--ink)`,
+      background: primary ? "var(--ink)" : "transparent",
+      color: primary ? "var(--paper)" : "var(--ink)",
+      cursor: "pointer",
+      boxShadow: primary ? "2px 2px 0 var(--ink-soft)" : "2px 2px 0 var(--ink-faint)",
+      ...style,
+    }}
+  >
+    {children}
+  </button>
+);
+
+const Placeholder = ({ label, w = "100%", h = 120, style, note }) => (
+  <div
+    style={{
+      width: w,
+      height: h,
+      border: "1.3px dashed var(--ink-soft)",
+      borderRadius: 6,
+      position: "relative",
+      background:
+        "repeating-linear-gradient(135deg, transparent 0 6px, var(--ink-faint) 6px 7px)",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      flexDirection: "column",
+      gap: 4,
+      color: "var(--ink-soft)",
+      fontFamily: "var(--font-mono)",
+      fontSize: 10,
+      textAlign: "center",
+      ...style,
+    }}
+  >
+    <span>{label}</span>
+    {note && <span style={{ opacity: 0.6, fontSize: 9 }}>{note}</span>}
+  </div>
+);
+
+const HandCheck = ({ size = 16, color = "currentColor" }) => (
+  <svg width={size} height={size} viewBox="0 0 20 20">
+    <circle cx="10" cy="10" r="8" fill="none" stroke={color} strokeWidth="1.3" />
+    <path d="M 6 10 L 9 13 L 14 7" fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
+const dotGridBg = {
+  backgroundImage: "radial-gradient(var(--ink-faint) 1px, transparent 1px)",
+  backgroundSize: "18px 18px",
+  backgroundPosition: "0 0",
+};
+
+const SketchSidebar = ({ width = 220, active = "Chats", dark = false }) => {
+  const Section = ({ label, items, addable }) => (
+    <div style={{ marginTop: 18 }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: "0 14px",
+          marginBottom: 6,
+        }}
+      >
+        <span
+          style={{
+            fontFamily: "var(--font-ui)",
+            fontSize: 10,
+            letterSpacing: 1.5,
+            textTransform: "uppercase",
+            color: "var(--ink-soft)",
+          }}
+        >
+          {label}
+        </span>
+        {addable && (
+          <span style={{ fontFamily: "var(--font-ui)", color: "var(--ink-soft)", fontSize: 14, lineHeight: 1 }}>+</span>
+        )}
+      </div>
+      {items.map((it, i) => {
+        const isActive = it === active;
+        return (
+          <div
+            key={i}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              padding: "6px 14px",
+              margin: "0 8px",
+              borderRadius: 6,
+              background: isActive ? "var(--ink-faint)" : "transparent",
+              border: isActive ? "1.2px dashed var(--ink-soft)" : "1.2px solid transparent",
+              fontFamily: "var(--font-ui)",
+              fontSize: 12.5,
+              color: "var(--ink)",
+            }}
+          >
+            <span
+              style={{
+                width: 12,
+                height: 12,
+                border: "1.2px solid var(--ink-soft)",
+                borderRadius: 3,
+                display: "inline-block",
+                flexShrink: 0,
+              }}
+            />
+            {it}
+          </div>
+        );
+      })}
+    </div>
+  );
+
+  const collapsed = width < 90;
+
+  if (collapsed) {
+    return (
+      <aside
+        style={{
+          width,
+          borderRight: "1.5px dashed var(--ink-soft)",
+          background: "var(--paper-2)",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          padding: "18px 0",
+          gap: 16,
+          flexShrink: 0,
+        }}
+      >
+        <div style={{ width: 28, height: 28, border: "1.5px solid var(--ink)", borderRadius: 6, display: "grid", placeItems: "center", fontFamily: "var(--font-display)", fontSize: 14 }}>S</div>
+        {["⌂", "✎", "◎", "⚙", "?"].map((g, i) => (
+          <div key={i} style={{ width: 28, height: 28, display: "grid", placeItems: "center", color: "var(--ink-soft)", fontFamily: "var(--font-ui)" }}>{g}</div>
+        ))}
+      </aside>
+    );
+  }
+
+  return (
+    <aside
+      style={{
+        width,
+        borderRight: "1.5px dashed var(--ink-soft)",
+        background: "var(--paper-2)",
+        display: "flex",
+        flexDirection: "column",
+        padding: "14px 0",
+        flexShrink: 0,
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "0 14px", marginBottom: 12 }}>
+        <div
+          style={{
+            width: 28,
+            height: 28,
+            border: "1.5px solid var(--ink)",
+            borderRadius: 6,
+            display: "grid",
+            placeItems: "center",
+            fontFamily: "var(--font-display)",
+            fontSize: 14,
+            transform: "rotate(-2deg)",
+          }}
+        >
+          S
+        </div>
+        <span style={{ fontFamily: "var(--font-display)", fontSize: 17, fontWeight: 600 }}>StoryForge</span>
+      </div>
+
+      <div style={{ margin: "0 10px", padding: "6px 10px", border: "1.2px dashed var(--ink-soft)", borderRadius: 6, fontFamily: "var(--font-ui)", fontSize: 12, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <span>◇ Acme Product</span>
+        <span style={{ color: "var(--ink-soft)" }}>▾</span>
+      </div>
+
+      <Section label="Workspace" items={["Chats", "Documents", "Templates", "Integrations"]} />
+      <Section label="Projects" items={["Checkout v2", "Mobile onboarding", "Reporting API"]} addable />
+      <Section label="Recent uploads" items={["BRD_Checkout.pdf", "meeting_0412.txt", "email_thread.eml"]} />
+      <Section label="Team" items={["Members", "Settings"]} />
+
+      <div style={{ flex: 1 }} />
+      <div style={{ padding: "10px 14px", borderTop: "1.2px dashed var(--ink-soft)", fontFamily: "var(--font-ui)", fontSize: 11.5, color: "var(--ink-soft)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ width: 22, height: 22, borderRadius: 999, border: "1.2px solid var(--ink)", display: "grid", placeItems: "center", fontFamily: "var(--font-display)", fontSize: 11 }}>B</div>
+          <span>you@acme.co</span>
+        </div>
+      </div>
+    </aside>
+  );
+};
+
+Object.assign(window, {
+  Squiggle, Scribble, PlaceLine, TextBar, Pill, SketchBtn, Placeholder, HandCheck, dotGridBg, SketchSidebar,
+});
+
+
+/* Direction 1: Hub-and-spoke home. */
+
+const Direction1Hub = ({ density, showGaps, sidebarWidth, uploading }) => {
+  const pad = density === "cozy" ? 28 : density === "compact" ? 14 : 20;
+
+  const Tile = ({ title, sub, icon, tag }) => (
+    <div
+      style={{
+        border: "1.5px solid var(--ink)",
+        borderRadius: 10,
+        padding: "16px 18px",
+        background: "var(--paper)",
+        display: "flex",
+        alignItems: "center",
+        gap: 14,
+        boxShadow: "3px 3px 0 var(--ink-faint)",
+        cursor: "pointer",
+        position: "relative",
+      }}
+    >
+      <div
+        style={{
+          width: 42,
+          height: 42,
+          border: "1.3px dashed var(--ink-soft)",
+          borderRadius: 8,
+          display: "grid",
+          placeItems: "center",
+          fontFamily: "var(--font-display)",
+          fontSize: 20,
+          flexShrink: 0,
+        }}
+      >
+        {icon}
+      </div>
+      <div style={{ flex: 1 }}>
+        <div style={{ fontFamily: "var(--font-display)", fontSize: 16, fontWeight: 600, color: "var(--ink)" }}>{title}</div>
+        <div style={{ fontFamily: "var(--font-ui)", fontSize: 12, color: "var(--ink-soft)", marginTop: 2 }}>{sub}</div>
+      </div>
+      {tag && <Pill tone="accent">{tag}</Pill>}
+      <span style={{ fontFamily: "var(--font-display)", color: "var(--ink-soft)", fontSize: 18 }}>›</span>
+    </div>
+  );
+
+  return (
+    <div style={{ display: "flex", width: "100%", height: "100%", background: "var(--paper)", color: "var(--ink)" }}>
+      <SketchSidebar width={sidebarWidth} active="Chats" />
+
+      <main style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
+        <div
+          style={{
+            height: 46,
+            borderBottom: "1.2px dashed var(--ink-soft)",
+            display: "flex",
+            alignItems: "center",
+            padding: "0 18px",
+            gap: 12,
+            fontFamily: "var(--font-ui)",
+            fontSize: 12,
+            color: "var(--ink-soft)",
+          }}
+        >
+          <span>Home</span>
+          <span>›</span>
+          <span style={{ color: "var(--ink)" }}>New requirement</span>
+          <div style={{ flex: 1 }} />
+          <Pill tone="muted">⌘K  search</Pill>
+          <Pill tone="muted">? shortcuts</Pill>
+        </div>
+
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", padding: `${pad + 24}px ${pad}px`, overflow: "auto" }}>
+          <div style={{ textAlign: "center", maxWidth: 560, marginBottom: 28 }}>
+            <div style={{ fontFamily: "var(--font-display)", fontSize: 34, fontWeight: 600, lineHeight: 1.2 }}>
+              What are we turning <span style={{ textDecoration: "underline", textDecorationStyle: "wavy", textDecorationColor: "var(--accent)", textUnderlineOffset: 6 }}>into stories</span> today?
+            </div>
+            <div style={{ fontFamily: "var(--font-ui)", fontSize: 13, color: "var(--ink-soft)", marginTop: 10 }}>
+              Drop a messy requirement doc — get a clean brief, actors, stories, acceptance criteria and gaps in one pass.
+            </div>
+          </div>
+
+          <div style={{ width: "100%", maxWidth: 620, display: "flex", flexDirection: "column", gap: 12 }}>
+            <Tile icon="⬆" title="Upload a requirement doc" sub="PDF, Word, text, image or transcript" tag="Most used" />
+            <Tile icon="✎" title="Paste text or meeting notes" sub="We'll structure it into a brief + stories" />
+            <Tile icon="⇌" title="Import from Jira or Figma" sub="Pull existing tickets / flows as source" />
+            <Tile icon="☰" title="Start from a template" sub="BRD → PRD, User stories, Acceptance criteria" />
+          </div>
+
+          <div style={{ marginTop: 26, fontFamily: "var(--font-ui)", fontSize: 11.5, color: "var(--ink-soft)", display: "flex", alignItems: "center", gap: 10 }}>
+            <Squiggle w={70} h={8} />
+            <span>3 of 5 free runs used this month</span>
+            <Squiggle w={70} h={8} />
+          </div>
+        </div>
+
+        <div style={{ borderTop: "1.2px dashed var(--ink-soft)", padding: "14px 22px 18px", background: "var(--paper-2)" }}>
+          <div
+            style={{
+              border: "1.5px solid var(--ink)",
+              borderRadius: 10,
+              background: "var(--paper)",
+              padding: "12px 14px",
+              display: "flex",
+              flexDirection: "column",
+              gap: 8,
+              boxShadow: "3px 3px 0 var(--ink-faint)",
+              maxWidth: 780,
+              margin: "0 auto",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 8, fontFamily: "var(--font-ui)", fontSize: 13, color: "var(--ink-soft)" }}>
+              <span style={{ color: "var(--ink)" }}>›</span>
+              <span>Describe the requirement, or attach a file…</span>
+            </div>
+            <PlaceLine />
+            <div style={{ display: "flex", alignItems: "center", gap: 8, fontFamily: "var(--font-ui)", fontSize: 11.5 }}>
+              <Pill tone="muted">📎 attach</Pill>
+              <Pill tone="muted">☰ template</Pill>
+              <Pill tone="muted">mode: extract</Pill>
+              <div style={{ flex: 1 }} />
+              <SketchBtn primary>run ▶</SketchBtn>
+            </div>
+          </div>
+        </div>
+
+        {uploading && (
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              background: "rgba(30,27,22,0.35)",
+              display: "grid",
+              placeItems: "center",
+              zIndex: 10,
+            }}
+          >
+            <div
+              style={{
+                width: 440,
+                background: "var(--paper)",
+                border: "1.5px solid var(--ink)",
+                borderRadius: 10,
+                padding: 22,
+                boxShadow: "5px 5px 0 var(--ink-soft)",
+                transform: "rotate(-0.3deg)",
+              }}
+            >
+              <div style={{ fontFamily: "var(--font-display)", fontSize: 18, fontWeight: 600, marginBottom: 4 }}>
+                Reading BRD_Checkout.pdf…
+              </div>
+              <div style={{ fontFamily: "var(--font-ui)", fontSize: 12, color: "var(--ink-soft)" }}>18 pages · ~4,200 words</div>
+
+              <div style={{ marginTop: 18, display: "flex", flexDirection: "column", gap: 10 }}>
+                {[
+                  ["Parsing document", true],
+                  ["Extracting actors & scope", true],
+                  ["Drafting user stories", "active"],
+                  ["Checking for gaps & ambiguities", false],
+                  ["Composing acceptance criteria", false],
+                ].map(([label, state], i) => (
+                  <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, fontFamily: "var(--font-ui)", fontSize: 12.5 }}>
+                    {state === true ? (
+                      <HandCheck color="var(--accent)" />
+                    ) : state === "active" ? (
+                      <div style={{ width: 16, height: 16, borderRadius: 999, border: "1.5px dashed var(--accent)", animation: "spin 2.4s linear infinite" }} />
+                    ) : (
+                      <div style={{ width: 16, height: 16, borderRadius: 999, border: "1.3px solid var(--ink-faint)" }} />
+                    )}
+                    <span style={{ color: state ? "var(--ink)" : "var(--ink-soft)" }}>{label}</span>
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ marginTop: 18, height: 8, border: "1.2px solid var(--ink)", borderRadius: 999, background: "var(--paper-2)", overflow: "hidden" }}>
+                <div style={{ width: "52%", height: "100%", background: "var(--accent)" }} />
+              </div>
+              <div style={{ marginTop: 8, fontFamily: "var(--font-mono)", fontSize: 10.5, color: "var(--ink-soft)", display: "flex", justifyContent: "space-between" }}>
+                <span>52% · 11 stories drafted</span>
+                <span>~18s remaining</span>
+              </div>
+            </div>
+          </div>
+        )}
+      </main>
+
+      {showGaps && !uploading && (
+        <aside
+          style={{
+            width: 260,
+            borderLeft: "1.2px dashed var(--ink-soft)",
+            background: "var(--paper-2)",
+            padding: 16,
+            fontFamily: "var(--font-ui)",
+            fontSize: 12,
+          }}
+        >
+          <div style={{ fontFamily: "var(--font-display)", fontSize: 14, fontWeight: 600, marginBottom: 10 }}>
+            Gaps rail
+          </div>
+          <div style={{ fontSize: 11, color: "var(--ink-soft)" }}>Populates after a run. Questions for stakeholders land here with severity.</div>
+          <div style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 10 }}>
+            {["Missing actor: admin?", "Unclear SLA target", "No error-state copy"].map((g, i) => (
+              <div key={i} style={{ border: "1.2px dashed var(--ink-soft)", borderRadius: 6, padding: 10 }}>
+                <div style={{ display: "flex", justifyContent: "space-between" }}>
+                  <Pill tone={i === 1 ? "warn" : "muted"}>{i === 1 ? "high" : "med"}</Pill>
+                  <span style={{ color: "var(--ink-soft)", fontSize: 10 }}>§2.1</span>
+                </div>
+                <div style={{ marginTop: 6 }}>{g}</div>
+              </div>
+            ))}
+          </div>
+        </aside>
+      )}
+
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+    </div>
+  );
+};
+
+window.Direction1Hub = Direction1Hub;
+
+
+/* Direction 2: Canvas workspace. */
+
+const Direction2Canvas = ({ density, showGaps, sidebarWidth, uploading }) => {
+  const Card = ({ title, body, tone = "ink", rotate = 0, style }) => (
+    <div
+      style={{
+        position: "absolute",
+        width: 200,
+        border: `1.4px solid var(--ink)`,
+        borderRadius: 6,
+        background: tone === "accent" ? "var(--accent-soft)" : tone === "warn" ? "var(--warn-soft)" : "var(--paper)",
+        padding: 10,
+        transform: `rotate(${rotate}deg)`,
+        boxShadow: "3px 3px 0 var(--ink-faint)",
+        fontFamily: "var(--font-ui)",
+        fontSize: 12,
+        ...style,
+      }}
+    >
+      <div style={{ fontFamily: "var(--font-display)", fontSize: 12.5, fontWeight: 600, marginBottom: 6, display: "flex", alignItems: "center", gap: 6 }}>
+        <span style={{ width: 8, height: 8, borderRadius: 999, background: tone === "warn" ? "var(--warn)" : "var(--accent)" }} />
+        {title}
+      </div>
+      {body}
+    </div>
+  );
+
+  const Connector = ({ from, to, curve = 40 }) => {
+    const midX = (from.x + to.x) / 2;
+    const midY = (from.y + to.y) / 2 - curve;
+    return (
+      <path
+        d={`M ${from.x} ${from.y} Q ${midX} ${midY}, ${to.x} ${to.y}`}
+        fill="none"
+        stroke="var(--ink-soft)"
+        strokeWidth="1.2"
+        strokeDasharray="4 3"
+      />
+    );
+  };
+
+  return (
+    <div style={{ display: "flex", width: "100%", height: "100%", background: "var(--paper)", color: "var(--ink)" }}>
+      <SketchSidebar width={sidebarWidth} active="Documents" />
+
+      <main style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, position: "relative" }}>
+        <div
+          style={{
+            height: 46,
+            borderBottom: "1.2px dashed var(--ink-soft)",
+            display: "flex",
+            alignItems: "center",
+            padding: "0 18px",
+            gap: 12,
+            fontFamily: "var(--font-ui)",
+            fontSize: 12,
+          }}
+        >
+          <span style={{ color: "var(--ink-soft)" }}>Canvas</span>
+          <span style={{ color: "var(--ink-soft)" }}>›</span>
+          <span>Checkout v2 · untitled extraction</span>
+          <div style={{ flex: 1 }} />
+          <Pill tone="muted">⌕ 100%</Pill>
+          <Pill tone="muted">pan · drag</Pill>
+          <SketchBtn style={{ padding: "4px 10px", fontSize: 11 }}>share</SketchBtn>
+          <SketchBtn primary style={{ padding: "4px 10px", fontSize: 11 }}>export</SketchBtn>
+        </div>
+
+        <div style={{ flex: 1, position: "relative", overflow: "hidden", ...dotGridBg, background: "var(--paper)" }}>
+          <div style={{ position: "absolute", inset: 0, ...dotGridBg }} />
+
+          <svg style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }}>
+            <Connector from={{ x: 410, y: 220 }} to={{ x: 180, y: 120 }} curve={30} />
+            <Connector from={{ x: 410, y: 220 }} to={{ x: 180, y: 310 }} curve={-30} />
+            <Connector from={{ x: 510, y: 220 }} to={{ x: 740, y: 130 }} curve={40} />
+            <Connector from={{ x: 510, y: 270 }} to={{ x: 760, y: 340 }} curve={-20} />
+            <Connector from={{ x: 510, y: 310 }} to={{ x: 760, y: 500 }} curve={-40} />
+            <Connector from={{ x: 460, y: 330 }} to={{ x: 260, y: 500 }} curve={-20} />
+          </svg>
+
+          <div
+            style={{
+              position: "absolute",
+              left: 380,
+              top: 170,
+              width: 160,
+              height: 180,
+              background: "var(--paper)",
+              border: "1.6px solid var(--ink)",
+              borderRadius: 4,
+              boxShadow: "4px 4px 0 var(--ink-faint)",
+              display: "flex",
+              flexDirection: "column",
+              padding: 12,
+              gap: 6,
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 6, fontFamily: "var(--font-mono)", fontSize: 9.5, color: "var(--ink-soft)" }}>
+              <span style={{ width: 10, height: 12, border: "1.2px solid var(--ink)", display: "inline-block" }} />
+              BRD_Checkout.pdf
+            </div>
+            <PlaceLine w="100%" />
+            <PlaceLine w="86%" />
+            <PlaceLine w="92%" />
+            <PlaceLine w="60%" />
+            <PlaceLine w="88%" />
+            <PlaceLine w="72%" />
+            <PlaceLine w="90%" />
+            <div style={{ flex: 1 }} />
+            <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--ink-soft)" }}>18 pages · EN</div>
+          </div>
+
+          <Card
+            title="Business summary"
+            rotate={-1.2}
+            style={{ left: 20, top: 70 }}
+            body={
+              <>
+                <PlaceLine w="100%" style={{ marginBottom: 5 }} />
+                <PlaceLine w="90%" style={{ marginBottom: 5 }} />
+                <PlaceLine w="60%" />
+              </>
+            }
+          />
+          <Card
+            title="Actors (4)"
+            rotate={0.8}
+            style={{ left: 20, top: 260 }}
+            body={
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {["Shopper", "Guest", "Admin", "Payment svc"].map(a => (
+                  <Pill key={a} tone="muted">{a}</Pill>
+                ))}
+              </div>
+            }
+          />
+          <Card
+            title="User story · US-03"
+            tone="accent"
+            rotate={-0.6}
+            style={{ left: 600, top: 80 }}
+            body={
+              <>
+                <div style={{ marginBottom: 6 }}><b>As a</b> returning shopper</div>
+                <div style={{ marginBottom: 6 }}><b>I want</b> saved cards to autofill</div>
+                <div><b>So that</b> checkout is one tap</div>
+              </>
+            }
+          />
+          <Card
+            title="Non-functional"
+            rotate={1.4}
+            style={{ left: 620, top: 300 }}
+            body={
+              <>
+                <PlaceLine w="95%" style={{ marginBottom: 5 }} />
+                <PlaceLine w="80%" style={{ marginBottom: 5 }} />
+                <PlaceLine w="70%" />
+                <div style={{ marginTop: 6, fontFamily: "var(--font-mono)", fontSize: 9.5, color: "var(--ink-soft)" }}>SLA · perf · a11y</div>
+              </>
+            }
+          />
+          <Card
+            title="⚠ Gap: no SLA target"
+            tone="warn"
+            rotate={-1.8}
+            style={{ left: 620, top: 460 }}
+            body={
+              <>
+                <div style={{ fontSize: 11, marginBottom: 6 }}>Section 4 mentions "fast" without a number.</div>
+                <Pill tone="warn">ask stakeholder</Pill>
+              </>
+            }
+          />
+          <Card
+            title="Acceptance criteria"
+            rotate={0.4}
+            style={{ left: 90, top: 460 }}
+            body={
+              <>
+                <div style={{ display: "flex", alignItems: "flex-start", gap: 6, marginBottom: 5 }}>
+                  <span style={{ fontFamily: "var(--font-mono)" }}>✓</span>
+                  <PlaceLine w="85%" style={{ marginTop: 6 }} />
+                </div>
+                <div style={{ display: "flex", alignItems: "flex-start", gap: 6, marginBottom: 5 }}>
+                  <span style={{ fontFamily: "var(--font-mono)" }}>✓</span>
+                  <PlaceLine w="70%" style={{ marginTop: 6 }} />
+                </div>
+                <div style={{ display: "flex", alignItems: "flex-start", gap: 6 }}>
+                  <span style={{ fontFamily: "var(--font-mono)" }}>✓</span>
+                  <PlaceLine w="78%" style={{ marginTop: 6 }} />
+                </div>
+              </>
+            }
+          />
+
+          <div
+            style={{
+              position: "absolute",
+              bottom: 18,
+              left: "50%",
+              transform: "translateX(-50%)",
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              padding: "6px 10px",
+              background: "var(--paper)",
+              border: "1.5px solid var(--ink)",
+              borderRadius: 999,
+              boxShadow: "3px 3px 0 var(--ink-faint)",
+              fontFamily: "var(--font-ui)",
+              fontSize: 11.5,
+            }}
+          >
+            {["+ card", "⟳ regen", "⌁ link", "✎ comment", "⚲ filter"].map((t, i) => (
+              <span key={i} style={{ padding: "4px 8px", borderRadius: 999, background: i === 0 ? "var(--ink-faint)" : "transparent" }}>
+                {t}
+              </span>
+            ))}
+          </div>
+
+          {uploading && (
+            <div
+              style={{
+                position: "absolute",
+                left: 380,
+                top: 170,
+                width: 160,
+                height: 180,
+                borderRadius: 4,
+                pointerEvents: "none",
+              }}
+            >
+              <div
+                style={{
+                  position: "absolute",
+                  inset: -40,
+                  borderRadius: 999,
+                  border: "1.5px dashed var(--accent)",
+                  animation: "ping 2s ease-out infinite",
+                }}
+              />
+              <div
+                style={{
+                  position: "absolute",
+                  inset: -80,
+                  borderRadius: 999,
+                  border: "1.3px dashed var(--accent)",
+                  animation: "ping 2s ease-out infinite 0.8s",
+                  opacity: 0.6,
+                }}
+              />
+              <div
+                style={{
+                  position: "absolute",
+                  left: "50%",
+                  top: -34,
+                  transform: "translateX(-50%)",
+                  padding: "4px 10px",
+                  background: "var(--ink)",
+                  color: "var(--paper)",
+                  borderRadius: 999,
+                  fontFamily: "var(--font-mono)",
+                  fontSize: 10,
+                  whiteSpace: "nowrap",
+                }}
+              >
+                extracting · 11 / ~22 stories
+              </div>
+            </div>
+          )}
+        </div>
+
+        <style>{`
+          @keyframes ping {
+            0%   { transform: scale(1); opacity: 0.7; }
+            100% { transform: scale(1.6); opacity: 0; }
+          }
+        `}</style>
+      </main>
+
+      {showGaps && (
+        <aside
+          style={{
+            width: 240,
+            borderLeft: "1.2px dashed var(--ink-soft)",
+            background: "var(--paper-2)",
+            padding: 14,
+            fontFamily: "var(--font-ui)",
+            fontSize: 12,
+          }}
+        >
+          <div style={{ fontFamily: "var(--font-display)", fontSize: 13, fontWeight: 600, marginBottom: 8 }}>
+            Layers
+          </div>
+          {["Summary", "Actors", "Stories", "NFRs", "Gaps", "Criteria"].map((l, i) => (
+            <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "5px 0", borderBottom: "1px dashed var(--ink-faint)" }}>
+              <span>{l}</span>
+              <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--ink-soft)" }}>◉</span>
+            </div>
+          ))}
+
+          <div style={{ fontFamily: "var(--font-display)", fontSize: 13, fontWeight: 600, margin: "16px 0 8px" }}>Filters</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {["high", "med", "low", "unresolved"].map(t => <Pill key={t} tone="muted">{t}</Pill>)}
+          </div>
+        </aside>
+      )}
+    </div>
+  );
+};
+
+window.Direction2Canvas = Direction2Canvas;
+
+
+/* Direction 3: Split studio. */
+
+const Direction3Split = ({ density, showGaps, sidebarWidth, uploading }) => {
+  const rowGap = density === "compact" ? 8 : density === "cozy" ? 16 : 12;
+
+  const Section = ({ num, title, count, children, tone }) => (
+    <div
+      style={{
+        border: "1.3px dashed var(--ink-soft)",
+        borderRadius: 8,
+        padding: 12,
+        marginBottom: rowGap,
+        background: tone === "accent" ? "var(--accent-soft)" : "var(--paper)",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+        <div
+          style={{
+            width: 20,
+            height: 20,
+            borderRadius: 999,
+            border: "1.2px solid var(--ink)",
+            display: "grid",
+            placeItems: "center",
+            fontFamily: "var(--font-display)",
+            fontSize: 11,
+          }}
+        >
+          {num}
+        </div>
+        <span style={{ fontFamily: "var(--font-display)", fontSize: 14, fontWeight: 600 }}>{title}</span>
+        {count != null && (
+          <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--ink-soft)" }}>· {count}</span>
+        )}
+        <div style={{ flex: 1 }} />
+        <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--ink-soft)" }}>regen ↻ · copy ⎘</span>
+      </div>
+      {children}
+    </div>
+  );
+
+  const Story = ({ id, who, what, why, criteria, streaming }) => (
+    <div style={{ border: "1.2px solid var(--ink)", borderRadius: 6, padding: 10, marginBottom: 8, background: "var(--paper)" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+        <span style={{ fontFamily: "var(--font-mono)", fontSize: 10.5, color: "var(--ink-soft)" }}>{id}</span>
+        <Pill tone="muted">shopper</Pill>
+        <div style={{ flex: 1 }} />
+        <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--ink-soft)" }}>§ 2.3</span>
+      </div>
+      <div style={{ fontFamily: "var(--font-ui)", fontSize: 12.5, lineHeight: 1.6 }}>
+        <b>As a</b> {who} <b>I want</b> {what} <b>so that</b> {why}
+        {streaming && <span style={{ display: "inline-block", width: 8, height: 14, background: "var(--accent)", marginLeft: 4, transform: "translateY(2px)", animation: "blink 1s step-end infinite" }} />}
+      </div>
+      {criteria && (
+        <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px dashed var(--ink-faint)" }}>
+          <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--ink-soft)", marginBottom: 4 }}>ACCEPTANCE</div>
+          {criteria.map((c, i) => (
+            <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 6, fontFamily: "var(--font-ui)", fontSize: 11.5, marginBottom: 3 }}>
+              <span style={{ fontFamily: "var(--font-mono)" }}>✓</span>
+              <span>{c}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+
+  return (
+    <div style={{ display: "flex", width: "100%", height: "100%", background: "var(--paper)", color: "var(--ink)" }}>
+      <SketchSidebar width={sidebarWidth} active="Chats" />
+
+      <main style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
+        <div
+          style={{
+            height: 46,
+            borderBottom: "1.2px dashed var(--ink-soft)",
+            display: "flex",
+            alignItems: "center",
+            padding: "0 18px",
+            gap: 12,
+            fontFamily: "var(--font-ui)",
+            fontSize: 12,
+          }}
+        >
+          <span style={{ color: "var(--ink-soft)" }}>Checkout v2</span>
+          <span style={{ color: "var(--ink-soft)" }}>›</span>
+          <span>BRD_Checkout.pdf</span>
+          <Pill tone="accent">{uploading ? "running…" : "draft · v1"}</Pill>
+          <div style={{ flex: 1 }} />
+          <Pill tone="muted">⎘ copy all</Pill>
+          <Pill tone="muted">csv / md</Pill>
+          <SketchBtn primary style={{ padding: "4px 10px", fontSize: 11 }}>export</SketchBtn>
+        </div>
+
+        <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
+          <div
+            style={{
+              width: "42%",
+              borderRight: "1.5px dashed var(--ink-soft)",
+              overflow: "auto",
+              padding: "18px 20px",
+              background: "var(--paper-2)",
+            }}
+          >
+            <div style={{ fontFamily: "var(--font-mono)", fontSize: 10.5, color: "var(--ink-soft)", marginBottom: 4 }}>SOURCE · page 1 of 18</div>
+            <div style={{ fontFamily: "var(--font-display)", fontSize: 18, fontWeight: 600, marginBottom: 10 }}>Checkout v2 — Business Requirements</div>
+
+            {[
+              { lines: ["Overview of the checkout redesign project, scope,", "stakeholders and timeline for Q2 delivery."] },
+              { lines: ["The new checkout must support returning shoppers,", "guest flow, and saved payment cards. Performance is", "a key concern."], highlight: [1] },
+              { lines: ["Non-functional requirements include availability,", "accessibility (WCAG 2.1 AA) and payment compliance."] },
+              { lines: ["The system should be fast.", "Admin users can refund up to 30 days."], gap: [0] },
+              { lines: ["Error states need to be handled gracefully with", "clear user-facing copy for common failure modes."] },
+            ].map((para, i) => (
+              <div key={i} style={{ marginBottom: 14 }}>
+                {para.lines.map((_, li) => {
+                  const isHi = para.highlight?.includes(li);
+                  const isGap = para.gap?.includes(li);
+                  return (
+                    <div
+                      key={li}
+                      style={{
+                        position: "relative",
+                        height: 11,
+                        borderRadius: 2,
+                        marginBottom: 6,
+                        background: isGap ? "var(--warn-soft)" : isHi ? "var(--accent-soft)" : "var(--ink-faint)",
+                        width: `${70 + ((i * 7 + li * 13) % 28)}%`,
+                        outline: isGap ? "1.2px dashed var(--warn)" : isHi ? "1.2px dashed var(--accent)" : "none",
+                      }}
+                    >
+                      {isGap && (
+                        <span
+                          style={{
+                            position: "absolute",
+                            right: -18,
+                            top: -3,
+                            fontFamily: "var(--font-mono)",
+                            fontSize: 10,
+                            color: "var(--warn-ink)",
+                          }}
+                        >
+                          ⚠
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
+
+            <div style={{ marginTop: 20, display: "flex", alignItems: "center", gap: 8, fontFamily: "var(--font-mono)", fontSize: 10.5, color: "var(--ink-soft)" }}>
+              <Squiggle w={30} h={6} />
+              <span>17 more pages</span>
+              <Squiggle w={30} h={6} />
+            </div>
+          </div>
+
+          <div style={{ flex: 1, overflow: "auto", padding: "18px 22px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14, fontFamily: "var(--font-ui)", fontSize: 12 }}>
+              {["Brief", "Actors", "Stories", "NFRs", "Criteria", "Gaps"].map((t, i) => (
+                <span
+                  key={i}
+                  style={{
+                    padding: "4px 10px",
+                    borderRadius: 999,
+                    border: `1.2px ${i === 2 ? "solid" : "dashed"} var(--ink-soft)`,
+                    background: i === 2 ? "var(--ink-faint)" : "transparent",
+                    color: "var(--ink)",
+                    fontFamily: "var(--font-ui)",
+                    fontSize: 11.5,
+                  }}
+                >
+                  {t}
+                </span>
+              ))}
+            </div>
+
+            <Section num="1" title="Business summary" tone="accent">
+              <PlaceLine w="95%" style={{ marginBottom: 6 }} />
+              <PlaceLine w="82%" style={{ marginBottom: 6 }} />
+              <PlaceLine w="70%" />
+              <div style={{ marginTop: 8, display: "flex", gap: 6 }}>
+                <Pill tone="muted">goal: reduce cart abandonment</Pill>
+                <Pill tone="muted">Q2 delivery</Pill>
+              </div>
+            </Section>
+
+            <Section num="2" title="Actors" count="4">
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {["Returning shopper", "Guest", "Admin", "Payment service"].map(a => (
+                  <Pill key={a} tone="ink">{a}</Pill>
+                ))}
+              </div>
+            </Section>
+
+            <Section num="3" title="User stories" count={uploading ? "11 / ~22" : "22"}>
+              <Story
+                id="US-01"
+                who="returning shopper"
+                what="my saved cards to autofill at checkout"
+                why="I can complete purchase in one tap"
+                criteria={["Cards list shown on checkout load", "Masked last 4 digits visible", "Default card pre-selected"]}
+              />
+              <Story
+                id="US-02"
+                who="guest"
+                what="to check out without creating an account"
+                why="I'm not blocked on first purchase"
+              />
+              {uploading && (
+                <Story
+                  id="US-03"
+                  who="admin"
+                  what="to issue a refund within 30 days"
+                  why="customers can be supported quickly"
+                  streaming
+                />
+              )}
+            </Section>
+
+            <Section num="4" title="Non-functional requirements" count="6">
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                {[
+                  ["Performance", "p95 < 2s"],
+                  ["Availability", "99.9%"],
+                  ["Accessibility", "WCAG 2.1 AA"],
+                  ["PCI-DSS", "SAQ-A"],
+                ].map(([k, v], i) => (
+                  <div key={i} style={{ border: "1.2px dashed var(--ink-soft)", borderRadius: 6, padding: 8 }}>
+                    <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--ink-soft)" }}>{k}</div>
+                    <div style={{ fontFamily: "var(--font-display)", fontSize: 13, fontWeight: 600 }}>{v}</div>
+                  </div>
+                ))}
+              </div>
+            </Section>
+          </div>
+        </div>
+      </main>
+
+      {showGaps && (
+        <aside
+          style={{
+            width: 280,
+            borderLeft: "1.5px dashed var(--ink-soft)",
+            background: "var(--paper-2)",
+            padding: "18px 16px",
+            fontFamily: "var(--font-ui)",
+            fontSize: 12,
+            overflow: "auto",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+            <span style={{ fontFamily: "var(--font-display)", fontSize: 14, fontWeight: 600 }}>Gaps & questions</span>
+          </div>
+          <div style={{ fontSize: 11, color: "var(--ink-soft)", marginBottom: 14 }}>Send these back to stakeholders — or resolve inline.</div>
+
+          {[
+            { sev: "high", q: "What is the target p95 latency?", sec: "§4.1", body: "Document says 'fast' but never specifies." },
+            { sev: "med", q: "Is there an admin actor?", sec: "§3.2", body: "Refunds mentioned but no role defined." },
+            { sev: "med", q: "Error-state copy owner?", sec: "§5", body: "Failure modes listed without messaging." },
+            { sev: "low", q: "Supported currencies?", sec: "§2.4", body: "USD is implied; no list provided." },
+          ].map((g, i) => (
+            <div key={i} style={{ border: "1.2px dashed var(--ink-soft)", borderRadius: 6, padding: 10, marginBottom: 10, background: "var(--paper)" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <Pill tone={g.sev === "high" ? "warn" : "muted"}>{g.sev}</Pill>
+                <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--ink-soft)" }}>{g.sec}</span>
+              </div>
+              <div style={{ fontFamily: "var(--font-display)", fontSize: 13, fontWeight: 600, marginTop: 6 }}>{g.q}</div>
+              <div style={{ fontSize: 11.5, color: "var(--ink-soft)", marginTop: 4 }}>{g.body}</div>
+              <div style={{ marginTop: 8, display: "flex", gap: 6 }}>
+                <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--ink-soft)" }}>resolve · ask · ignore</span>
+              </div>
+            </div>
+          ))}
+        </aside>
+      )}
+
+      <style>{`@keyframes blink { 50% { opacity: 0; } }`}</style>
+    </div>
+  );
+};
+
+window.Direction3Split = Direction3Split;
+
+
+/* App entry — loaded LAST so all sidecar components are registered on window. */
+
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "sidebarMode": "full",
+  "density": "regular",
+  "theme": "light",
+  "showGaps": true,
+  "uploading": false
+}/*EDITMODE-END*/;
+
+const SIDEBAR_WIDTHS = { full: 220, narrow: 160, icon: 64 };
+
+function App() {
+  const { Pill, Direction1Hub, Direction2Canvas, Direction3Split, DesignCanvas, DCSection, DCArtboard } = window;
+
+  const [tweaks, setTweaks] = React.useState(TWEAK_DEFAULTS);
+
+  React.useEffect(() => {
+    document.documentElement.setAttribute("data-theme", tweaks.theme);
+  }, [tweaks.theme]);
+
+  React.useEffect(() => {
+    document.querySelectorAll("#tweaks-panel .seg").forEach(seg => {
+      const key = seg.dataset.key;
+      seg.querySelectorAll("button").forEach(btn => {
+        btn.classList.toggle("on", btn.dataset.val === tweaks[key]);
+        btn.onclick = () => {
+          const v = btn.dataset.val;
+          setTweaks(t => ({ ...t, [key]: v }));
+          window.parent.postMessage({ type: "__edit_mode_set_keys", edits: { [key]: v } }, "*");
+        };
+      });
+    });
+    document.querySelectorAll("#tweaks-panel input[data-toggle]").forEach(inp => {
+      const key = inp.dataset.toggle;
+      inp.checked = !!tweaks[key];
+      inp.onchange = () => {
+        const v = inp.checked;
+        setTweaks(t => ({ ...t, [key]: v }));
+        window.parent.postMessage({ type: "__edit_mode_set_keys", edits: { [key]: v } }, "*");
+      };
+    });
+  });
+
+  React.useEffect(() => {
+    const onMsg = (e) => {
+      const d = e.data || {};
+      if (d.type === "__activate_edit_mode") {
+        document.getElementById("tweaks-panel").classList.add("visible");
+      } else if (d.type === "__deactivate_edit_mode") {
+        document.getElementById("tweaks-panel").classList.remove("visible");
+      }
+    };
+    window.addEventListener("message", onMsg);
+    window.parent.postMessage({ type: "__edit_mode_available" }, "*");
+    return () => window.removeEventListener("message", onMsg);
+  }, []);
+
+  if (!DesignCanvas || !Direction1Hub) {
+    return (
+      <div style={{ padding: 40, fontFamily: "monospace", fontSize: 12 }}>
+        Loading components…
+      </div>
+    );
+  }
+
+  const sidebarWidth = SIDEBAR_WIDTHS[tweaks.sidebarMode] || 220;
+  const commonProps = {
+    density: tweaks.density,
+    showGaps: tweaks.showGaps,
+    sidebarWidth,
+    uploading: tweaks.uploading,
+  };
+
+  const intro = (
+    <div style={{ fontFamily: "var(--font-ui)", fontSize: 13, color: "var(--ink)", lineHeight: 1.7, maxWidth: 820 }}>
+      <div style={{ fontFamily: "var(--font-display)", fontSize: 22, fontWeight: 600, marginBottom: 6 }}>
+        StoryForge — three directions for the requirement → story app
+      </div>
+      <div style={{ color: "var(--ink-soft)", marginBottom: 10 }}>
+        Low-fi sketches to map the space before we commit. Each direction shows the empty home + a live
+        <b> upload-in-progress</b> state (toggle it from the Tweaks panel). Gap-handling, sidebar content and
+        density also differ on purpose — play with the tweaks to compare.
+      </div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 8 }}>
+        <Pill tone="accent">①  Hub</Pill>
+        <Pill tone="accent">②  Canvas</Pill>
+        <Pill tone="accent">③  Split studio</Pill>
+        <Pill tone="muted">tap the ✎ icon in the toolbar to open Tweaks</Pill>
+      </div>
+    </div>
+  );
+
+  return (
+    <DesignCanvas title="Requirements → User Stories · Wireframes v1" intro={intro}>
+      <DCSection id="s-entry" title="Entry screen — three directions">
+        <DCArtboard id="hub" label="①  Hub — tiles & composer (ChatPRD-adjacent)" width={1180} height={820}>
+          <Direction1Hub {...commonProps} />
+        </DCArtboard>
+        <DCArtboard id="canvas" label="②  Canvas — drop doc, extractions bloom outward" width={1180} height={820}>
+          <Direction2Canvas {...commonProps} />
+        </DCArtboard>
+        <DCArtboard id="split" label="③  Split studio — source → artifacts, streaming" width={1280} height={820}>
+          <Direction3Split {...commonProps} />
+        </DCArtboard>
+      </DCSection>
+    </DesignCanvas>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+
+  </script>
+</body>
+</html>

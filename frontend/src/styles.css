@@ -1,0 +1,400 @@
+/* =========================================================================
+   StoryForge — design tokens
+   ========================================================================= */
+:root {
+  /* Surfaces */
+  --bg: #faf9f6;
+  --bg-elevated: #ffffff;
+  --bg-subtle: #f4f3ef;
+  --bg-hover: #f0eeea;
+
+  /* Text */
+  --text-strong: #18181b;
+  --text: #27272a;
+  --text-muted: #71717a;
+  --text-soft: #a1a1aa;
+
+  /* Borders */
+  --border: #e5e3dd;
+  --border-strong: #d4d2cb;
+  --border-focus: #6366f1;
+
+  /* Accents */
+  --accent: #6366f1;          /* indigo-500 */
+  --accent-strong: #4f46e5;   /* indigo-600 */
+  --accent-soft: #eef2ff;     /* indigo-50 */
+  --accent-ink: #4338ca;      /* indigo-700 */
+
+  --success: #10b981;
+  --success-soft: #ecfdf5;
+  --success-ink: #047857;
+
+  --warn: #f59e0b;
+  --warn-soft: #fffbeb;
+  --warn-ink: #b45309;
+
+  --danger: #ef4444;
+  --danger-soft: #fef2f2;
+  --danger-ink: #b91c1c;
+
+  --info: #3b82f6;
+  --info-soft: #eff6ff;
+  --info-ink: #1d4ed8;
+
+  --purple: #9333ea;
+  --purple-soft: #faf5ff;
+  --purple-ink: #6b21a8;
+
+  --pink: #ec4899;
+  --pink-soft: #fdf2f8;
+  --pink-ink: #be185d;
+
+  /* Hero gradient (text) */
+  --gradient: linear-gradient(90deg, #4f46e5 0%, #9333ea 50%, #ec4899 100%);
+
+  /* Type */
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-display: 'Fraunces', 'Source Serif Pro', Georgia, serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+
+  /* Shadows */
+  --shadow-xs: 0 1px 2px rgba(24, 24, 27, 0.04);
+  --shadow-sm: 0 1px 3px rgba(24, 24, 27, 0.06), 0 1px 2px rgba(24, 24, 27, 0.04);
+  --shadow-md: 0 4px 6px -1px rgba(24, 24, 27, 0.06), 0 2px 4px -2px rgba(24, 24, 27, 0.04);
+  --shadow-lg: 0 10px 15px -3px rgba(24, 24, 27, 0.08), 0 4px 6px -4px rgba(24, 24, 27, 0.05);
+  --shadow-focus: 0 0 0 3px rgba(99, 102, 241, 0.18);
+
+  /* Radii */
+  --radius-sm: 6px;
+  --radius: 8px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-pill: 999px;
+}
+
+html[data-theme='dark'] {
+  --bg: #0c0c0e;
+  --bg-elevated: #18181b;
+  --bg-subtle: #161618;
+  --bg-hover: #1f1f23;
+
+  --text-strong: #fafafa;
+  --text: #e4e4e7;
+  --text-muted: #a1a1aa;
+  --text-soft: #71717a;
+
+  --border: #27272a;
+  --border-strong: #3f3f46;
+
+  --accent: #818cf8;
+  --accent-strong: #6366f1;
+  --accent-soft: #1e1b4b;
+  --accent-ink: #c7d2fe;
+
+  --success-soft: #022c22;
+  --success-ink: #a7f3d0;
+  --warn-soft: #2a1d05;
+  --warn-ink: #fcd34d;
+  --danger-soft: #2a0a0a;
+  --danger-ink: #fca5a5;
+  --info-soft: #0b1a35;
+  --info-ink: #93c5fd;
+  --purple-soft: #2a0a3e;
+  --purple-ink: #d8b4fe;
+  --pink-soft: #2a0a1e;
+  --pink-ink: #f9a8d4;
+
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4), 0 2px 4px -2px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5), 0 4px 6px -4px rgba(0, 0, 0, 0.3);
+  --shadow-focus: 0 0 0 3px rgba(129, 140, 248, 0.25);
+}
+
+/* =========================================================================
+   Reset + base
+   ========================================================================= */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+button,
+input,
+textarea,
+select {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+a {
+  color: var(--accent-strong);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+/* Focus ring */
+:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+  border-radius: var(--radius-sm);
+}
+
+/* Scrollbars (subtle, only on hover) */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: transparent;
+  border: 2px solid transparent;
+  background-clip: content-box;
+  border-radius: 999px;
+}
+
+*:hover::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-soft);
+  background-clip: content-box;
+}
+
+/* =========================================================================
+   Layout
+   ========================================================================= */
+.app {
+  display: flex;
+  width: 100%;
+  height: 100vh;
+  background: var(--bg);
+  overflow: hidden;
+}
+
+.main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--bg);
+}
+
+.body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+/* =========================================================================
+   Animations
+   ========================================================================= */
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* =========================================================================
+   Reusable utility classes
+   ========================================================================= */
+.gradient-text {
+  background: var(--gradient);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+}
+
+.fade-in {
+  animation: fade-in 0.3s ease-out both;
+}
+
+/* =========================================================================
+   Icon container (pastel-tinted)
+   ========================================================================= */
+.icon-tile {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius);
+  flex-shrink: 0;
+}
+
+/* =========================================================================
+   Card (with optional hover effect)
+   ========================================================================= */
+.card {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-xs);
+  transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+}
+
+.card.hover:hover {
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-1px);
+}
+
+.card.hover.accent:hover {
+  border-color: var(--accent);
+  box-shadow: var(--shadow-md), 0 0 0 1px var(--accent);
+}
+
+/* =========================================================================
+   Sidebar nav link
+   ========================================================================= */
+.nav-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  margin: 0 8px 2px;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 400;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background 0.12s, color 0.12s;
+}
+
+.nav-link:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.nav-link.active {
+  background: var(--bg-hover);
+  color: var(--text-strong);
+  font-weight: 500;
+}
+
+/* =========================================================================
+   Documents row — hover-reveal delete button
+   ========================================================================= */
+.doc-row .row-delete {
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s, background 0.15s;
+}
+
+.doc-row:hover .row-delete,
+.doc-row .row-delete:focus-visible {
+  opacity: 1;
+}
+
+.row-delete:hover {
+  color: var(--danger) !important;
+  background: var(--danger-soft) !important;
+}
+
+/* =========================================================================
+   Table
+   ========================================================================= */
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.table thead th {
+  text-align: left;
+  font-weight: 600;
+  color: var(--text-strong);
+  padding: 10px 14px;
+  border-bottom: 1.5px solid var(--border-strong);
+  background: var(--bg-subtle);
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.table tbody td {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+.table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.table tbody tr:hover td {
+  background: var(--bg-subtle);
+}

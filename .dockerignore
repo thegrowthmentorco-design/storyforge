@@ -1,0 +1,30 @@
+# VCS & editor noise
+.git
+.gitignore
+.vscode
+.idea
+.DS_Store
+
+# Python build artifacts
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+backend/.venv
+
+# Frontend build artifacts — rebuilt inside the image
+frontend/node_modules
+frontend/dist
+frontend/.vite
+
+# Env files — pass secrets via `docker run -e` or a runtime secret store
+**/.env
+**/.env.*
+!**/.env.example
+
+# Misc
+Dockerfile
+.dockerignore
+README.md
+*.log
