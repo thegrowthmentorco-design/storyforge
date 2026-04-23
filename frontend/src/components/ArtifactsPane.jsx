@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { Badge, Card, IconTile } from './primitives.jsx'
 import {
   Sparkles,
@@ -157,9 +157,71 @@ function nfrIcon(category) {
   return { icon: <Hash size={14} />, tone: 'neutral' }
 }
 
+const SECTIONS = [
+  { id: 'brief', label: 'Brief' },
+  { id: 'actors', label: 'Actors' },
+  { id: 'stories', label: 'Stories' },
+  { id: 'nfrs', label: 'NFRs' },
+]
+
 export default function ArtifactsPane({ extraction }) {
+  const containerRef = useRef(null)
+  const [activeTab, setActiveTab] = useState('brief')
+  const userClickRef = useRef(false)
+
+  // Re-derived per render — cheap, and makes the tab counts stay in sync.
+  const counts = {
+    brief: null,
+    actors: extraction.actors.length,
+    stories: extraction.stories.length,
+    nfrs: extraction.nfrs.length,
+  }
+
+  // Scroll-spy: highlight whichever section is currently in the upper-third
+  // band of the scroll container.
+  useEffect(() => {
+    const root = containerRef.current
+    if (!root) return
+    const els = SECTIONS.map((s) => document.getElementById(`sec-${s.id}`)).filter(Boolean)
+    if (els.length === 0) return
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (userClickRef.current) return // ignore observer flicker during programmatic scroll
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            setActiveTab(entry.target.dataset.section)
+          }
+        })
+      },
+      {
+        root,
+        // 5% trigger band located 30% down from the top of the scroll area
+        rootMargin: '-30% 0px -65% 0px',
+        threshold: 0,
+      },
+    )
+
+    els.forEach((el) => observer.observe(el))
+    return () => observer.disconnect()
+  }, [extraction])
+
+  const onTabClick = (id) => {
+    const el = document.getElementById(`sec-${id}`)
+    if (!el) return
+    setActiveTab(id)
+    // Suppress the observer briefly so the smooth scroll doesn't flicker the
+    // tab through every section it passes en route.
+    userClickRef.current = true
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    setTimeout(() => {
+      userClickRef.current = false
+    }, 600)
+  }
+
   return (
     <section
+      ref={containerRef}
       style={{
         flex: 1,
         overflow: 'auto',
@@ -168,68 +230,77 @@ export default function ArtifactsPane({ extraction }) {
         background: 'var(--bg)',
       }}
     >
-      {/* Tab pills (visual) */}
+      {/* Tab pills — segmented control, scrolls section into view + scroll-spy */}
       <div
         style={{
           display: 'flex',
           alignItems: 'center',
-          gap: 6,
+          gap: 4,
           marginBottom: 24,
           flexWrap: 'wrap',
-          padding: '4px',
+          padding: 4,
           background: 'var(--bg-subtle)',
           borderRadius: 'var(--radius-pill)',
           width: 'fit-content',
+          position: 'sticky',
+          top: 0,
+          zIndex: 5,
+          boxShadow: '0 0 0 4px var(--bg)',
         }}
       >
-        {[
-          ['Brief', null],
-          ['Actors', extraction.actors.length],
-          ['Stories', extraction.stories.length],
-          ['NFRs', extraction.nfrs.length],
-          ['Gaps', extraction.gaps.length],
-        ].map(([label, count]) => (
-          <span
-            key={label}
-            style={{
-              padding: '6px 12px',
-              borderRadius: 'var(--radius-pill)',
-              fontSize: 12,
-              fontWeight: 500,
-              color: 'var(--text-muted)',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 6,
-              cursor: 'pointer',
-              transition: 'background .12s, color .12s',
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = 'var(--bg-elevated)'
-              e.currentTarget.style.color = 'var(--text-strong)'
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = 'transparent'
-              e.currentTarget.style.color = 'var(--text-muted)'
-            }}
-          >
-            {label}
-            {count != null && (
-              <span
-                style={{
-                  fontSize: 11,
-                  fontFamily: 'var(--font-mono)',
-                  color: 'var(--text-soft)',
-                }}
-              >
-                {count}
-              </span>
-            )}
-          </span>
-        ))}
+        {SECTIONS.map((s) => {
+          const isActive = activeTab === s.id
+          const count = counts[s.id]
+          return (
+            <button
+              key={s.id}
+              type="button"
+              onClick={() => onTabClick(s.id)}
+              aria-current={isActive ? 'true' : undefined}
+              style={{
+                padding: '6px 12px',
+                borderRadius: 'var(--radius-pill)',
+                fontSize: 12,
+                fontWeight: 500,
+                color: isActive ? 'var(--text-strong)' : 'var(--text-muted)',
+                background: isActive ? 'var(--bg-elevated)' : 'transparent',
+                border: 'none',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                cursor: 'pointer',
+                transition: 'background .12s, color .12s, box-shadow .12s',
+                boxShadow: isActive ? 'var(--shadow-xs)' : 'none',
+                fontFamily: 'inherit',
+              }}
+              onMouseEnter={(e) => {
+                if (isActive) return
+                e.currentTarget.style.color = 'var(--text-strong)'
+              }}
+              onMouseLeave={(e) => {
+                if (isActive) return
+                e.currentTarget.style.color = 'var(--text-muted)'
+              }}
+            >
+              {s.label}
+              {count != null && (
+                <span
+                  style={{
+                    fontSize: 11,
+                    fontFamily: 'var(--font-mono)',
+                    color: isActive ? 'var(--accent-strong)' : 'var(--text-soft)',
+                  }}
+                >
+                  {count}
+                </span>
+              )}
+            </button>
+          )
+        })}
       </div>
 
       {/* Brief */}
-      <div style={{ marginBottom: 24 }} className="fade-in">
+      <div id="sec-brief" data-section="brief" style={{ marginBottom: 24, scrollMarginTop: 60 }} className="fade-in">
         <SectionHeader
           icon={<Sparkles size={16} />}
           tone="accent"
@@ -260,7 +331,7 @@ export default function ArtifactsPane({ extraction }) {
       </div>
 
       {/* Actors */}
-      <div style={{ marginBottom: 24 }} className="fade-in">
+      <div id="sec-actors" data-section="actors" style={{ marginBottom: 24, scrollMarginTop: 60 }} className="fade-in">
         <SectionHeader
           icon={<Users size={16} />}
           tone="info"
@@ -295,7 +366,7 @@ export default function ArtifactsPane({ extraction }) {
       </div>
 
       {/* User stories */}
-      <div style={{ marginBottom: 24 }} className="fade-in">
+      <div id="sec-stories" data-section="stories" style={{ marginBottom: 24, scrollMarginTop: 60 }} className="fade-in">
         <SectionHeader
           icon={<FileText size={16} />}
           tone="purple"
@@ -314,7 +385,7 @@ export default function ArtifactsPane({ extraction }) {
       </div>
 
       {/* NFRs as a proper table */}
-      <div style={{ marginBottom: 24 }} className="fade-in">
+      <div id="sec-nfrs" data-section="nfrs" style={{ marginBottom: 24, scrollMarginTop: 60 }} className="fade-in">
         <SectionHeader
           icon={<Shield size={16} />}
           tone="success"
