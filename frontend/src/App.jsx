@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
-import { extract, listProjectsApi } from './api.js'
+import { extract, listProjectsApi, rerunExtractionApi } from './api.js'
 import { getExtraction } from './lib/store.js'
 import { migrateLocalStorageOnce } from './lib/migrate.js'
 import { getSettings, setSettings } from './lib/settings.js'
@@ -137,6 +137,7 @@ export default function App() {
   const [extraction, setExtraction] = useState(null)
   const [extractionId, setExtractionId] = useState(null)
   const [loading, setLoading] = useState(false)
+  const [rerunning, setRerunning] = useState(false)
   const [showGaps, setShowGaps] = useState(true)
   const [theme, setThemeRaw] = useState(() => getSettings().theme || 'light')
   const [pendingName, setPendingName] = useState('')
@@ -254,6 +255,38 @@ export default function App() {
     }
   }
 
+  // Switch to a different version of the currently-open extraction.
+  // Always hydrates from the backend so we don't carry stale state.
+  const switchVersion = async (id) => {
+    if (!id || id === extractionId) return
+    try {
+      const full = await getExtraction(id)
+      if (!full) {
+        toast.error('That version is no longer available')
+        return
+      }
+      setExtraction(full)
+      setExtractionId(full.id)
+    } catch (e) {
+      toast.error(e.message || 'Could not load version')
+    }
+  }
+
+  const handleRerun = async () => {
+    if (!extractionId || rerunning) return
+    setRerunning(true)
+    try {
+      const newRecord = await rerunExtractionApi(extractionId)
+      setExtraction(newRecord)
+      setExtractionId(newRecord.id)
+      toast.success('Re-extracted — new version saved')
+    } catch (e) {
+      toast.error(e.message || 'Re-run failed')
+    } finally {
+      setRerunning(false)
+    }
+  }
+
   const appCtx = {
     restoreExtraction,
     reset,
@@ -272,12 +305,16 @@ export default function App() {
       <main className="main">
         <TopBar
           extraction={extraction}
+          extractionId={extractionId}
           loading={loading}
+          rerunning={rerunning}
           theme={theme}
           onTheme={setTheme}
           showGaps={showGaps}
           onToggleGaps={() => setShowGaps((x) => !x)}
           onReset={reset}
+          onRerun={handleRerun}
+          onSwitchVersion={switchVersion}
         />
         <Routes>
           <Route

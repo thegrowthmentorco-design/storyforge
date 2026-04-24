@@ -8,6 +8,7 @@ Two responsibilities:
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 import secrets
@@ -15,17 +16,23 @@ import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 
+import anthropic
+from fastapi import HTTPException
 from sqlmodel import Session, select
 
 from db.models import Extraction, GapState, Project
+from extract import extract_requirements, resolve_model
 from models import (
     ExtractionPayload,
     ExtractionRecord,
     ExtractionResult,
     ExtractionSummary,
+    ExtractionVersion,
     GapStateRead,
     ProjectRead,
 )
+
+log = logging.getLogger("storyforge.services")
 
 UPLOAD_ROOT = Path(
     os.environ.get(
@@ -67,6 +74,7 @@ def extraction_to_record(row: Extraction) -> ExtractionRecord:
         project_id=row.project_id,
         source_file_path=row.source_file_path,
         created_at=row.created_at,
+        root_id=row.root_id,
         brief=row.brief,
         actors=row.actors,
         stories=row.stories,
@@ -85,6 +93,7 @@ def extraction_to_summary(row: Extraction) -> ExtractionSummary:
         model_used=row.model_used,
         live=row.live,
         project_id=row.project_id,
+        root_id=row.root_id,
         actor_count=len(row.actors or []),
         story_count=len(row.stories or []),
         gap_count=len(row.gaps or []),
@@ -115,6 +124,7 @@ def persist_extraction(
     extraction_id: str | None = None,
     created_at: datetime | None = None,
     source_file_path: str | None = None,
+    root_id: str | None = None,
 ) -> Extraction:
     """Insert one Extraction row from a fresh ExtractionResult (or import)."""
     row = Extraction(
@@ -125,6 +135,7 @@ def persist_extraction(
         live=result.live,
         project_id=project_id,
         source_file_path=source_file_path,
+        root_id=root_id,
         created_at=created_at or datetime.now(timezone.utc),
         brief=result.brief.model_dump(),
         actors=list(result.actors),
@@ -136,6 +147,45 @@ def persist_extraction(
     session.commit()
     session.refresh(row)
     return row
+
+
+# ---------- versioning (M2.6) ----------
+
+
+def root_id_for(row: Extraction) -> str:
+    """The id of the original v1 in this row's version chain.
+
+    For a v1 row (root), returns its own id. For a re-run, returns `root_id`.
+    Centralised so callers don't have to reproduce the null-check each time.
+    """
+    return row.root_id or row.id
+
+
+def list_versions(session: Session, extraction_id: str) -> list[ExtractionVersion]:
+    """All versions of the doc this id belongs to, oldest first, 1-indexed.
+
+    Returns [] only if `extraction_id` doesn't exist — a lonely v1 still
+    returns a single-element list.
+    """
+    anchor = session.get(Extraction, extraction_id)
+    if anchor is None:
+        return []
+    root = root_id_for(anchor)
+    rows = session.exec(
+        select(Extraction)
+        .where((Extraction.id == root) | (Extraction.root_id == root))
+        .order_by(Extraction.created_at.asc())
+    ).all()
+    return [
+        ExtractionVersion(
+            id=r.id,
+            version=i + 1,
+            created_at=r.created_at,
+            model_used=r.model_used,
+            live=r.live,
+        )
+        for i, r in enumerate(rows)
+    ]
 
 
 def delete_extraction(session: Session, extraction_id: str) -> bool:
@@ -212,6 +262,62 @@ def remove_upload_dir(extraction_id: str) -> None:
         return
     if target.exists():
         shutil.rmtree(target, ignore_errors=True)
+
+
+# ---------- LLM call wrapper ----------
+
+
+def call_claude(
+    *,
+    filename: str,
+    raw_text: str,
+    api_key: str | None,
+    model: str | None,
+) -> tuple[ExtractionResult, str]:
+    """Run extraction and translate Anthropic errors into HTTPExceptions.
+
+    Returns `(result, model_used)` where `model_used` is "mock" when no key
+    was set so callers can record provenance accurately.
+
+    Centralised so /api/extract and /api/extractions/{id}/rerun share one
+    error contract — keep this aligned with the wrapper in main.py if you
+    edit either side.
+    """
+    try:
+        result = extract_requirements(filename, raw_text, api_key=api_key, model=model)
+    except anthropic.AuthenticationError:
+        log.warning("anthropic authentication failed")
+        detail = (
+            "Invalid Anthropic API key from request. Update the key in Settings."
+            if api_key
+            else "Invalid ANTHROPIC_API_KEY in server env. Check backend/.env and restart."
+        )
+        raise HTTPException(status_code=401, detail=detail)
+    except anthropic.RateLimitError as e:
+        retry_after = e.response.headers.get("retry-after", "60") if e.response else "60"
+        log.warning("anthropic rate limit hit; retry after %ss", retry_after)
+        raise HTTPException(
+            status_code=429,
+            detail=f"Anthropic rate limit hit. Retry after ~{retry_after}s.",
+        )
+    except anthropic.BadRequestError as e:
+        log.warning("anthropic bad request: %s", e.message)
+        raise HTTPException(status_code=400, detail=f"Claude rejected the request: {e.message}")
+    except anthropic.APIConnectionError:
+        log.exception("anthropic connection error")
+        raise HTTPException(status_code=503, detail="Could not reach Anthropic API. Check your network.")
+    except anthropic.APIStatusError as e:
+        log.exception("anthropic API error %s", e.status_code)
+        raise HTTPException(
+            status_code=502,
+            detail=f"Anthropic API error ({e.status_code}): {e.message}",
+        )
+    except Exception as e:
+        log.exception("extraction failed")
+        raise HTTPException(status_code=500, detail=f"Extraction failed: {e}")
+
+    model_used = resolve_model(model) if result.live else "mock"
+    return result, model_used
 
 
 # ---------- projects ----------

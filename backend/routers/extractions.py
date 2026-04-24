@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from fastapi.responses import FileResponse
 from sqlmodel import Session, select
 
@@ -18,16 +18,21 @@ from models import (
     ExtractionImport,
     ExtractionPatch,
     ExtractionRecord,
+    ExtractionRerunRequest,
     ExtractionSummary,
+    ExtractionVersion,
     GapStatePatch,
     GapStateRead,
 )
 from services.extractions import (
+    call_claude,
     delete_extraction,
     extraction_to_record,
     extraction_to_summary,
     gap_state_to_read,
+    list_versions,
     persist_extraction,
+    root_id_for,
 )
 
 log = logging.getLogger("storyforge.extractions")
@@ -141,6 +146,54 @@ def delete_one(extraction_id: str, session: SessionDep) -> None:
     if not delete_extraction(session, extraction_id):
         raise HTTPException(status_code=404, detail="Extraction not found")
     return None
+
+
+# ---------------- versioning (M2.6) ----------------
+
+
+@router.get("/{extraction_id}/versions", response_model=list[ExtractionVersion])
+def get_versions(extraction_id: str, session: SessionDep) -> list[ExtractionVersion]:
+    """All versions in the chain this id belongs to. 1-indexed, oldest first."""
+    versions = list_versions(session, extraction_id)
+    if not versions:
+        raise HTTPException(status_code=404, detail="Extraction not found")
+    return versions
+
+
+@router.post("/{extraction_id}/rerun", response_model=ExtractionRecord, status_code=201)
+def rerun_extraction(
+    extraction_id: str,
+    session: SessionDep,
+    _payload: ExtractionRerunRequest | None = None,
+    x_anthropic_key: str | None = Header(default=None, alias="X-Anthropic-Key"),
+    x_storyforge_model: str | None = Header(default=None, alias="X-Storyforge-Model"),
+) -> ExtractionRecord:
+    """Re-extract the same source document, creating a new linked version.
+
+    The new row inherits filename, raw_text, and project_id from the source,
+    but uses the current request's API key + model — so users can re-run with
+    a different model and compare. `root_id` always points at the v1 (star
+    topology), so a re-run of a re-run still rolls up to the same root.
+    """
+    source = session.get(Extraction, extraction_id)
+    if source is None:
+        raise HTTPException(status_code=404, detail="Extraction not found")
+
+    result, model_used = call_claude(
+        filename=source.filename,
+        raw_text=source.raw_text,
+        api_key=x_anthropic_key,
+        model=x_storyforge_model,
+    )
+
+    row = persist_extraction(
+        session,
+        result=result,
+        model_used=model_used,
+        project_id=source.project_id,
+        root_id=root_id_for(source),
+    )
+    return extraction_to_record(row)
 
 
 # ---------------- import (M2.4.5 migration) ----------------

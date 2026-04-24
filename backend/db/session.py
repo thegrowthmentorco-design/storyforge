@@ -33,10 +33,30 @@ engine = create_engine(
 
 
 def init_db() -> None:
-    """Create all tables. Idempotent — safe to call on every startup."""
+    """Create all tables + apply tiny additive migrations. Idempotent.
+
+    `create_all` only adds *new* tables — it doesn't ALTER existing ones. For
+    each additive column we ship in dev (M2.6 introduced `extraction.root_id`),
+    we run a guarded ALTER TABLE so existing SQLite databases keep working.
+    Real migrations land with alembic at M3.2 (Postgres cutover).
+    """
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     SQLModel.metadata.create_all(engine)
+    _apply_soft_migrations()
     log.info("DB ready at %s — tables: %s", DB_PATH, sorted(SQLModel.metadata.tables.keys()))
+
+
+def _apply_soft_migrations() -> None:
+    """Add columns SQLModel.metadata.create_all won't touch on existing tables."""
+    from sqlalchemy import text
+
+    with engine.connect() as conn:
+        cols = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(extraction)").fetchall()}
+        if "root_id" not in cols:
+            log.info("migrating: adding extraction.root_id (M2.6)")
+            conn.exec_driver_sql("ALTER TABLE extraction ADD COLUMN root_id VARCHAR")
+            conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_extraction_root_id ON extraction (root_id)")
+            conn.commit()
 
 
 def get_session() -> Generator[Session, None, None]:

@@ -1,14 +1,18 @@
-import React from 'react'
+import React, { useEffect, useState } from 'react'
+import { listVersionsApi } from '../api.js'
 import { Badge, Button, IconButton } from './primitives.jsx'
 import {
-  ChevronRight,
-  Sun,
-  Moon,
   AlertTriangle,
-  RefreshCw,
+  Check,
+  ChevronDown,
+  ChevronRight,
   Download,
-  Sparkles,
   FileText,
+  Moon,
+  RefreshCw,
+  Sparkles,
+  Sun,
+  Zap,
 } from './icons.jsx'
 
 function exportMarkdown(extraction) {
@@ -43,15 +47,167 @@ function exportMarkdown(extraction) {
   return lines.join('\n')
 }
 
+function fmtTime(iso) {
+  if (!iso) return ''
+  return new Date(iso).toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+/**
+ * Version selector — clickable badge that opens a dropdown listing all
+ * versions in this extraction's chain. Hides itself when versions.length<=1.
+ */
+function VersionPicker({ versions, currentId, onPick }) {
+  const [open, setOpen] = useState(false)
+  const current = versions.find((v) => v.id === currentId)
+  const total = versions.length
+
+  if (total <= 1 || !current) return null
+
+  return (
+    <div style={{ position: 'relative' }}>
+      <button
+        type="button"
+        onClick={() => setOpen((s) => !s)}
+        title="Show all versions of this document"
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 4,
+          padding: '3px 8px',
+          borderRadius: 'var(--radius-pill)',
+          background: 'var(--accent-soft)',
+          color: 'var(--accent-ink)',
+          border: 'none',
+          fontSize: 11.5,
+          fontWeight: 500,
+          fontFamily: 'inherit',
+          cursor: 'pointer',
+        }}
+      >
+        v{current.version} of {total}
+        <ChevronDown size={11} />
+      </button>
+      {open && (
+        <>
+          <div
+            onClick={(e) => { e.stopPropagation(); setOpen(false) }}
+            style={{ position: 'fixed', inset: 0, zIndex: 50 }}
+          />
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              position: 'absolute',
+              top: '100%',
+              left: 0,
+              marginTop: 4,
+              minWidth: 240,
+              maxHeight: 300,
+              overflowY: 'auto',
+              background: 'var(--bg-elevated)',
+              border: '1px solid var(--border)',
+              borderRadius: 'var(--radius)',
+              boxShadow: 'var(--shadow-lg)',
+              zIndex: 51,
+              padding: 4,
+            }}
+          >
+            <div
+              style={{
+                padding: '6px 10px 4px',
+                fontSize: 10,
+                fontWeight: 600,
+                letterSpacing: 0.6,
+                textTransform: 'uppercase',
+                color: 'var(--text-soft)',
+              }}
+            >
+              All versions
+            </div>
+            {versions.map((v) => {
+              const isCurrent = v.id === currentId
+              return (
+                <button
+                  key={v.id}
+                  type="button"
+                  onClick={() => { setOpen(false); onPick(v.id) }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    width: '100%',
+                    padding: '6px 10px',
+                    background: isCurrent ? 'var(--accent-soft)' : 'transparent',
+                    border: 'none',
+                    borderRadius: 'var(--radius-sm)',
+                    cursor: 'pointer',
+                    fontSize: 12.5,
+                    color: 'var(--text-strong)',
+                    textAlign: 'left',
+                    fontFamily: 'inherit',
+                  }}
+                  onMouseEnter={(e) => { if (!isCurrent) e.currentTarget.style.background = 'var(--bg-hover)' }}
+                  onMouseLeave={(e) => { if (!isCurrent) e.currentTarget.style.background = 'transparent' }}
+                >
+                  <span
+                    style={{
+                      width: 22,
+                      flexShrink: 0,
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: 11,
+                      color: 'var(--text-muted)',
+                    }}
+                  >
+                    v{v.version}
+                  </span>
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 12.5, color: 'var(--text-strong)' }}>{fmtTime(v.created_at)}</div>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                      {v.live ? v.model_used : 'mock'}
+                    </div>
+                  </span>
+                  {isCurrent && <Check size={13} style={{ color: 'var(--accent-strong)', flexShrink: 0 }} />}
+                </button>
+              )
+            })}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
 export default function TopBar({
   extraction,
+  extractionId,
   loading,
+  rerunning,
   theme,
   onTheme,
   showGaps,
   onToggleGaps,
   onReset,
+  onRerun,
+  onSwitchVersion,
 }) {
+  const [versions, setVersions] = useState([])
+
+  // Re-fetch the version chain whenever the open extraction changes. Don't
+  // block rendering on this — the picker only appears when total > 1, so a
+  // single-version extraction never sees the dropdown anyway.
+  useEffect(() => {
+    let alive = true
+    if (!extractionId) { setVersions([]); return }
+    listVersionsApi(extractionId)
+      .then((vs) => { if (alive) setVersions(vs) })
+      .catch(() => { if (alive) setVersions([]) })
+    return () => { alive = false }
+  }, [extractionId])
+
   const onExport = () => {
     if (!extraction) return
     const md = exportMarkdown(extraction)
@@ -63,6 +219,8 @@ export default function TopBar({
     a.click()
     URL.revokeObjectURL(url)
   }
+
+  const currentVersion = versions.find((v) => v.id === extractionId)?.version
 
   return (
     <div
@@ -97,13 +255,14 @@ export default function TopBar({
           >
             {extraction.filename}
           </span>
-          {loading ? (
+          <VersionPicker versions={versions} currentId={extractionId} onPick={onSwitchVersion} />
+          {loading || rerunning ? (
             <Badge tone="info" icon={<Sparkles size={12} />}>
-              Running
+              {rerunning ? 'Re-running' : 'Running'}
             </Badge>
           ) : extraction.live ? (
             <Badge tone="success" dot>
-              Live · v1
+              Live{currentVersion ? ` · v${currentVersion}` : ' · v1'}
             </Badge>
           ) : (
             <Badge tone="warn" icon={<AlertTriangle size={11} />}>
@@ -139,6 +298,16 @@ export default function TopBar({
           >
             <AlertTriangle size={15} />
           </IconButton>
+          <Button
+            variant="secondary"
+            size="sm"
+            icon={<Zap size={13} />}
+            onClick={onRerun}
+            disabled={rerunning || loading}
+            title="Run extraction again on this document"
+          >
+            {rerunning ? 'Re-running…' : 'Re-run'}
+          </Button>
           <Button variant="secondary" size="sm" icon={<RefreshCw size={13} />} onClick={onReset}>
             New
           </Button>

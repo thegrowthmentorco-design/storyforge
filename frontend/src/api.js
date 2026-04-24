@@ -93,6 +93,22 @@ export async function importExtractionApi(record) {
   return jsonOrThrow(res)
 }
 
+/** Re-run extraction on the same source. Uses current header model + key. */
+export async function rerunExtractionApi(id) {
+  const res = await fetch(`/api/extractions/${encodeURIComponent(id)}/rerun`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: '{}',
+  })
+  return jsonOrThrow(res)
+}
+
+/** All versions in this extraction's chain. Oldest first, 1-indexed. */
+export async function listVersionsApi(id) {
+  const res = await fetch(`/api/extractions/${encodeURIComponent(id)}/versions`)
+  return jsonOrThrow(res)
+}
+
 // ---------- gap state ----------
 
 /** All gap states for an extraction (only persisted ones — others default to {}). */

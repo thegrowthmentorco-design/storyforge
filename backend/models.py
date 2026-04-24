@@ -76,6 +76,7 @@ class ExtractionRecord(ExtractionPayload):
     project_id: str | None = None
     source_file_path: str | None = None
     created_at: datetime
+    root_id: str | None = None  # M2.6 — null for v1, set for re-runs
 
 
 class ExtractionSummary(BaseModel):
@@ -90,6 +91,7 @@ class ExtractionSummary(BaseModel):
     model_used: str
     live: bool
     project_id: str | None = None
+    root_id: str | None = None  # M2.6 — null for v1, set for re-runs
     actor_count: int
     story_count: int
     gap_count: int
@@ -151,3 +153,22 @@ class ProjectCreate(BaseModel):
 class ProjectPatch(BaseModel):
     model_config = ConfigDict(extra="forbid")
     name: str | None = Field(default=None, min_length=1, max_length=120)
+
+
+# ----- Versions (M2.6) -----
+
+
+class ExtractionVersion(BaseModel):
+    """One entry in GET /api/extractions/{id}/versions."""
+    model_config = ConfigDict(extra="forbid")
+    id: str
+    version: int  # 1-indexed, ordered by created_at asc
+    created_at: datetime
+    model_used: str
+    live: bool
+
+
+class ExtractionRerunRequest(BaseModel):
+    """POST /api/extractions/{id}/rerun body — all fields optional."""
+    model_config = ConfigDict(extra="forbid")
+    # Future: per-request system prompt overrides go here.

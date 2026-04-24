@@ -19,11 +19,11 @@ from docx import Document
 from sqlmodel import Session
 
 from db.session import get_session, init_db
-from extract import extract_requirements, resolve_model
 from models import ExtractionRecord
 from routers import extractions as extractions_router
 from routers import projects as projects_router
 from services.extractions import (
+    call_claude,
     extraction_to_record,
     mint_extraction_id,
     persist_extraction,
@@ -165,76 +165,36 @@ async def extract(
     if not raw_text.strip():
         raise HTTPException(status_code=422, detail="No readable text in the input.")
 
-    try:
-        result = extract_requirements(
-            source_name,
-            raw_text,
-            api_key=x_anthropic_key,
-            model=x_storyforge_model,
-        )
-        # Persist immediately so the frontend never has to repeat the LLM call.
-        # `model_used` records what we actually called — "mock" when no key was set.
-        model_used = resolve_model(x_storyforge_model) if result.live else "mock"
+    # Anthropic errors are translated to HTTPExceptions inside `call_claude`,
+    # so we let them propagate uncaught.
+    result, model_used = call_claude(
+        filename=source_name,
+        raw_text=raw_text,
+        api_key=x_anthropic_key,
+        model=x_storyforge_model,
+    )
 
-        # Mint the id up front so the upload path can reference it before the
-        # row exists. If the disk write fails, we 500 without persisting — no
-        # orphaned row pointing at a missing file.
-        extraction_id = mint_extraction_id()
-        source_path: str | None = None
-        if upload_bytes is not None:
-            try:
-                source_path = save_upload(extraction_id, source_name, upload_bytes)
-            except OSError as e:
-                log.exception("upload save failed")
-                raise HTTPException(status_code=500, detail=f"Could not store uploaded file: {e}")
+    # Mint the id up front so the upload path can reference it before the
+    # row exists. If the disk write fails, we 500 without persisting — no
+    # orphaned row pointing at a missing file.
+    extraction_id = mint_extraction_id()
+    source_path: str | None = None
+    if upload_bytes is not None:
+        try:
+            source_path = save_upload(extraction_id, source_name, upload_bytes)
+        except OSError as e:
+            log.exception("upload save failed")
+            raise HTTPException(status_code=500, detail=f"Could not store uploaded file: {e}")
 
-        row = persist_extraction(
-            session,
-            result=result,
-            model_used=model_used,
-            project_id=project_id or None,
-            extraction_id=extraction_id,
-            source_file_path=source_path,
-        )
-        return extraction_to_record(row)
-
-    # Anthropic-specific errors get readable messages and accurate status codes
-    except anthropic.AuthenticationError:
-        log.warning("anthropic authentication failed")
-        detail = (
-            "Invalid Anthropic API key from request. Update the key in Settings."
-            if x_anthropic_key
-            else "Invalid ANTHROPIC_API_KEY in server env. Check backend/.env and restart."
-        )
-        raise HTTPException(status_code=401, detail=detail)
-    except anthropic.RateLimitError as e:
-        retry_after = e.response.headers.get("retry-after", "60") if e.response else "60"
-        log.warning("anthropic rate limit hit; retry after %ss", retry_after)
-        raise HTTPException(
-            status_code=429,
-            detail=f"Anthropic rate limit hit. Retry after ~{retry_after}s.",
-        )
-    except anthropic.BadRequestError as e:
-        log.warning("anthropic bad request: %s", e.message)
-        raise HTTPException(
-            status_code=400,
-            detail=f"Claude rejected the request: {e.message}",
-        )
-    except anthropic.APIConnectionError:
-        log.exception("anthropic connection error")
-        raise HTTPException(
-            status_code=503,
-            detail="Could not reach Anthropic API. Check your network.",
-        )
-    except anthropic.APIStatusError as e:
-        log.exception("anthropic API error %s", e.status_code)
-        raise HTTPException(
-            status_code=502,
-            detail=f"Anthropic API error ({e.status_code}): {e.message}",
-        )
-    except Exception as e:
-        log.exception("extraction failed")
-        raise HTTPException(status_code=500, detail=f"Extraction failed: {e}")
+    row = persist_extraction(
+        session,
+        result=result,
+        model_used=model_used,
+        project_id=project_id or None,
+        extraction_id=extraction_id,
+        source_file_path=source_path,
+    )
+    return extraction_to_record(row)
 
 
 # Mount built frontend last so /api/* routes take precedence. Only mounts when
