@@ -10,6 +10,7 @@ from models import (
     NonFunctional,
     UserStory,
 )
+from services.cost import TokenUsage
 
 DEFAULT_MODEL = "claude-opus-4-7"
 ALLOWED_MODELS = {
@@ -134,11 +135,16 @@ def extract_requirements(
     raw_text: str,
     api_key: str | None = None,
     model: str | None = None,
-) -> ExtractionResult:
+) -> tuple[ExtractionResult, TokenUsage | None]:
+    """Run the extraction. Returns the parsed result + token usage (or None for mock).
+
+    The usage tuple lets callers persist M3.0 UsageLog rows without re-querying
+    the SDK. Mock-mode returns `None` because no real call was made.
+    """
     # BYOK key (from request header) takes precedence over the server's env key
     effective_key = api_key or os.environ.get("ANTHROPIC_API_KEY")
     if not effective_key:
-        return _mock(filename, raw_text)
+        return _mock(filename, raw_text), None
 
     effective_model = resolve_model(model)
 
@@ -169,19 +175,31 @@ def extract_requirements(
         output_format=ExtractionPayload,
     )
 
+    # SDK Usage object → our flat dataclass. `getattr` because cache fields
+    # are absent on responses where the model didn't hit the cache.
+    raw_usage = getattr(response, "usage", None)
+    usage = TokenUsage(
+        input_tokens=getattr(raw_usage, "input_tokens", 0) or 0,
+        output_tokens=getattr(raw_usage, "output_tokens", 0) or 0,
+        cache_creation_input_tokens=getattr(raw_usage, "cache_creation_input_tokens", 0) or 0,
+        cache_read_input_tokens=getattr(raw_usage, "cache_read_input_tokens", 0) or 0,
+    ) if raw_usage is not None else None
+
     parsed = response.parsed_output
     if parsed is None:
         # parse() returns None on refusal or invalid output — fall back to mock with a note.
+        # Still return the usage so the (failed) call gets billed accurately.
         fallback = _mock(filename, raw_text)
         fallback.brief = Brief(
             summary="Claude refused or returned output that didn't validate against the schema. Showing mock fallback.",
             tags=["refusal or schema mismatch"],
         )
-        return fallback
+        return fallback, usage
 
-    return ExtractionResult(
+    result = ExtractionResult(
         **parsed.model_dump(),
         filename=filename,
         raw_text=raw_text,
         live=True,
     )
+    return result, usage

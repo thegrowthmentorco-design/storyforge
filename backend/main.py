@@ -27,6 +27,7 @@ from services.extractions import (
     extraction_to_record,
     mint_extraction_id,
     persist_extraction,
+    record_usage,
     save_upload,
 )
 
@@ -167,7 +168,7 @@ async def extract(
 
     # Anthropic errors are translated to HTTPExceptions inside `call_claude`,
     # so we let them propagate uncaught.
-    result, model_used = call_claude(
+    result, model_used, usage = call_claude(
         filename=source_name,
         raw_text=raw_text,
         api_key=x_anthropic_key,
@@ -193,6 +194,14 @@ async def extract(
         project_id=project_id or None,
         extraction_id=extraction_id,
         source_file_path=source_path,
+    )
+    record_usage(
+        session,
+        extraction_id=row.id,
+        action="extract",
+        model=model_used,
+        live=result.live,
+        usage=usage,
     )
     return extraction_to_record(row)
 

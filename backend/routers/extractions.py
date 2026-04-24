@@ -33,6 +33,7 @@ from services.extractions import (
     gap_state_to_read,
     list_versions,
     persist_extraction,
+    record_usage,
     root_id_for,
 )
 
@@ -193,7 +194,7 @@ def rerun_extraction(
     if source is None:
         raise HTTPException(status_code=404, detail="Extraction not found")
 
-    result, model_used = call_claude(
+    result, model_used, usage = call_claude(
         filename=source.filename,
         raw_text=source.raw_text,
         api_key=x_anthropic_key,
@@ -206,6 +207,14 @@ def rerun_extraction(
         model_used=model_used,
         project_id=source.project_id,
         root_id=root_id_for(source),
+    )
+    record_usage(
+        session,
+        extraction_id=row.id,
+        action="rerun",
+        model=model_used,
+        live=result.live,
+        usage=usage,
     )
     return extraction_to_record(row)
 

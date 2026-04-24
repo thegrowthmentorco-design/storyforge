@@ -20,7 +20,7 @@ import anthropic
 from fastapi import HTTPException
 from sqlmodel import Session, select
 
-from db.models import Extraction, GapState, Project
+from db.models import Extraction, GapState, Project, UsageLog
 from extract import extract_requirements, resolve_model
 from models import (
     ExtractionPayload,
@@ -31,6 +31,7 @@ from models import (
     GapStateRead,
     ProjectRead,
 )
+from services.cost import TokenUsage, compute_cost_cents
 
 log = logging.getLogger("storyforge.services")
 
@@ -273,18 +274,15 @@ def call_claude(
     raw_text: str,
     api_key: str | None,
     model: str | None,
-) -> tuple[ExtractionResult, str]:
+) -> tuple[ExtractionResult, str, TokenUsage | None]:
     """Run extraction and translate Anthropic errors into HTTPExceptions.
 
-    Returns `(result, model_used)` where `model_used` is "mock" when no key
-    was set so callers can record provenance accurately.
-
-    Centralised so /api/extract and /api/extractions/{id}/rerun share one
-    error contract — keep this aligned with the wrapper in main.py if you
-    edit either side.
+    Returns `(result, model_used, usage)`. `model_used` is "mock" when no key
+    was set; `usage` is None for mock calls and populated otherwise so callers
+    can persist UsageLog rows (M3.0 instrumentation).
     """
     try:
-        result = extract_requirements(filename, raw_text, api_key=api_key, model=model)
+        result, usage = extract_requirements(filename, raw_text, api_key=api_key, model=model)
     except anthropic.AuthenticationError:
         log.warning("anthropic authentication failed")
         detail = (
@@ -317,7 +315,37 @@ def call_claude(
         raise HTTPException(status_code=500, detail=f"Extraction failed: {e}")
 
     model_used = resolve_model(model) if result.live else "mock"
-    return result, model_used
+    return result, model_used, usage
+
+
+def record_usage(
+    session: Session,
+    *,
+    user_id: str = "local",
+    extraction_id: str | None,
+    action: str,
+    model: str,
+    live: bool,
+    usage: TokenUsage | None,
+) -> None:
+    """Insert a UsageLog row. No-op only if `usage` is None and we're in mock
+    mode — we still log mock calls (zero cost) so the count is accurate."""
+    if usage is None:
+        usage = TokenUsage()
+    row = UsageLog(
+        user_id=user_id,
+        extraction_id=extraction_id,
+        action=action,
+        model=model,
+        live=live,
+        input_tokens=usage.input_tokens,
+        output_tokens=usage.output_tokens,
+        cache_creation_input_tokens=usage.cache_creation_input_tokens,
+        cache_read_input_tokens=usage.cache_read_input_tokens,
+        cost_cents=compute_cost_cents(model, usage),
+    )
+    session.add(row)
+    session.commit()
 
 
 # ---------- projects ----------
