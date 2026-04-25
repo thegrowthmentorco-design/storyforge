@@ -1,8 +1,15 @@
-"""SQLite engine + FastAPI session dependency (M2.1.4).
+"""DB engine + FastAPI session dependency.
 
-Synchronous SQLModel sessions today; async (aiosqlite) can be layered in
-later if route latency starts mattering. For our workload — one DB write per
-extraction — sync is fine.
+Two engines, one config:
+  * `DATABASE_URL` set  → Postgres (M3.2 — currently Supabase). Use the
+    `postgresql+psycopg://...` form so SQLAlchemy picks psycopg3, not the
+    legacy psycopg2 default.
+  * Unset              → SQLite at `STORYFORGE_DB` (default `backend/storyforge.db`).
+                         Dev fallback; survives across machines if you copy the file.
+
+Synchronous SQLModel sessions either way. Async (asyncpg / aiosqlite) is a
+later optimisation if route latency starts mattering — sync handles our
+"one DB write per extraction" workload comfortably.
 """
 
 from __future__ import annotations
@@ -12,6 +19,7 @@ import os
 from collections.abc import Generator
 from pathlib import Path
 
+from sqlalchemy.engine import URL, make_url
 from sqlmodel import Session, SQLModel, create_engine
 
 # Import models so SQLModel.metadata sees them before create_all runs.
@@ -19,35 +27,61 @@ from . import models  # noqa: F401
 
 log = logging.getLogger("storyforge.db")
 
-DB_PATH = Path(os.environ.get("STORYFORGE_DB", str(Path(__file__).resolve().parent.parent / "storyforge.db")))
-DB_URL = f"sqlite:///{DB_PATH}"
 
-# check_same_thread=False because FastAPI runs sync routes on its threadpool;
-# the engine pool may hand a connection to a different thread than the one
-# that opened it.
-engine = create_engine(
-    DB_URL,
-    echo=False,
-    connect_args={"check_same_thread": False},
-)
+def _resolve_db_url() -> URL:
+    raw = os.environ.get("DATABASE_URL")
+    if raw:
+        # SQLAlchemy 2.x defaults `postgresql://` to psycopg2; force psycopg3.
+        if raw.startswith("postgresql://"):
+            raw = "postgresql+psycopg://" + raw[len("postgresql://"):]
+        return make_url(raw)
+    # SQLite fallback. Path is repo-local so two devs can share a `.db` file
+    # without env-var coordination.
+    db_path = Path(
+        os.environ.get(
+            "STORYFORGE_DB",
+            str(Path(__file__).resolve().parent.parent / "storyforge.db"),
+        )
+    )
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    return make_url(f"sqlite:///{db_path}")
+
+
+DB_URL: URL = _resolve_db_url()
+IS_SQLITE = DB_URL.get_dialect().name == "sqlite"
+
+# SQLite needs check_same_thread=False because FastAPI runs sync routes on
+# its threadpool; the engine pool may hand a connection to a different
+# thread than the one that opened it. Postgres has no such constraint.
+_connect_args: dict = {"check_same_thread": False} if IS_SQLITE else {}
+
+engine = create_engine(DB_URL, echo=False, connect_args=_connect_args, pool_pre_ping=not IS_SQLITE)
 
 
 def init_db() -> None:
     """Create all tables + apply tiny additive migrations. Idempotent.
 
-    `create_all` only adds *new* tables — it doesn't ALTER existing ones. For
-    each additive column we ship in dev (M2.6 introduced `extraction.root_id`),
-    we run a guarded ALTER TABLE so existing SQLite databases keep working.
-    Real migrations land with alembic at M3.2 (Postgres cutover).
+    `create_all` is safe to call on every startup — it only creates *missing*
+    tables. For columns added to existing tables we run a guarded ALTER (see
+    `_apply_soft_migrations`) — but only on SQLite, since Postgres goes
+    through Alembic (M3.2.5) when its first real schema change lands.
     """
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     SQLModel.metadata.create_all(engine)
-    _apply_soft_migrations()
-    log.info("DB ready at %s — tables: %s", DB_PATH, sorted(SQLModel.metadata.tables.keys()))
+    if IS_SQLITE:
+        _apply_soft_migrations()
+    log.info(
+        "DB ready (%s) — tables: %s",
+        DB_URL.render_as_string(hide_password=True),
+        sorted(SQLModel.metadata.tables.keys()),
+    )
 
 
 def _apply_soft_migrations() -> None:
-    """Add columns SQLModel.metadata.create_all won't touch on existing tables."""
+    """SQLite-only ALTER TABLEs for columns added after the initial schema.
+
+    Postgres skips this — it gets a clean schema from `create_all` on first
+    boot, and incremental changes go through Alembic.
+    """
     with engine.connect() as conn:
         ext_cols = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(extraction)").fetchall()}
         if "root_id" not in ext_cols:
@@ -57,8 +91,6 @@ def _apply_soft_migrations() -> None:
             conn.commit()
         if "user_id" not in ext_cols:
             log.info("migrating: adding extraction.user_id (M3.2)")
-            # Default 'local' so existing rows match the pre-auth dev convention.
-            # NOT NULL because routes always join/filter on this column.
             conn.exec_driver_sql("ALTER TABLE extraction ADD COLUMN user_id VARCHAR NOT NULL DEFAULT 'local'")
             conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_extraction_user_id ON extraction (user_id)")
             conn.commit()
