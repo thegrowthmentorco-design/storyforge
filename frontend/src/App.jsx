@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import { SignedIn, SignedOut, useAuth, useOrganization } from '@clerk/clerk-react'
-import { extract, listProjectsApi, rerunExtractionApi, setTokenGetter } from './api.js'
+import { extract, getMePlanApi, listProjectsApi, rerunExtractionApi, setTokenGetter } from './api.js'
 import { getExtraction } from './lib/store.js'
 import { migrateLocalStorageOnce } from './lib/migrate.js'
 import { getSettings, setSettings } from './lib/settings.js'
@@ -13,6 +13,7 @@ import Project from './pages/Project.jsx'
 import Settings from './pages/Settings.jsx'
 import SignInPage from './pages/SignInPage.jsx'
 import SignUpPage from './pages/SignUpPage.jsx'
+import PaywallModal from './components/PaywallModal.jsx'
 import Sidebar from './components/Sidebar.jsx'
 import TopBar from './components/TopBar.jsx'
 import EmptyState from './components/EmptyState.jsx'
@@ -165,6 +166,10 @@ function AuthedApp() {
   const [pendingName, setPendingName] = useState('')
   const [projects, setProjects] = useState([])
   const [projectsLoading, setProjectsLoading] = useState(true)
+  // M3.5: plan + usage-this-period for the sidebar bar; refreshed after each
+  // successful extract/rerun so the count stays live without a page reload.
+  const [plan, setPlan] = useState(null)
+  const [paywall, setPaywall] = useState(null)  // {paywall: true, reason, message, ...} from a 4xx response
 
   const location = useLocation()
   const navigate = useNavigate()
@@ -221,17 +226,28 @@ function AuthedApp() {
     }
   }, [])
 
+  const refreshPlan = useCallback(async () => {
+    try {
+      setPlan(await getMePlanApi())
+    } catch (e) {
+      console.warn('failed to load plan', e)
+    }
+  }, [])
+
   useEffect(() => { refreshProjects() }, [refreshProjects])
+  useEffect(() => { refreshPlan() }, [refreshPlan])
 
   // Re-fetch + reset whenever the active workspace changes. orgId is null
   // for personal context. Skipped until Clerk's org info has loaded so we
   // don't fire a redundant fetch immediately after the bootstrap one.
+  // Plan/usage is per-scope too — switching org changes the count window.
   useEffect(() => {
     if (!orgLoaded) return
     refreshProjects()
+    refreshPlan()
     setExtraction(null)
     setExtractionId(null)
-  }, [orgId, orgLoaded, refreshProjects])
+  }, [orgId, orgLoaded, refreshProjects, refreshPlan])
 
   const projectById = useMemo(() => {
     const m = {}
@@ -247,10 +263,13 @@ function AuthedApp() {
       const record = await extract({ file, text, filename })
       setExtraction(record)
       setExtractionId(record?.id || null)
-      // Ensure the result view is visible no matter where the extraction was triggered from
+      refreshPlan()  // M3.5 — usage count just bumped; refresh sidebar bar
       if (location.pathname !== '/') navigate('/')
     } catch (e) {
-      toast.error(e.message || 'Extraction failed')
+      // Paywall trips through here as a 403/413/429 with structured payload —
+      // show the upgrade modal instead of a toast.
+      if (e.paywall) setPaywall(e.paywall)
+      else toast.error(e.message || 'Extraction failed')
     } finally {
       setLoading(false)
       setPendingName('')
@@ -311,9 +330,11 @@ function AuthedApp() {
       const newRecord = await rerunExtractionApi(extractionId)
       setExtraction(newRecord)
       setExtractionId(newRecord.id)
+      refreshPlan()  // M3.5 — re-runs count against the quota too
       toast.success('Re-extracted — new version saved')
     } catch (e) {
-      toast.error(e.message || 'Re-run failed')
+      if (e.paywall) setPaywall(e.paywall)
+      else toast.error(e.message || 'Re-run failed')
     } finally {
       setRerunning(false)
     }
@@ -328,6 +349,9 @@ function AuthedApp() {
     projectsLoading,
     refreshProjects,
     projectById,
+    plan,                              // M3.5 — null until first /api/me/plan response
+    refreshPlan,
+    showPaywall: setPaywall,           // imperative trigger if any other component needs it
   }
 
   return (
@@ -378,6 +402,7 @@ function AuthedApp() {
       {isHome && extraction && !loading && showGaps && (
         <GapsRail gaps={extraction.gaps} extractionId={extractionId} />
       )}
+      <PaywallModal paywall={paywall} onClose={() => setPaywall(null)} />
     </div>
     </AppProvider>
   )

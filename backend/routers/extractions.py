@@ -38,6 +38,7 @@ from services.extractions import (
     record_usage,
     root_id_for,
 )
+from services.limits import enforce_limits
 from services.scope import apply_scope, in_scope
 
 log = logging.getLogger("storyforge.extractions")
@@ -227,6 +228,10 @@ def rerun_extraction(
     # M3.4.5: stored BYOK + model fall through when header omitted.
     effective_key, stored_model = resolve_user_byok(session, user.user_id, x_anthropic_key)
     effective_model = x_storyforge_model or stored_model
+
+    # M3.5.4: same plan gates as /api/extract — re-runs count against the
+    # user's monthly quota too (re-extraction is a paid operation).
+    enforce_limits(session, user, raw_text=source.raw_text, model=effective_model)
 
     result, model_used, usage = call_claude(
         filename=source.filename,

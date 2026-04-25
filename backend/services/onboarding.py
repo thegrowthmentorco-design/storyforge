@@ -20,7 +20,7 @@ on top once we're hosted; this code stays as the fallback.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
 from fastapi import BackgroundTasks, Depends
@@ -32,6 +32,8 @@ from db.session import get_session
 from services.email import fetch_clerk_user, primary_email_of, send_welcome_email
 
 log = logging.getLogger("storyforge.onboarding")
+
+TRIAL_DAYS = 14  # see DECISIONS.md → D4
 
 
 def _send_welcome_for(user_id: str) -> None:
@@ -54,21 +56,41 @@ def welcome_check(
     session: Annotated[Session, Depends(get_session)],
     bg: BackgroundTasks,
 ) -> None:
-    """First-touch detector dependency. Side-effects only.
+    """First-touch dependency. Initialises plan='trial' + trial_ends_at and
+    fires the welcome email on the user's first authenticated request.
 
-    Cheap when already welcomed: one PK lookup, no writes. When firing for
-    the first time: one PK lookup + one row insert/update + one background
-    task enqueue (no network in the request path).
+    M3.5 added the plan/trial init alongside the existing M3.7 welcome flow
+    because both need to fire on first-touch and bundling avoids two PK
+    lookups per request. Cheap on subsequent requests: one PK lookup, no
+    writes.
     """
     if user.user_id == "local":
-        # Synthetic legacy/dev rows aren't real Clerk users — skip the lookup.
+        # Synthetic legacy/dev rows aren't real Clerk users — skip everything.
         return
     row = session.get(UserSettings, user.user_id)
-    if row is not None and row.welcome_sent_at is not None:
+    # Fast path: fully initialised, nothing to do.
+    if row is not None and row.welcome_sent_at is not None and row.plan is not None:
         return
-    if row is None:
+
+    is_new = row is None
+    if is_new:
         row = UserSettings(user_id=user.user_id)
-    row.welcome_sent_at = datetime.now(timezone.utc)
+
+    # M3.5: set plan if missing. Trial starts NOW with a 14-day window.
+    # Existing pre-M3.5 rows that hit this branch get a fresh trial — they
+    # paid nothing before, fair to give them the same trial as new signups.
+    if row.plan is None:
+        now = datetime.now(timezone.utc)
+        row.plan = "trial"
+        row.trial_ends_at = now + timedelta(days=TRIAL_DAYS)
+
+    # M3.7: mark welcome as enqueued (mark-before-send pattern).
+    fire_welcome = row.welcome_sent_at is None
+    if fire_welcome:
+        row.welcome_sent_at = datetime.now(timezone.utc)
+
     session.add(row)
     session.commit()
-    bg.add_task(_send_welcome_for, user.user_id)
+
+    if fire_welcome:
+        bg.add_task(_send_welcome_for, user.user_id)

@@ -138,6 +138,17 @@ def _apply_soft_migrations() -> None:
             # No DEFAULT — null IS the "not yet sent" signal.
             conn.exec_driver_sql("ALTER TABLE user_settings ADD COLUMN welcome_sent_at TIMESTAMP")
             conn.commit()
+        if "plan" not in us_cols:
+            log.info("migrating: adding user_settings.plan (M3.5)")
+            # NULL = pre-M3.5 row; routes treat NULL as 'trial' until welcome_check
+            # writes the real value. Index because we may query "all team users" later.
+            conn.exec_driver_sql("ALTER TABLE user_settings ADD COLUMN plan VARCHAR")
+            conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_user_settings_plan ON user_settings (plan)")
+            conn.commit()
+        if "trial_ends_at" not in us_cols:
+            log.info("migrating: adding user_settings.trial_ends_at (M3.5)")
+            conn.exec_driver_sql("ALTER TABLE user_settings ADD COLUMN trial_ends_at TIMESTAMP")
+            conn.commit()
 
 
 def get_session() -> Generator[Session, None, None]:

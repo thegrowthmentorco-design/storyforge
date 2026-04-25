@@ -12,6 +12,9 @@ import React, { createContext, useContext } from 'react'
  *     projectsLoading: boolean
  *     refreshProjects(): Promise<void>       // re-fetch after create/rename/delete
  *     projectById: Record<string, ProjectRead>   // quick lookup for badges
+ *     plan: PlanRead | null                  // M3.5 — current plan + usage_in_period
+ *     refreshPlan(): Promise<void>           // refetch after extraction/rerun
+ *     showPaywall(payload): void             // imperative trigger for the upgrade modal
  *   }
  */
 const AppCtx = createContext(null)

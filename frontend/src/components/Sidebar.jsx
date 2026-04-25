@@ -4,7 +4,7 @@ import { OrganizationSwitcher, UserButton, useUser } from '@clerk/clerk-react'
 import { createProjectApi } from '../api.js'
 import { useApp } from '../lib/AppContext.jsx'
 import { useToast } from './Toast.jsx'
-import { IconButton } from './primitives.jsx'
+import { Badge, IconButton } from './primitives.jsx'
 import {
   Edit,
   FileText,
@@ -15,6 +15,7 @@ import {
   Settings,
   User,
   X,
+  Zap,
 } from './icons.jsx'
 
 function NavItem({ icon, label, to, count }) {
@@ -240,9 +241,113 @@ export default function Sidebar({ onNew }) {
         </div>
       </div>
 
+      {/* M3.5 — usage bar above the user pill */}
+      <UsageBar />
+
       {/* Footer: user pill (Clerk) */}
       <UserPill />
     </aside>
+  )
+}
+
+/**
+ * M3.5 usage bar. Reads `plan` from AppContext (App.jsx fetches /api/me/plan
+ * on mount + after each extraction). Hidden until the first response lands —
+ * we'd rather show nothing than a flicker.
+ *
+ * Click → /account where the upgrade flow will live (Stripe checkout in M3.6).
+ */
+function UsageBar() {
+  const { plan } = useApp()
+  if (!plan) return null
+
+  const { plan_name, usage_in_period, extractions_per_period, period_label, upgrade_to } = plan
+  const pct = extractions_per_period > 0
+    ? Math.min(100, Math.round((usage_in_period / extractions_per_period) * 100))
+    : 0
+  const overFlag = usage_in_period >= extractions_per_period
+  const nearFlag = pct >= 80 && !overFlag
+
+  // Tier badge tone — visual reinforcement of where the user sits in the funnel
+  const tierTone = {
+    Trial: 'info',
+    Starter: 'success',
+    Pro: 'purple',
+    Team: 'accent',
+    'Trial expired': 'danger',
+  }[plan_name] || 'neutral'
+
+  return (
+    <NavLink
+      to="/account"
+      style={{ textDecoration: 'none', color: 'inherit' }}
+      title={overFlag ? 'Limit reached — click to upgrade' : 'Usage this period · click for details'}
+    >
+      <div
+        style={{
+          padding: '10px 14px',
+          borderTop: '1px solid var(--border)',
+          background: 'var(--bg-subtle)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 6,
+          cursor: 'pointer',
+          transition: 'background .12s',
+        }}
+        onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-hover)')}
+        onMouseLeave={(e) => (e.currentTarget.style.background = 'var(--bg-subtle)')}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <Badge tone={tierTone} size="sm">{plan_name}</Badge>
+          <span
+            style={{
+              fontSize: 11,
+              color: overFlag ? 'var(--danger-ink)' : (nearFlag ? 'var(--warn-ink)' : 'var(--text-muted)'),
+              fontFamily: 'var(--font-mono)',
+              marginLeft: 'auto',
+            }}
+          >
+            {usage_in_period}/{extractions_per_period}
+          </span>
+        </div>
+        {/* Progress bar */}
+        <div
+          style={{
+            height: 4,
+            borderRadius: 999,
+            background: 'var(--bg-hover)',
+            overflow: 'hidden',
+          }}
+        >
+          <div
+            style={{
+              height: '100%',
+              width: `${pct}%`,
+              background: overFlag
+                ? 'var(--danger)'
+                : nearFlag
+                  ? 'var(--warn)'
+                  : 'var(--accent)',
+              transition: 'width .25s, background .25s',
+            }}
+          />
+        </div>
+        {(overFlag || nearFlag) && upgrade_to && (
+          <div
+            style={{
+              fontSize: 11,
+              color: overFlag ? 'var(--danger-ink)' : 'var(--warn-ink)',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 4,
+            }}
+          >
+            <Zap size={11} />
+            Upgrade to {upgrade_to.replace(/^./, c => c.toUpperCase())}
+          </div>
+        )}
+      </div>
+    </NavLink>
   )
 }
 

@@ -131,6 +131,15 @@ class UserSettings(SQLModel, table=True):
     # send failure to prevent retry storms; missing one welcome is cheaper
     # than spamming users on every request after a transient Resend error.
     welcome_sent_at: datetime | None = Field(default=None)
+    # M3.5 — billing plan ('trial' / 'starter' / 'pro' / 'team' / 'expired').
+    # Set to 'trial' by `welcome_check` on first authed touch. Driven by
+    # Stripe webhooks (M3.6) once subscriptions are live. NULL only on
+    # legacy pre-M3.5 rows; routes treat NULL as 'trial' for safety.
+    plan: str | None = Field(default=None, index=True)
+    # End of the 14-day trial window. Set when plan is first set to 'trial';
+    # cleared (or ignored) when plan transitions to a paid tier. Used by the
+    # gate to throw a "trial_expired" paywall once we pass it.
+    trial_ends_at: datetime | None = Field(default=None)
     created_at: datetime = Field(default_factory=_utcnow)
     updated_at: datetime = Field(default_factory=_utcnow)
 

@@ -26,6 +26,7 @@ from db.session import get_session
 from models import (
     LegacyAdoptResult,
     LegacyCount,
+    PlanRead,
     UsageBucket,
     UsageByModel,
     UsageSummary,
@@ -33,6 +34,7 @@ from models import (
     UserSettingsRead,
 )
 from services.byok import decrypt_secret, encrypt_secret, key_preview
+from services.plans import get_plan
 from services.scope import apply_scope
 
 log = logging.getLogger("storyforge.me")
@@ -99,6 +101,63 @@ def put_settings(
     session.commit()
     session.refresh(row)
     return _to_read(row)
+
+
+# ============================================================================
+# M3.5 — plan + usage-this-period for the sidebar usage bar
+# ============================================================================
+
+
+@router.get("/plan", response_model=PlanRead)
+def get_plan_summary(session: SessionDep, user: UserDep) -> PlanRead:
+    """Lightweight plan + period-usage snapshot. Drives the sidebar usage
+    bar; refetched after every successful extraction so the count stays live.
+
+    Period semantics match `services/limits.enforce_limits`:
+      - paid plans → calendar month, resets at first-of-next-month UTC
+      - trial      → trial window total, resets at trial_ends_at
+    """
+    from datetime import timedelta as _td  # local import to avoid top clutter
+
+    settings = session.get(UserSettings, user.user_id)
+    plan_id = (settings.plan if settings else None) or "trial"
+    plan = get_plan(plan_id)
+
+    now = datetime.now(timezone.utc)
+    if plan_id == "trial" and settings and settings.trial_ends_at:
+        # SQLite + Postgres TIMESTAMP WITHOUT TIME ZONE return naive datetimes;
+        # we always write UTC, so coerce on read.
+        ends = settings.trial_ends_at
+        if ends.tzinfo is None:
+            ends = ends.replace(tzinfo=timezone.utc)
+        period_start = ends - _td(days=14)
+        period_resets_at = ends
+    else:
+        period_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        # First of next month — handle Dec→Jan rollover by hopping a day past month-end.
+        next_month = (period_start + _td(days=32)).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        period_resets_at = next_month
+
+    used = session.exec(
+        apply_scope(
+            select(func.count(UsageLog.id)).where(UsageLog.ts >= period_start),
+            UsageLog,
+            user,
+        )
+    ).one()
+
+    return PlanRead(
+        plan=plan.id,
+        plan_name=plan.name,
+        extractions_per_period=plan.extractions_per_period,
+        usage_in_period=int(used or 0),
+        max_input_chars=plan.max_input_chars,
+        allowed_models=list(plan.allowed_models),
+        upgrade_to=plan.upgrade_to,
+        trial_ends_at=settings.trial_ends_at if settings else None,
+        period_resets_at=period_resets_at,
+        period_label=plan.period_label,
+    )
 
 
 # ============================================================================

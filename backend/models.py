@@ -224,6 +224,30 @@ class UserSettingsPatch(BaseModel):
     model_default: str | None = None
 
 
+# ----- Plan + usage (M3.5) -----
+
+
+class PlanRead(BaseModel):
+    """Response from GET /api/me/plan — drives the sidebar usage bar.
+
+    `usage_in_period` is the count of UsageLog rows since the start of the
+    current billing window (calendar month for paid; trial-period start for
+    trial). `period_resets_at` is when the counter resets (start of next
+    month for paid; trial_ends_at for trial).
+    """
+    model_config = ConfigDict(extra="forbid")
+    plan: str
+    plan_name: str
+    extractions_per_period: int
+    usage_in_period: int
+    max_input_chars: int
+    allowed_models: list[str]
+    upgrade_to: str | None
+    trial_ends_at: datetime | None
+    period_resets_at: datetime | None
+    period_label: str
+
+
 # ----- Versions (M2.6) -----
 
 

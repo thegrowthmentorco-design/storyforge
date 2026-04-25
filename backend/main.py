@@ -33,6 +33,7 @@ from services.extractions import (
     record_usage,
     save_upload,
 )
+from services.limits import enforce_limits
 from services.onboarding import welcome_check
 
 MAX_BYTES = 10 * 1024 * 1024  # 10 MB
@@ -200,6 +201,10 @@ async def extract(
     # supply them via header. Header still wins (lets users test a new key).
     effective_key, stored_model = resolve_user_byok(session, user.user_id, x_anthropic_key)
     effective_model = x_storyforge_model or stored_model
+
+    # M3.5.4: gate BEFORE the Claude call — never burn tokens on a doomed
+    # request. Raises HTTPException with paywall payload on any tier breach.
+    enforce_limits(session, user, raw_text=raw_text, model=effective_model)
 
     # Anthropic errors are translated to HTTPExceptions inside `call_claude`,
     # so we let them propagate uncaught.

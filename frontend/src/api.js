@@ -47,11 +47,24 @@ async function readError(res) {
   return detail
 }
 
-/** Raise on non-2xx. Errors carry `.status` so callers can branch on it. */
+/** Raise on non-2xx. Errors carry `.status` so callers can branch on it.
+ *
+ *  M3.5: paywall responses use a structured `detail: {paywall: true, ...}`
+ *  shape (see services/limits.py + DECISIONS.md). When detected, we attach
+ *  the whole payload to `err.paywall` so callers can show the upgrade modal
+ *  without re-parsing the message string. */
 async function jsonOrThrow(res) {
   if (!res.ok) {
-    const err = new Error(await readError(res))
+    let body = null
+    try { body = await res.json() } catch { /* not JSON */ }
+    const detail = body?.detail
+    const isPaywall = detail && typeof detail === 'object' && detail.paywall === true
+    const message = isPaywall
+      ? (detail.message || 'Plan limit reached')
+      : (typeof detail === 'string' ? detail : `${res.status} ${res.statusText}`)
+    const err = new Error(message)
     err.status = res.status
+    if (isPaywall) err.paywall = detail
     throw err
   }
   if (res.status === 204) return null
@@ -208,6 +221,14 @@ export async function putMeSettingsApi({ anthropicKey, modelDefault } = {}) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
+  return jsonOrThrow(res)
+}
+
+// ---------- plan + usage period (M3.5) ----------
+
+/** Lightweight plan + this-period usage. Drives the sidebar usage bar. */
+export async function getMePlanApi() {
+  const res = await apiFetch('/api/me/plan')
   return jsonOrThrow(res)
 }
 
