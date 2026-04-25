@@ -43,6 +43,13 @@ services:
         sync: false
       - key: CLERK_PUBLISHABLE_KEY
         sync: false
+      # VITE_CLERK_PUBLISHABLE_KEY is *the same value* as CLERK_PUBLISHABLE_KEY
+      # but consumed at frontend BUILD time (Vite bakes it into the JS bundle).
+      # Render auto-exposes service env vars as Docker ARGs; the Dockerfile
+      # picks this up before `npm run build`. Without it, the SPA boots to a
+      # blank page with "Missing VITE_CLERK_PUBLISHABLE_KEY" in the console.
+      - key: VITE_CLERK_PUBLISHABLE_KEY
+        sync: false
       - key: DATABASE_URL
         sync: false
       - key: R2_ACCOUNT_ID

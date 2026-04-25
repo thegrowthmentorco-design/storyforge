@@ -11,6 +11,17 @@ WORKDIR /app/frontend
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
 
+# `frontend/.env` is gitignored, so Render's build server can't read it.
+# Vite resolves `import.meta.env.VITE_*` at build time — if the var isn't
+# in the process env when `npm run build` runs, it bundles as `undefined`
+# and the app crashes on boot ("Missing VITE_CLERK_PUBLISHABLE_KEY").
+#
+# Render auto-exposes service env vars as Docker build ARGs, so we just
+# declare the ARG here and pipe it to ENV before the build step. Locally,
+# you can pass it via `docker build --build-arg VITE_CLERK_PUBLISHABLE_KEY=pk_test_...`.
+ARG VITE_CLERK_PUBLISHABLE_KEY=""
+ENV VITE_CLERK_PUBLISHABLE_KEY=${VITE_CLERK_PUBLISHABLE_KEY}
+
 # Then build
 COPY frontend/ ./
 RUN npm run build
