@@ -126,6 +126,11 @@ class UserSettings(SQLModel, table=True):
     user_id: str = Field(primary_key=True, default="local")
     anthropic_key_encrypted: str | None = Field(default=None)
     model_default: str | None = Field(default=None)
+    # M3.7 first-touch detection. Set to the timestamp we *enqueued* a
+    # welcome email — once non-null we never send again. Stored even on
+    # send failure to prevent retry storms; missing one welcome is cheaper
+    # than spamming users on every request after a transient Resend error.
+    welcome_sent_at: datetime | None = Field(default=None)
     created_at: datetime = Field(default_factory=_utcnow)
     updated_at: datetime = Field(default_factory=_utcnow)
 

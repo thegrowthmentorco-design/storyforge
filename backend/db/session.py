@@ -130,6 +130,15 @@ def _apply_soft_migrations() -> None:
             conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_usage_log_org_id ON usage_log (org_id)")
             conn.commit()
 
+        # ---- user_settings ----
+        us_cols = _columns("user_settings")
+        if "welcome_sent_at" not in us_cols:
+            log.info("migrating: adding user_settings.welcome_sent_at (M3.7)")
+            # No index — we only ever read this column row-by-row via PK lookup.
+            # No DEFAULT — null IS the "not yet sent" signal.
+            conn.exec_driver_sql("ALTER TABLE user_settings ADD COLUMN welcome_sent_at TIMESTAMP")
+            conn.commit()
+
 
 def get_session() -> Generator[Session, None, None]:
     """FastAPI dependency: yields a session that auto-closes after the request."""

@@ -33,6 +33,7 @@ from services.extractions import (
     record_usage,
     save_upload,
 )
+from services.onboarding import welcome_check
 
 MAX_BYTES = 10 * 1024 * 1024  # 10 MB
 SUPPORTED_EXT = {".pdf", ".docx", ".txt", ".md", ".markdown", ".rst"}
@@ -58,9 +59,12 @@ app.add_middleware(
 
 # Router-level auth: every route under /api/extractions, /api/projects, /api/me
 # requires a verified Clerk session. /api/health stays public for infra probes.
-app.include_router(extractions_router.router, dependencies=[Depends(current_user)])
-app.include_router(projects_router.router, dependencies=[Depends(current_user)])
-app.include_router(me_router.router, dependencies=[Depends(current_user)])
+# `welcome_check` piggybacks on the same dependency chain — fires the welcome
+# email exactly once per user, on whichever protected request lands first.
+_protected_deps = [Depends(current_user), Depends(welcome_check)]
+app.include_router(extractions_router.router, dependencies=_protected_deps)
+app.include_router(projects_router.router, dependencies=_protected_deps)
+app.include_router(me_router.router, dependencies=_protected_deps)
 
 
 def _parse_pdf(data: bytes) -> str:
@@ -102,7 +106,7 @@ def health():
     return {"ok": True, "live": bool(os.environ.get("ANTHROPIC_API_KEY"))}
 
 
-@app.post("/api/test-key")
+@app.post("/api/test-key", dependencies=[Depends(welcome_check)])
 def test_key(
     _user: Annotated[CurrentUser, Depends(current_user)],
     x_anthropic_key: str | None = Header(default=None, alias="X-Anthropic-Key"),
@@ -134,7 +138,7 @@ def test_key(
         raise HTTPException(status_code=500, detail=f"Test failed: {e}")
 
 
-@app.post("/api/extract", response_model=ExtractionRecord)
+@app.post("/api/extract", response_model=ExtractionRecord, dependencies=[Depends(welcome_check)])
 async def extract(
     session: Annotated[Session, Depends(get_session)],
     user: Annotated[CurrentUser, Depends(current_user)],
