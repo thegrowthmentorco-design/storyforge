@@ -21,6 +21,7 @@ from sqlmodel import Session
 from auth.deps import CurrentUser, current_user
 from db.session import get_session, init_db
 from models import ExtractionRecord
+from routers import billing as billing_router
 from routers import extractions as extractions_router
 from routers import me as me_router
 from routers import projects as projects_router
@@ -73,6 +74,10 @@ _protected_deps = [Depends(current_user), Depends(welcome_check)]
 app.include_router(extractions_router.router, dependencies=_protected_deps)
 app.include_router(projects_router.router, dependencies=_protected_deps)
 app.include_router(me_router.router, dependencies=_protected_deps)
+# Billing router has its own auth posture: /api/me/* routes require Clerk auth
+# AND the welcome_check, but /api/webhooks/lemonsqueezy is unauthed (signed
+# by LSQ via HMAC). Wired per-route inside the router rather than at this layer.
+app.include_router(billing_router.router)
 
 
 def _parse_pdf(data: bytes) -> str:

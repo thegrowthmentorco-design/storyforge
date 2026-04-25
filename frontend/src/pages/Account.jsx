@@ -1,18 +1,24 @@
 import React, { useEffect, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { UserProfile, useUser } from '@clerk/clerk-react'
 import {
   adoptLegacyApi,
+  createCheckoutApi,
   downloadMeExport,
   getMeLegacyApi,
   getMeUsageApi,
+  getPortalApi,
 } from '../api.js'
+import { useApp } from '../lib/AppContext.jsx'
 import { useToast } from '../components/Toast.jsx'
 import { Badge, Button, Card, IconTile, Spinner } from '../components/primitives.jsx'
 import {
   Activity,
   AlertTriangle,
+  Check,
   Download,
   RefreshCw,
+  Settings as SettingsIcon,
   Sparkles,
   User,
   Zap,
@@ -171,30 +177,224 @@ function UsageSection() {
   )
 }
 
+// M3.6 — Lemon Squeezy plan picker. Reads current plan + subscription state
+// from AppContext (App.jsx fetches /api/me/plan); writes via /api/me/checkout
+// (LSQ hosted checkout) and /api/me/portal (LSQ self-service).
+const PLAN_TIERS = [
+  {
+    id: 'starter',
+    name: 'Starter',
+    monthly: 20,
+    annual: 192,
+    extractions: 25,
+    blurb: 'Sonnet model. 25-page docs. Personal workspace.',
+  },
+  {
+    id: 'pro',
+    name: 'Pro',
+    monthly: 49,
+    annual: 470,
+    extractions: 100,
+    blurb: 'Sonnet + Opus. 50-page docs. Workspace member.',
+    badge: { label: 'Recommended', tone: 'success' },
+  },
+  {
+    id: 'team',
+    name: 'Team',
+    monthly: 99,
+    annual: 950,
+    extractions: 300,
+    blurb: 'All models. 100-page docs. Workspace owner + admin.',
+  },
+]
+
+function fmtDate(iso) {
+  if (!iso) return null
+  return new Date(iso).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+}
+
 function PlanSection() {
+  const { plan, refreshPlan } = useApp()
+  const { toast } = useToast()
+  const [busy, setBusy] = useState(null)  // tier id of in-flight checkout
+  const [portalBusy, setPortalBusy] = useState(false)
+  const [interval, setInterval] = useState('monthly')
+
+  const currentPlan = plan?.plan || 'trial'
+  const hasSub = !!plan?.has_active_subscription
+  const isCanceled = !!plan?.plan_canceled_at
+
+  const onSubscribe = async (tier) => {
+    setBusy(tier)
+    try {
+      const { url } = await createCheckoutApi({ tier, interval })
+      window.location.href = url  // full-page redirect to LSQ
+    } catch (e) {
+      toast.error(e.message || 'Could not start checkout')
+      setBusy(null)
+    }
+  }
+
+  const onManage = async () => {
+    setPortalBusy(true)
+    try {
+      const { url } = await getPortalApi()
+      window.location.href = url
+    } catch (e) {
+      toast.error(e.message || 'Could not load portal')
+      setPortalBusy(false)
+    }
+  }
+
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-        <Badge tone="success" dot>Free trial</Badge>
-        <span style={{ fontSize: 12.5, color: 'var(--text-muted)' }}>
-          No usage limits enforced yet. Pricing tiers + Stripe billing arrive in M3.5/M3.6.
-        </span>
+      {/* Status row */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
+        <Badge
+          tone={
+            hasSub ? (isCanceled ? 'warn' : 'success')
+            : currentPlan === 'expired' ? 'danger'
+            : 'info'
+          }
+          dot
+        >
+          {plan?.plan_name || 'Loading…'}
+        </Badge>
+        {hasSub && plan?.plan_renews_at && !isCanceled && (
+          <span style={{ fontSize: 12.5, color: 'var(--text-muted)' }}>
+            Renews on {fmtDate(plan.plan_renews_at)}
+          </span>
+        )}
+        {hasSub && isCanceled && (
+          <span style={{ fontSize: 12.5, color: 'var(--warn-ink)' }}>
+            Cancellation pending — active until {fmtDate(plan.plan_renews_at)}
+          </span>
+        )}
+        {currentPlan === 'trial' && plan?.trial_ends_at && (
+          <span style={{ fontSize: 12.5, color: 'var(--text-muted)' }}>
+            Trial ends {fmtDate(plan.trial_ends_at)}
+          </span>
+        )}
+        <div style={{ flex: 1 }} />
+        {hasSub && (
+          <Button
+            variant="secondary"
+            size="sm"
+            icon={<SettingsIcon size={13} />}
+            loading={portalBusy}
+            onClick={onManage}
+          >
+            Manage subscription
+          </Button>
+        )}
       </div>
+
+      {/* Billing-interval toggle */}
       <div
         style={{
-          padding: 14,
-          border: '1px dashed var(--border)',
-          borderRadius: 'var(--radius)',
-          background: 'var(--bg-subtle)',
-          fontSize: 12.5,
-          color: 'var(--text-muted)',
+          display: 'inline-flex',
+          padding: 3,
+          background: 'var(--bg-elevated)',
+          border: '1px solid var(--border)',
+          borderRadius: 'var(--radius-pill)',
+          marginBottom: 14,
+          boxShadow: 'var(--shadow-xs)',
+        }}
+      >
+        {[
+          { id: 'monthly', label: 'Monthly' },
+          { id: 'annual', label: 'Annual' },
+        ].map((opt) => (
+          <button
+            key={opt.id}
+            type="button"
+            onClick={() => setInterval(opt.id)}
+            style={{
+              padding: '5px 12px',
+              borderRadius: 'var(--radius-pill)',
+              fontSize: 12,
+              fontWeight: 500,
+              color: interval === opt.id ? 'var(--text-strong)' : 'var(--text-muted)',
+              background: interval === opt.id ? 'var(--bg-subtle)' : 'transparent',
+              border: 'none',
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+            }}
+          >
+            {opt.label}
+            {opt.id === 'annual' && (
+              <span style={{ marginLeft: 5, fontSize: 10.5, color: 'var(--success-ink)', fontWeight: 600 }}>
+                save 20%
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {/* Tier cards */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {PLAN_TIERS.map((t) => {
+          const isCurrent = currentPlan === t.id && hasSub
+          const price = interval === 'annual' ? t.annual : t.monthly
+          const priceLabel = interval === 'annual' ? `$${price}/yr` : `$${price}/mo`
+          return (
+            <div
+              key={t.id}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 14,
+                padding: 14,
+                border: `1px solid ${isCurrent ? 'var(--accent)' : 'var(--border)'}`,
+                borderRadius: 'var(--radius)',
+                background: isCurrent ? 'var(--accent-soft)' : 'var(--bg-elevated)',
+                boxShadow: isCurrent ? '0 0 0 1px var(--accent), var(--shadow-xs)' : 'var(--shadow-xs)',
+              }}
+            >
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-strong)' }}>{t.name}</span>
+                  <span style={{ fontSize: 13, color: 'var(--text-strong)', fontFamily: 'var(--font-mono)' }}>{priceLabel}</span>
+                  {t.badge && (
+                    <Badge tone={t.badge.tone} size="sm">{t.badge.label}</Badge>
+                  )}
+                  {isCurrent && (
+                    <Badge tone="accent" icon={<Check size={11} />} size="sm">Current</Badge>
+                  )}
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                  <strong style={{ color: 'var(--text)' }}>{t.extractions} extractions/mo</strong>
+                  {' · '}{t.blurb}
+                </div>
+              </div>
+              {!isCurrent && (
+                <Button
+                  variant={t.id === 'pro' ? 'primary' : 'secondary'}
+                  size="sm"
+                  loading={busy === t.id}
+                  onClick={() => onSubscribe(t.id)}
+                  disabled={busy !== null}
+                >
+                  {busy === t.id ? 'Loading…' : (hasSub ? 'Switch' : 'Subscribe')}
+                </Button>
+              )}
+            </div>
+          )
+        })}
+      </div>
+
+      <p
+        style={{
+          fontSize: 11.5,
+          color: 'var(--text-soft)',
+          marginTop: 14,
           lineHeight: 1.55,
         }}
       >
-        Until billing is live, every extraction runs at <strong style={{ color: 'var(--text-strong)' }}>at-cost</strong>:
-        you pay Anthropic directly via your saved BYOK key, and we don't add a markup. The
-        usage card above shows what you've spent.
-      </div>
+        Billing handled by Lemon Squeezy as Merchant of Record — they collect VAT/GST in your jurisdiction
+        and provide proper tax invoices. Cancel anytime via "Manage subscription"; access continues until your
+        renewal date.
+      </p>
     </div>
   )
 }
@@ -302,6 +502,23 @@ function Section({ icon, tone, title, description, children }) {
 
 export default function Account() {
   const { user, isLoaded } = useUser()
+  const { refreshPlan } = useApp()
+  const { toast } = useToast()
+  const location = useLocation()
+  const navigate = useNavigate()
+
+  // M3.6 — LSQ redirects back to /account?checkout=success after payment.
+  // Webhook flips user_settings.plan ~immediately; we just need to re-fetch
+  // and tell the user. Strip the query so a refresh doesn't re-toast.
+  useEffect(() => {
+    const params = new URLSearchParams(location.search)
+    if (params.get('checkout') === 'success') {
+      toast.success('Subscription active — welcome aboard!')
+      refreshPlan()
+      navigate('/account', { replace: true })
+    }
+  }, [location.search, refreshPlan, toast, navigate])
+
   return (
     <div
       style={{

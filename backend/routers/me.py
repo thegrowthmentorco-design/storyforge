@@ -157,6 +157,10 @@ def get_plan_summary(session: SessionDep, user: UserDep) -> PlanRead:
         trial_ends_at=settings.trial_ends_at if settings else None,
         period_resets_at=period_resets_at,
         period_label=plan.period_label,
+        # M3.6 — surface LSQ subscription state for the Account billing UI
+        plan_renews_at=settings.plan_renews_at if settings else None,
+        plan_canceled_at=settings.plan_canceled_at if settings else None,
+        has_active_subscription=bool(settings and settings.lsq_subscription_id),
     )
 
 

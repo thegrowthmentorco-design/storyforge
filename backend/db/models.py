@@ -140,6 +140,16 @@ class UserSettings(SQLModel, table=True):
     # cleared (or ignored) when plan transitions to a paid tier. Used by the
     # gate to throw a "trial_expired" paywall once we pass it.
     trial_ends_at: datetime | None = Field(default=None)
+    # M3.6 — Lemon Squeezy linkage. Customer is persistent across subs (one
+    # per user); subscription is the *current* active sub (one at a time —
+    # we don't support multiple stacked subs in v1). Both nullable for users
+    # who haven't subscribed yet.
+    lsq_customer_id: str | None = Field(default=None, index=True)
+    lsq_subscription_id: str | None = Field(default=None, index=True)
+    # Renewal date from LSQ; lets the Account page show "renews on …".
+    plan_renews_at: datetime | None = Field(default=None)
+    # Set when user clicks "cancel" — sub stays active until renews_at.
+    plan_canceled_at: datetime | None = Field(default=None)
     created_at: datetime = Field(default_factory=_utcnow)
     updated_at: datetime = Field(default_factory=_utcnow)
 

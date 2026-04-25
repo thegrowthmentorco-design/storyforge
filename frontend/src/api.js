@@ -232,6 +232,26 @@ export async function getMePlanApi() {
   return jsonOrThrow(res)
 }
 
+// ---------- billing: checkout + portal (M3.6) ----------
+
+/** Mint a Lemon Squeezy hosted-checkout URL for the current user.
+ *  Frontend window.location's to the returned URL — LSQ takes it from there. */
+export async function createCheckoutApi({ tier, interval = 'monthly' }) {
+  const res = await apiFetch('/api/me/checkout', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tier, interval }),
+  })
+  return jsonOrThrow(res)  // { url }
+}
+
+/** Get the LSQ customer-portal URL — manage card / cancel / view invoices.
+ *  404 if user has never subscribed; caller should hide the entry point in that case. */
+export async function getPortalApi() {
+  const res = await apiFetch('/api/me/portal')
+  return jsonOrThrow(res)  // { url }
+}
+
 // ---------- account: usage + legacy + export (M3.8) ----------
 
 /** Usage aggregates: this_month, all_time, by_model, last_extraction_at. */

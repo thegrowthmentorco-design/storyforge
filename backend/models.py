@@ -246,6 +246,28 @@ class PlanRead(BaseModel):
     trial_ends_at: datetime | None
     period_resets_at: datetime | None
     period_label: str
+    # M3.6 — LSQ subscription state. None when on trial/expired.
+    plan_renews_at: datetime | None = None
+    plan_canceled_at: datetime | None = None
+    has_active_subscription: bool = False
+
+
+class CheckoutRequest(BaseModel):
+    """POST /api/me/checkout body — frontend tells us which tier+interval
+    the user picked from the paywall modal or pricing page."""
+    model_config = ConfigDict(extra="forbid")
+    tier: Literal["starter", "pro", "team"]
+    interval: Literal["monthly", "annual"]
+
+
+class CheckoutResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    url: str  # LSQ-hosted checkout URL — frontend window.location to it
+
+
+class PortalResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    url: str  # LSQ customer-portal URL for self-serve management
 
 
 # ----- Versions (M2.6) -----

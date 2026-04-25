@@ -1,5 +1,7 @@
-import React, { useEffect } from 'react'
+import React, { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { createCheckoutApi } from '../api.js'
+import { useToast } from './Toast.jsx'
 import { Badge, Button, Card, IconTile } from './primitives.jsx'
 import { AlertTriangle, Sparkles, X, Zap } from './icons.jsx'
 
@@ -46,6 +48,8 @@ const REASON_META = {
 
 export default function PaywallModal({ paywall, onClose }) {
   const navigate = useNavigate()
+  const { toast } = useToast()
+  const [busy, setBusy] = useState(false)
 
   useEffect(() => {
     if (!paywall) return
@@ -57,6 +61,23 @@ export default function PaywallModal({ paywall, onClose }) {
   if (!paywall) return null
 
   const meta = REASON_META[paywall.reason] || REASON_META.monthly_limit
+
+  // M3.6: clicking Upgrade routes through Lemon Squeezy hosted checkout.
+  // We mint the URL via /api/me/checkout (which carries our user_id in
+  // custom_data so the webhook can map sub→user) then full-page navigate
+  // — no popup, no iframe, no CSP gymnastics. The /account?checkout=success
+  // redirect comes back into the SPA after payment.
+  const handleUpgrade = async () => {
+    if (!paywall.upgrade_to || busy) return
+    setBusy(true)
+    try {
+      const { url } = await createCheckoutApi({ tier: paywall.upgrade_to, interval: 'monthly' })
+      window.location.href = url
+    } catch (e) {
+      toast.error(e.message || 'Could not start checkout')
+      setBusy(false)
+    }
+  }
 
   return (
     <>
@@ -171,15 +192,24 @@ export default function PaywallModal({ paywall, onClose }) {
 
           {/* Actions */}
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-            <Button variant="ghost" size="sm" onClick={onClose}>Not now</Button>
+            <Button variant="ghost" size="sm" onClick={onClose} disabled={busy}>Not now</Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => { onClose(); navigate('/account') }}
+              disabled={busy}
+            >
+              See all plans
+            </Button>
             {paywall.upgrade_to && (
               <Button
                 variant="primary"
                 size="sm"
                 icon={<Zap size={13} />}
-                onClick={() => { onClose(); navigate('/account') }}
+                loading={busy}
+                onClick={handleUpgrade}
               >
-                Upgrade to {paywall.upgrade_to.replace(/^./, c => c.toUpperCase())}
+                {busy ? 'Loading…' : `Upgrade to ${paywall.upgrade_to.replace(/^./, c => c.toUpperCase())}`}
               </Button>
             )}
           </div>

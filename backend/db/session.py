@@ -149,6 +149,24 @@ def _apply_soft_migrations() -> None:
             log.info("migrating: adding user_settings.trial_ends_at (M3.5)")
             conn.exec_driver_sql("ALTER TABLE user_settings ADD COLUMN trial_ends_at TIMESTAMP")
             conn.commit()
+        if "lsq_customer_id" not in us_cols:
+            log.info("migrating: adding user_settings.lsq_customer_id (M3.6)")
+            conn.exec_driver_sql("ALTER TABLE user_settings ADD COLUMN lsq_customer_id VARCHAR")
+            conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_user_settings_lsq_customer_id ON user_settings (lsq_customer_id)")
+            conn.commit()
+        if "lsq_subscription_id" not in us_cols:
+            log.info("migrating: adding user_settings.lsq_subscription_id (M3.6)")
+            conn.exec_driver_sql("ALTER TABLE user_settings ADD COLUMN lsq_subscription_id VARCHAR")
+            conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_user_settings_lsq_subscription_id ON user_settings (lsq_subscription_id)")
+            conn.commit()
+        if "plan_renews_at" not in us_cols:
+            log.info("migrating: adding user_settings.plan_renews_at (M3.6)")
+            conn.exec_driver_sql("ALTER TABLE user_settings ADD COLUMN plan_renews_at TIMESTAMP")
+            conn.commit()
+        if "plan_canceled_at" not in us_cols:
+            log.info("migrating: adding user_settings.plan_canceled_at (M3.6)")
+            conn.exec_driver_sql("ALTER TABLE user_settings ADD COLUMN plan_canceled_at TIMESTAMP")
+            conn.commit()
 
 
 def get_session() -> Generator[Session, None, None]:
