@@ -301,6 +301,19 @@ export const Copy = (p) => (
   </I>
 )
 
+/* Six-dot vertical drag grip — Lucide-style. Used as the drag handle on
+ * sortable story cards (M4.2). */
+export const GripVertical = (p) => (
+  <I {...p}>
+    <circle cx="9" cy="6" r="1.2" />
+    <circle cx="9" cy="12" r="1.2" />
+    <circle cx="9" cy="18" r="1.2" />
+    <circle cx="15" cy="6" r="1.2" />
+    <circle cx="15" cy="12" r="1.2" />
+    <circle cx="15" cy="18" r="1.2" />
+  </I>
+)
+
 export const MoreHorizontal = (p) => (
   <I {...p}>
     <circle cx="12" cy="12" r="1.2" />

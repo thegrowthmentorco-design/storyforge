@@ -1,4 +1,18 @@
 import React, { useEffect, useRef, useState } from 'react'
+import {
+  DndContext,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core'
+import {
+  SortableContext,
+  arrayMove,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import { copyToClipboard } from '../lib/clipboard.js'
 import { useToast } from './Toast.jsx'
 import { Badge, Card, IconTile } from './primitives.jsx'
@@ -16,6 +30,7 @@ import {
   Check,
   ChevronRight,
   Copy,
+  GripVertical,
   User,
 } from './icons.jsx'
 
@@ -114,9 +129,10 @@ function SourceQuote({ text, compact = false, onPick }) {
   )
 }
 
-function StoryCard({ story, idx, onCopy, onPickQuote, onUpdate, onRemove }) {
+function StoryCard({ story, idx, onCopy, onPickQuote, onUpdate, onRemove, dragHandleProps, isDragging }) {
   const editable = typeof onUpdate === 'function'
   const removable = typeof onRemove === 'function'
+  const draggable = !!dragHandleProps
   const update = (patch) => onUpdate?.({ ...story, ...patch })
   return (
     <Card
@@ -124,10 +140,43 @@ function StoryCard({ story, idx, onCopy, onPickQuote, onUpdate, onRemove }) {
       padding={16}
       className="has-action"
       style={{
-        animation: `fade-in .3s ease-out ${Math.min(idx * 60, 600)}ms both`,
+        // Fade-in only on first render of an existing list — suppress for the
+        // dragging item (DnD applies its own transform, fade competes).
+        animation: isDragging ? 'none' : `fade-in .3s ease-out ${Math.min(idx * 60, 600)}ms both`,
         position: 'relative',
+        // Make room for the drag grip on the left when sortable.
+        paddingLeft: draggable ? 28 : 16,
       }}
     >
+      {/* Drag grip — hover-revealed via .has-action class. Only present when
+       *  the parent wired drag handlers (M4.2). cursor:grab so users know
+       *  it's interactive without a tooltip; cursor:grabbing while dragging. */}
+      {draggable && (
+        <button
+          type="button"
+          className="row-action"
+          aria-label={`Drag to reorder ${story.id}`}
+          title="Drag to reorder"
+          {...dragHandleProps}
+          style={{
+            position: 'absolute',
+            top: 16,
+            left: 8,
+            background: 'transparent',
+            border: 'none',
+            padding: 2,
+            color: 'var(--text-soft)',
+            cursor: isDragging ? 'grabbing' : 'grab',
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            touchAction: 'none',
+          }}
+        >
+          <GripVertical size={14} />
+        </button>
+      )}
+
       {/* Hover-revealed action cluster: copy + (delete when editable). */}
       <div
         style={{
@@ -346,6 +395,87 @@ function StoryCard({ story, idx, onCopy, onPickQuote, onUpdate, onRemove }) {
         </div>
       )}
     </Card>
+  )
+}
+
+/* M4.2 — sortable wrappers around StoryCard. We split into "list" + "item"
+ * so the DndContext / SortableContext live at the list level and the
+ * useSortable hook lives in each item.
+ *
+ * Why a wrapper instead of plumbing useSortable directly into StoryCard?
+ * Two reasons:
+ *   1. Read-only renders of StoryCard (legacy / share-link) shouldn't pull
+ *      in @dnd-kit at all — keeping the hook out keeps the read path lean.
+ *   2. The drag handle is a button INSIDE the card; useSortable needs to
+ *      attribute the listeners to that node, not the card root, so we pass
+ *      `listeners` down as `dragHandleProps`.
+ *
+ * `key` on items must be the story.id (also used as the sortable id) so
+ * DnD can reorder without React re-mounting the wrong element. We rely on
+ * extracted/added stories carrying unique US-NN ids — collisions would
+ * cause both visual flicker and a "duplicate id" warning. */
+function SortableStoryItem({ story, idx, onCopy, onPickQuote, updateStory, removeStory }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: story.id,
+  })
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.4 : 1,
+    zIndex: isDragging ? 5 : 'auto',
+  }
+  return (
+    <div ref={setNodeRef} style={style} {...attributes}>
+      <StoryCard
+        story={story}
+        idx={idx}
+        onCopy={onCopy}
+        onPickQuote={onPickQuote}
+        onUpdate={(next) => updateStory(idx, next)}
+        onRemove={() => removeStory(idx)}
+        dragHandleProps={listeners}
+        isDragging={isDragging}
+      />
+    </div>
+  )
+}
+
+function SortableStoryList({ stories, onReorder, onCopy, onPickQuote, updateStory, removeStory }) {
+  // PointerSensor with a small distance threshold so a click on the grip
+  // doesn't immediately start a drag (would conflict with the click-to-edit
+  // primitives nested inside the card).
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+  )
+  const ids = stories.map((s) => s.id)
+
+  const handleDragEnd = (event) => {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+    const oldIdx = ids.indexOf(active.id)
+    const newIdx = ids.indexOf(over.id)
+    if (oldIdx === -1 || newIdx === -1) return
+    onReorder(arrayMove(stories, oldIdx, newIdx))
+  }
+
+  return (
+    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+      <SortableContext items={ids} strategy={verticalListSortingStrategy}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {stories.map((s, i) => (
+            <SortableStoryItem
+              key={s.id}
+              story={s}
+              idx={i}
+              onCopy={onCopy}
+              onPickQuote={onPickQuote}
+              updateStory={updateStory}
+              removeStory={removeStory}
+            />
+          ))}
+        </div>
+      </SortableContext>
+    </DndContext>
   )
 }
 
@@ -702,19 +832,28 @@ export default function ArtifactsPane({ extraction, onPickQuote, onUpdate, onReg
           }
         />
         {extraction.stories.length ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {extraction.stories.map((s, i) => (
-              <StoryCard
-                key={s.id}
-                story={s}
-                idx={i}
-                onCopy={onCopyStory}
-                onPickQuote={onPickQuote}
-                onUpdate={editable ? (next) => updateStory(i, next) : undefined}
-                onRemove={editable ? () => removeStory(i) : undefined}
-              />
-            ))}
-          </div>
+          editable ? (
+            <SortableStoryList
+              stories={extraction.stories}
+              onReorder={(next) => onUpdate({ stories: next })}
+              onCopy={onCopyStory}
+              onPickQuote={onPickQuote}
+              updateStory={updateStory}
+              removeStory={removeStory}
+            />
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {extraction.stories.map((s, i) => (
+                <StoryCard
+                  key={s.id}
+                  story={s}
+                  idx={i}
+                  onCopy={onCopyStory}
+                  onPickQuote={onPickQuote}
+                />
+              ))}
+            </div>
+          )
         ) : (
           !editable && <EmptySection label="No user stories extracted." />
         )}
