@@ -66,11 +66,12 @@ function ActionDot() {
   return <span style={{ color: 'var(--text-soft)', fontSize: 11.5 }}>·</span>
 }
 
-function GapCard({ gap, idx, state, onResolve, onIgnore, onAsk, onReopen, onCopy, onPickQuote, onUpdate }) {
+function GapCard({ gap, idx, state, onResolve, onIgnore, onAsk, onReopen, onCopy, onPickQuote, onUpdate, onRemove }) {
   const meta = SEVERITY_META[gap.severity] || SEVERITY_META.low
   const isResolved = !!state?.resolved
   const wasAsked = !!state?.askedAt
   const editable = typeof onUpdate === 'function'
+  const removable = typeof onRemove === 'function'
   const update = (patch) => onUpdate?.({ ...gap, ...patch })
 
   return (
@@ -84,31 +85,64 @@ function GapCard({ gap, idx, state, onResolve, onIgnore, onAsk, onReopen, onCopy
         position: 'relative',
       }}
     >
-      {/* Floating copy button — hover-revealed via .has-action class */}
-      <button
-        type="button"
-        className="row-action"
-        aria-label="Copy gap as markdown"
-        title="Copy as markdown"
-        onClick={() => onCopy(gap)}
+      {/* Floating action cluster — copy + (delete when editable). */}
+      <div
         style={{
           position: 'absolute',
           top: 10,
           right: 10,
-          background: 'transparent',
-          border: 'none',
-          padding: 5,
-          borderRadius: 'var(--radius-sm)',
-          color: 'var(--text-muted)',
-          cursor: 'pointer',
-          display: 'inline-flex',
-          alignItems: 'center',
-          justifyContent: 'center',
+          display: 'flex',
+          gap: 2,
           zIndex: 1,
         }}
       >
-        <Copy size={13} />
-      </button>
+        <button
+          type="button"
+          className="row-action"
+          aria-label="Copy gap as markdown"
+          title="Copy as markdown"
+          onClick={() => onCopy(gap)}
+          style={{
+            background: 'transparent',
+            border: 'none',
+            padding: 5,
+            borderRadius: 'var(--radius-sm)',
+            color: 'var(--text-muted)',
+            cursor: 'pointer',
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Copy size={13} />
+        </button>
+        {removable && (
+          <button
+            type="button"
+            className="row-action"
+            aria-label="Delete gap"
+            title="Delete gap"
+            onClick={() => {
+              if (window.confirm('Delete this gap?')) onRemove()
+            }}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              padding: 5,
+              borderRadius: 'var(--radius-sm)',
+              color: 'var(--text-muted)',
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: 16,
+              lineHeight: 1,
+            }}
+          >
+            ×
+          </button>
+        )}
+      </div>
 
       {/* Header row: severity badge + section ref. Severity becomes a
        *  picklist when editable; section becomes a text field. */}
@@ -296,6 +330,20 @@ export default function GapsRail({ gaps = [], extractionId, onPickQuote, onUpdat
     const arr = [...gaps]
     arr[i] = next
     onUpdate(arr)
+  }
+  // M4.3 — add a fresh gap (medium severity, empty fields). User clicks
+  // each placeholder to fill in.
+  const addGap = () => {
+    if (!editable) return
+    const newGap = { severity: 'med', question: '', section: '', context: '', source_quote: '' }
+    onUpdate([...gaps, newGap])
+  }
+  // M4.3 — delete a gap entirely. The existing "ignored" state is for
+  // dismissing without removing; this is the harder destructive case
+  // (e.g. a gap was added by mistake or the model hallucinated it).
+  const removeGap = (i) => {
+    if (!editable) return
+    onUpdate(gaps.filter((_, idx) => idx !== i))
   }
   const { toast } = useToast()
   const [states, setStates] = useState({})
@@ -565,8 +613,42 @@ export default function GapsRail({ gaps = [], extractionId, onPickQuote, onUpdat
             onCopy={onCopy}
             onPickQuote={onPickQuote}
             onUpdate={editable ? (next) => updateGap(idx, next) : undefined}
+            onRemove={editable ? () => removeGap(idx) : undefined}
           />
         ))}
+
+        {/* M4.3 — append a fresh gap. Lives inside the active list so it's
+         * visually grouped with the open work; we don't add to ignored or
+         * resolved buckets. */}
+        {editable && (
+          <button
+            type="button"
+            onClick={addGap}
+            style={{
+              marginTop: 8,
+              background: 'transparent',
+              border: '1px dashed var(--border-strong)',
+              borderRadius: 'var(--radius)',
+              color: 'var(--accent-strong)',
+              cursor: 'pointer',
+              fontSize: 12.5,
+              fontWeight: 500,
+              padding: '8px 14px',
+              fontFamily: 'inherit',
+              transition: 'background .12s, border-color .12s',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'var(--accent-soft)'
+              e.currentTarget.style.borderColor = 'var(--accent)'
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'transparent'
+              e.currentTarget.style.borderColor = 'var(--border-strong)'
+            }}
+          >
+            + Add gap
+          </button>
+        )}
 
         {filteredActive.length === 0 && active.length > 0 && (
           <div
