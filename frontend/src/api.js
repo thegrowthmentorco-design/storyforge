@@ -341,8 +341,11 @@ export async function putJiraConnectionApi(body) {
 }
 
 /** Delete the saved Jira connection. */
-export async function deleteJiraConnectionApi() {
-  const res = await apiFetch('/api/integrations/jira/connection', { method: 'DELETE' })
+export async function deleteJiraConnectionApi({ scope = 'user' } = {}) {
+  const res = await apiFetch(
+    `/api/integrations/jira/connection?scope=${encodeURIComponent(scope)}`,
+    { method: 'DELETE' },
+  )
   if (!res.ok) await jsonOrThrow(res)
   return null
 }
@@ -389,8 +392,11 @@ export async function putLinearConnectionApi(body) {
   return jsonOrThrow(res)
 }
 
-export async function deleteLinearConnectionApi() {
-  const res = await apiFetch('/api/integrations/linear/connection', { method: 'DELETE' })
+export async function deleteLinearConnectionApi({ scope = 'user' } = {}) {
+  const res = await apiFetch(
+    `/api/integrations/linear/connection?scope=${encodeURIComponent(scope)}`,
+    { method: 'DELETE' },
+  )
   if (!res.ok) await jsonOrThrow(res)
   return null
 }
@@ -429,8 +435,11 @@ export async function putGitHubConnectionApi(body) {
   return jsonOrThrow(res)
 }
 
-export async function deleteGitHubConnectionApi() {
-  const res = await apiFetch('/api/integrations/github/connection', { method: 'DELETE' })
+export async function deleteGitHubConnectionApi({ scope = 'user' } = {}) {
+  const res = await apiFetch(
+    `/api/integrations/github/connection?scope=${encodeURIComponent(scope)}`,
+    { method: 'DELETE' },
+  )
   if (!res.ok) await jsonOrThrow(res)
   return null
 }
@@ -468,8 +477,11 @@ export async function putSlackConnectionApi(body) {
   return jsonOrThrow(res)
 }
 
-export async function deleteSlackConnectionApi() {
-  const res = await apiFetch('/api/integrations/slack/connection', { method: 'DELETE' })
+export async function deleteSlackConnectionApi({ scope = 'user' } = {}) {
+  const res = await apiFetch(
+    `/api/integrations/slack/connection?scope=${encodeURIComponent(scope)}`,
+    { method: 'DELETE' },
+  )
   if (!res.ok) await jsonOrThrow(res)
   return null
 }
@@ -502,8 +514,11 @@ export async function putNotionConnectionApi(body) {
   return jsonOrThrow(res)
 }
 
-export async function deleteNotionConnectionApi() {
-  const res = await apiFetch('/api/integrations/notion/connection', { method: 'DELETE' })
+export async function deleteNotionConnectionApi({ scope = 'user' } = {}) {
+  const res = await apiFetch(
+    `/api/integrations/notion/connection?scope=${encodeURIComponent(scope)}`,
+    { method: 'DELETE' },
+  )
   if (!res.ok) await jsonOrThrow(res)
   return null
 }

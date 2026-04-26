@@ -512,6 +512,61 @@ function ApiKeyForm({ keySet, keyPreview, onSaved }) {
   )
 }
 
+/* M6.2.c — scope picker shared by all 5 connection forms. Only renders
+ * the toggle when the user has an active workspace context (otherwise
+ * personal is the only option and the UI is silent about it).
+ *
+ *   const { scope, setScope, picker, badge } = useConnectionScope(conn?.scope)
+ *
+ *   // form mode: drop {picker} above Save
+ *   // connected display: drop {badge} next to the title
+ */
+function useConnectionScope(initialScope) {
+  const { organization } = useOrganization()
+  const orgName = organization?.name
+  const [scope, setScope] = useState(initialScope || 'user')
+
+  // When the saved connection's scope changes (eg after a fresh GET),
+  // sync the local state — but only if the caller is *not* mid-edit
+  // (which would clobber the user's pending choice). Caller controls
+  // by passing a key/effect; here we just track the prop.
+  useEffect(() => {
+    if (initialScope) setScope(initialScope)
+  }, [initialScope])
+
+  const picker = !organization ? null : (
+    <label
+      style={{
+        display: 'flex', alignItems: 'flex-start', gap: 8,
+        fontSize: 12.5, color: 'var(--text)', userSelect: 'none',
+        margin: '4px 0',
+      }}
+    >
+      <input
+        type="checkbox"
+        checked={scope === 'org'}
+        onChange={(e) => setScope(e.target.checked ? 'org' : 'user')}
+        style={{ marginTop: 2 }}
+      />
+      <span>
+        Share with workspace <strong>{orgName}</strong>
+        <div style={{ fontSize: 11.5, color: 'var(--text-soft)', marginTop: 2 }}>
+          Every member can use this connection. Members with their own
+          personal connection keep using theirs.
+        </div>
+      </span>
+    </label>
+  )
+
+  const badge = (
+    <Badge tone={scope === 'org' ? 'info' : 'neutral'} size="sm">
+      {scope === 'org' ? `Workspace · ${orgName || 'org'}` : 'Personal'}
+    </Badge>
+  )
+
+  return { scope, setScope, picker, badge }
+}
+
 /* M6.2 — Jira connection form. Two states: not-connected (full form
  * with Connect + Cancel) and connected (preview row with Test + Edit
  * + Disconnect). Edit puts us back in form mode with the existing
@@ -523,6 +578,7 @@ function JiraConnectionForm() {
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState(false) // form open
   const [busy, setBusy] = useState(false)
+  const { scope, picker: scopePicker, badge: scopeBadge } = useConnectionScope(conn?.scope)
 
   // Form fields (only used while editing)
   const [baseUrl, setBaseUrl] = useState('')
@@ -561,6 +617,7 @@ function JiraConnectionForm() {
         base_url: baseUrl.trim(),
         email: email.trim(),
         api_token: token.trim(),
+        scope,   // M6.2.c
       })
       setConn(c)
       setEditing(false)
@@ -589,7 +646,10 @@ function JiraConnectionForm() {
     if (!window.confirm('Disconnect Jira? You can reconnect any time.')) return
     setBusy(true)
     try {
-      await deleteJiraConnectionApi()
+      // M6.2.c — disconnect at the connection's actual scope (a personal
+      // disconnect must not delete the workspace's shared connection,
+      // and vice versa).
+      await deleteJiraConnectionApi({ scope: conn?.scope || 'user' })
       setConn(null)
       toast.success('Jira disconnected')
     } catch (e) {
@@ -610,6 +670,7 @@ function JiraConnectionForm() {
   if (conn && !editing) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{ marginBottom: 2 }}>{scopeBadge}</div>
         <div style={{ display: 'grid', gridTemplateColumns: '90px 1fr', gap: '4px 12px', fontSize: 13 }}>
           <div style={{ color: 'var(--text-soft)' }}>URL</div>
           <div style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-strong)' }}>{conn.base_url}</div>
@@ -671,6 +732,7 @@ function JiraConnectionForm() {
         disabled={busy}
         style={inputStyle}
       />
+      {scopePicker}
       <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
         <Button variant="primary" size="sm" onClick={save} disabled={busy}>
           {busy ? 'Saving…' : conn ? 'Save changes' : 'Connect'}
@@ -693,6 +755,7 @@ function LinearConnectionForm() {
   const [editing, setEditing] = useState(false)
   const [busy, setBusy] = useState(false)
   const [token, setToken] = useState('')
+  const { scope, picker: scopePicker, badge: scopeBadge } = useConnectionScope(conn?.scope)
 
   useEffect(() => {
     let alive = true
@@ -714,7 +777,7 @@ function LinearConnectionForm() {
     }
     setBusy(true)
     try {
-      const c = await putLinearConnectionApi({ api_key: token.trim() })
+      const c = await putLinearConnectionApi({ api_key: token.trim(), scope })
       setConn(c)
       setEditing(false)
       setToken('')
@@ -742,7 +805,7 @@ function LinearConnectionForm() {
     if (!window.confirm('Disconnect Linear? You can reconnect any time.')) return
     setBusy(true)
     try {
-      await deleteLinearConnectionApi()
+      await deleteLinearConnectionApi({ scope: conn?.scope || 'user' })
       setConn(null)
       toast.success('Linear disconnected')
     } catch (e) {
@@ -763,6 +826,7 @@ function LinearConnectionForm() {
   if (conn && !editing) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div>{scopeBadge}</div>
         <div style={{ display: 'grid', gridTemplateColumns: '90px 1fr', gap: '4px 12px', fontSize: 13 }}>
           <div style={{ color: 'var(--text-soft)' }}>API key</div>
           <div style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>{conn.api_key_preview}</div>
@@ -801,6 +865,7 @@ function LinearConnectionForm() {
         disabled={busy}
         style={inputStyle}
       />
+      {scopePicker}
       <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
         <Button variant="primary" size="sm" onClick={save} disabled={busy}>
           {busy ? 'Saving…' : conn ? 'Save changes' : 'Connect'}
@@ -823,6 +888,7 @@ function GitHubConnectionForm() {
   const [editing, setEditing] = useState(false)
   const [busy, setBusy] = useState(false)
   const [token, setToken] = useState('')
+  const { scope, picker: scopePicker, badge: scopeBadge } = useConnectionScope(conn?.scope)
 
   useEffect(() => {
     let alive = true
@@ -844,7 +910,7 @@ function GitHubConnectionForm() {
     }
     setBusy(true)
     try {
-      const c = await putGitHubConnectionApi({ api_token: token.trim() })
+      const c = await putGitHubConnectionApi({ api_token: token.trim(), scope })
       setConn(c)
       setEditing(false)
       setToken('')
@@ -872,7 +938,7 @@ function GitHubConnectionForm() {
     if (!window.confirm('Disconnect GitHub? You can reconnect any time.')) return
     setBusy(true)
     try {
-      await deleteGitHubConnectionApi()
+      await deleteGitHubConnectionApi({ scope: conn?.scope || 'user' })
       setConn(null)
       toast.success('GitHub disconnected')
     } catch (e) {
@@ -893,6 +959,7 @@ function GitHubConnectionForm() {
   if (conn && !editing) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div>{scopeBadge}</div>
         <div style={{ display: 'grid', gridTemplateColumns: '90px 1fr', gap: '4px 12px', fontSize: 13 }}>
           <div style={{ color: 'var(--text-soft)' }}>Token</div>
           <div style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>{conn.api_token_preview}</div>
@@ -931,6 +998,7 @@ function GitHubConnectionForm() {
         disabled={busy}
         style={inputStyle}
       />
+      {scopePicker}
       <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
         <Button variant="primary" size="sm" onClick={save} disabled={busy}>
           {busy ? 'Saving…' : conn ? 'Save changes' : 'Connect'}
@@ -956,6 +1024,7 @@ function SlackConnectionForm() {
   const [busy, setBusy] = useState(false)
   const [url, setUrl] = useState('')
   const [label, setLabel] = useState('')
+  const { scope, picker: scopePicker, badge: scopeBadge } = useConnectionScope(conn?.scope)
 
   useEffect(() => {
     let alive = true
@@ -984,6 +1053,7 @@ function SlackConnectionForm() {
       const c = await putSlackConnectionApi({
         webhook_url: url.trim(),
         channel_label: label.trim() || null,
+        scope,
       })
       setConn(c)
       setEditing(false)
@@ -1000,7 +1070,7 @@ function SlackConnectionForm() {
     if (!window.confirm('Disconnect Slack? You can reconnect any time.')) return
     setBusy(true)
     try {
-      await deleteSlackConnectionApi()
+      await deleteSlackConnectionApi({ scope: conn?.scope || 'user' })
       setConn(null)
       toast.success('Slack disconnected')
     } catch (e) {
@@ -1021,6 +1091,7 @@ function SlackConnectionForm() {
   if (conn && !editing) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div>{scopeBadge}</div>
         <div style={{ display: 'grid', gridTemplateColumns: '90px 1fr', gap: '4px 12px', fontSize: 13 }}>
           <div style={{ color: 'var(--text-soft)' }}>Webhook</div>
           <div style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-muted)', wordBreak: 'break-all' }}>
@@ -1074,6 +1145,7 @@ function SlackConnectionForm() {
         disabled={busy}
         style={inputStyle}
       />
+      {scopePicker}
       <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
         <Button variant="primary" size="sm" onClick={save} disabled={busy}>
           {busy ? 'Saving…' : conn ? 'Save changes' : 'Connect'}
@@ -1097,6 +1169,7 @@ function NotionConnectionForm() {
   const [editing, setEditing] = useState(false)
   const [busy, setBusy] = useState(false)
   const [token, setToken] = useState('')
+  const { scope, picker: scopePicker, badge: scopeBadge } = useConnectionScope(conn?.scope)
 
   useEffect(() => {
     let alive = true
@@ -1118,7 +1191,7 @@ function NotionConnectionForm() {
     }
     setBusy(true)
     try {
-      const c = await putNotionConnectionApi({ token: token.trim() })
+      const c = await putNotionConnectionApi({ token: token.trim(), scope })
       setConn(c)
       setEditing(false)
       setToken('')
@@ -1150,7 +1223,7 @@ function NotionConnectionForm() {
     if (!window.confirm('Disconnect Notion? You can reconnect any time.')) return
     setBusy(true)
     try {
-      await deleteNotionConnectionApi()
+      await deleteNotionConnectionApi({ scope: conn?.scope || 'user' })
       setConn(null)
       toast.success('Notion disconnected')
     } catch (e) {
@@ -1171,6 +1244,7 @@ function NotionConnectionForm() {
   if (conn && !editing) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div>{scopeBadge}</div>
         <div style={{ display: 'grid', gridTemplateColumns: '90px 1fr', gap: '4px 12px', fontSize: 13 }}>
           <div style={{ color: 'var(--text-soft)' }}>Token</div>
           <div style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>{conn.token_preview}</div>
@@ -1209,6 +1283,7 @@ function NotionConnectionForm() {
         disabled={busy}
         style={inputStyle}
       />
+      {scopePicker}
       <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
         <Button variant="primary" size="sm" onClick={save} disabled={busy}>
           {busy ? 'Saving…' : conn ? 'Save changes' : 'Connect'}

@@ -70,17 +70,70 @@ SessionDep = Annotated[Session, Depends(get_session)]
 UserDep = Annotated[CurrentUser, Depends(current_user)]
 
 
-def _get_connection(session: Session, user: CurrentUser, kind: str) -> IntegrationConnection | None:
-    """Look up the active connection for (this user, this kind). v1 is
-    user-scope only; once org-scope ships, this function will check both
-    and prefer the user-scope row."""
+def _get_connection_at(
+    session: Session, scope: str, scope_id: str, kind: str,
+) -> IntegrationConnection | None:
+    """Look up the connection at an explicit (scope, scope_id, kind). PUT/
+    DELETE routes use this so they target exactly the row the user picked."""
     stmt = (
         select(IntegrationConnection)
-        .where(IntegrationConnection.scope == "user")
-        .where(IntegrationConnection.scope_id == user.user_id)
+        .where(IntegrationConnection.scope == scope)
+        .where(IntegrationConnection.scope_id == scope_id)
         .where(IntegrationConnection.kind == kind)
     )
     return session.exec(stmt).first()
+
+
+def _resolve_connection(
+    session: Session, user: CurrentUser, kind: str,
+) -> tuple[IntegrationConnection | None, str | None]:
+    """M6.2.c — pick the effective connection for this user.
+
+    Resolution rule: prefer the user's personal connection; fall back to
+    the org-shared one when the caller has an active org context. This way
+    a user with both a personal Jira *and* a workspace-shared Jira keeps
+    the personal one as the default (least surprise — they set it up
+    explicitly), while a user who hasn't set one up inherits the workspace's.
+
+    Returns `(row, "user" | "org" | None)` so callers can surface the
+    effective scope to the UI without re-querying.
+    """
+    user_row = _get_connection_at(session, "user", user.user_id, kind)
+    if user_row is not None:
+        return user_row, "user"
+    if user.org_id:
+        org_row = _get_connection_at(session, "org", user.org_id, kind)
+        if org_row is not None:
+            return org_row, "org"
+    return None, None
+
+
+def _validate_write_scope(user: CurrentUser, scope: str | None) -> tuple[str, str]:
+    """Validate a write request's `scope` field and return (scope, scope_id).
+
+    Org writes require an active org context. Empty/None defaults to user
+    scope so existing clients keep working without sending the field.
+    """
+    s = (scope or "user").lower()
+    if s == "user":
+        return "user", user.user_id
+    if s == "org":
+        if not user.org_id:
+            raise HTTPException(
+                status_code=400,
+                detail="Cannot save an org-shared connection without an active workspace context. Switch to a workspace and try again.",
+            )
+        return "org", user.org_id
+    raise HTTPException(status_code=400, detail=f"Unknown scope: {scope!r}")
+
+
+# Back-compat alias — kept so older callers in this file keep working
+# unchanged during the M6.2.c refactor. New callers should use the
+# explicit `_resolve_connection` (resolved with org fallback) or
+# `_get_connection_at` (explicit scope + id) variants.
+def _get_connection(session: Session, user: CurrentUser, kind: str) -> IntegrationConnection | None:
+    row, _ = _resolve_connection(session, user, kind)
+    return row
 
 
 def _decrypt_jira_config(row: IntegrationConnection) -> dict:
@@ -110,9 +163,33 @@ def _to_jira_read(row: IntegrationConnection) -> JiraConnectionRead:
         email=cfg.get("email", ""),
         api_token_preview=key_preview(plain or ""),
         default_project_key=cfg.get("default_project_key"),
+        scope=row.scope,
         created_at=row.created_at,
         updated_at=row.updated_at,
     )
+
+
+def _upsert_connection(
+    session: Session, *, scope: str, scope_id: str, kind: str, cfg: dict,
+) -> IntegrationConnection:
+    """M6.2.c — scope-aware upsert. Targets the (scope, scope_id, kind)
+    composite PK. Used by every tracker's PUT route — replaces the inline
+    upsert blocks that all looked the same before."""
+    now = datetime.now(timezone.utc)
+    row = _get_connection_at(session, scope, scope_id, kind)
+    if row is None:
+        row = IntegrationConnection(
+            scope=scope, scope_id=scope_id, kind=kind,
+            config_json=json.dumps(cfg),
+            created_at=now, updated_at=now,
+        )
+    else:
+        row.config_json = json.dumps(cfg)
+        row.updated_at = now
+    session.add(row)
+    session.commit()
+    session.refresh(row)
+    return row
 
 
 # ---- Jira connection -------------------------------------------------------
@@ -120,7 +197,7 @@ def _to_jira_read(row: IntegrationConnection) -> JiraConnectionRead:
 
 @router.get("/api/integrations/jira/connection", response_model=JiraConnectionRead | None)
 def get_jira_connection(session: SessionDep, user: UserDep):
-    row = _get_connection(session, user, "jira")
+    row, _ = _resolve_connection(session, user, "jira")
     return _to_jira_read(row) if row else None
 
 
@@ -128,7 +205,10 @@ def get_jira_connection(session: SessionDep, user: UserDep):
 def put_jira_connection(payload: JiraConnectionWrite, session: SessionDep, user: UserDep):
     """Upsert. Token is encrypted before storage. Light validation on the
     base_url shape — full Jira API connectivity is verified by the Test
-    button on the frontend (which calls /projects)."""
+    button on the frontend (which calls /projects).
+
+    M6.2.c: `payload.scope` chooses personal vs org-shared storage. Defaults
+    to 'user' so older clients keep working without sending the field."""
     base_url = (payload.base_url or "").strip().rstrip("/")
     if not base_url.startswith(("http://", "https://")):
         raise HTTPException(status_code=400, detail="base_url must include http(s)://")
@@ -139,30 +219,19 @@ def put_jira_connection(payload: JiraConnectionWrite, session: SessionDep, user:
         "api_token_encrypted": encrypt_secret((payload.api_token or "").strip()),
         "default_project_key": (payload.default_project_key or None),
     }
-    now = datetime.now(timezone.utc)
-
-    row = _get_connection(session, user, "jira")
-    if row is None:
-        row = IntegrationConnection(
-            scope="user",
-            scope_id=user.user_id,
-            kind="jira",
-            config_json=json.dumps(cfg),
-            created_at=now,
-            updated_at=now,
-        )
-    else:
-        row.config_json = json.dumps(cfg)
-        row.updated_at = now
-    session.add(row)
-    session.commit()
-    session.refresh(row)
+    scope, scope_id = _validate_write_scope(user, payload.scope)
+    row = _upsert_connection(session, scope=scope, scope_id=scope_id, kind="jira", cfg=cfg)
     return _to_jira_read(row)
 
 
 @router.delete("/api/integrations/jira/connection", status_code=204)
-def delete_jira_connection(session: SessionDep, user: UserDep) -> None:
-    row = _get_connection(session, user, "jira")
+def delete_jira_connection(
+    session: SessionDep, user: UserDep, scope: str = "user",
+) -> None:
+    """Delete the connection at the given scope. Defaults to 'user' for
+    back-compat; pass `?scope=org` to remove the workspace-shared one."""
+    s, sid = _validate_write_scope(user, scope)
+    row = _get_connection_at(session, s, sid, "jira")
     if row is None:
         return
     session.delete(row)
@@ -247,6 +316,7 @@ def _to_linear_read(row: IntegrationConnection) -> LinearConnectionRead:
     return LinearConnectionRead(
         api_key_preview=key_preview(plain or ""),
         default_team_id=cfg.get("default_team_id"),
+        scope=row.scope,
         created_at=row.created_at,
         updated_at=row.updated_at,
     )
@@ -254,7 +324,7 @@ def _to_linear_read(row: IntegrationConnection) -> LinearConnectionRead:
 
 @router.get("/api/integrations/linear/connection", response_model=LinearConnectionRead | None)
 def get_linear_connection(session: SessionDep, user: UserDep):
-    row = _get_connection(session, user, "linear")
+    row, _ = _resolve_connection(session, user, "linear")
     return _to_linear_read(row) if row else None
 
 
@@ -266,30 +336,17 @@ def put_linear_connection(payload: LinearConnectionWrite, session: SessionDep, u
         "api_key_encrypted": encrypt_secret((payload.api_key or "").strip()),
         "default_team_id": (payload.default_team_id or None),
     }
-    now = datetime.now(timezone.utc)
-
-    row = _get_connection(session, user, "linear")
-    if row is None:
-        row = IntegrationConnection(
-            scope="user",
-            scope_id=user.user_id,
-            kind="linear",
-            config_json=json.dumps(cfg),
-            created_at=now,
-            updated_at=now,
-        )
-    else:
-        row.config_json = json.dumps(cfg)
-        row.updated_at = now
-    session.add(row)
-    session.commit()
-    session.refresh(row)
+    scope, scope_id = _validate_write_scope(user, payload.scope)
+    row = _upsert_connection(session, scope=scope, scope_id=scope_id, kind="linear", cfg=cfg)
     return _to_linear_read(row)
 
 
 @router.delete("/api/integrations/linear/connection", status_code=204)
-def delete_linear_connection(session: SessionDep, user: UserDep) -> None:
-    row = _get_connection(session, user, "linear")
+def delete_linear_connection(
+    session: SessionDep, user: UserDep, scope: str = "user",
+) -> None:
+    s, sid = _validate_write_scope(user, scope)
+    row = _get_connection_at(session, s, sid, "linear")
     if row is None:
         return
     session.delete(row)
@@ -358,6 +415,7 @@ def _to_github_read(row: IntegrationConnection) -> GitHubConnectionRead:
     return GitHubConnectionRead(
         api_token_preview=key_preview(plain or ""),
         default_repo=cfg.get("default_repo"),
+        scope=row.scope,
         created_at=row.created_at,
         updated_at=row.updated_at,
     )
@@ -365,7 +423,7 @@ def _to_github_read(row: IntegrationConnection) -> GitHubConnectionRead:
 
 @router.get("/api/integrations/github/connection", response_model=GitHubConnectionRead | None)
 def get_github_connection(session: SessionDep, user: UserDep):
-    row = _get_connection(session, user, "github")
+    row, _ = _resolve_connection(session, user, "github")
     return _to_github_read(row) if row else None
 
 
@@ -375,30 +433,17 @@ def put_github_connection(payload: GitHubConnectionWrite, session: SessionDep, u
         "api_token_encrypted": encrypt_secret((payload.api_token or "").strip()),
         "default_repo": (payload.default_repo or None),
     }
-    now = datetime.now(timezone.utc)
-
-    row = _get_connection(session, user, "github")
-    if row is None:
-        row = IntegrationConnection(
-            scope="user",
-            scope_id=user.user_id,
-            kind="github",
-            config_json=json.dumps(cfg),
-            created_at=now,
-            updated_at=now,
-        )
-    else:
-        row.config_json = json.dumps(cfg)
-        row.updated_at = now
-    session.add(row)
-    session.commit()
-    session.refresh(row)
+    scope, scope_id = _validate_write_scope(user, payload.scope)
+    row = _upsert_connection(session, scope=scope, scope_id=scope_id, kind="github", cfg=cfg)
     return _to_github_read(row)
 
 
 @router.delete("/api/integrations/github/connection", status_code=204)
-def delete_github_connection(session: SessionDep, user: UserDep) -> None:
-    row = _get_connection(session, user, "github")
+def delete_github_connection(
+    session: SessionDep, user: UserDep, scope: str = "user",
+) -> None:
+    s, sid = _validate_write_scope(user, scope)
+    row = _get_connection_at(session, s, sid, "github")
     if row is None:
         return
     session.delete(row)
@@ -480,6 +525,7 @@ def _to_slack_read(row: IntegrationConnection) -> SlackConnectionRead:
     return SlackConnectionRead(
         webhook_url_preview=_slack_url_preview(plain or ""),
         channel_label=cfg.get("channel_label"),
+        scope=row.scope,
         created_at=row.created_at,
         updated_at=row.updated_at,
     )
@@ -487,7 +533,7 @@ def _to_slack_read(row: IntegrationConnection) -> SlackConnectionRead:
 
 @router.get("/api/integrations/slack/connection", response_model=SlackConnectionRead | None)
 def get_slack_connection(session: SessionDep, user: UserDep):
-    row = _get_connection(session, user, "slack")
+    row, _ = _resolve_connection(session, user, "slack")
     return _to_slack_read(row) if row else None
 
 
@@ -507,30 +553,17 @@ def put_slack_connection(payload: SlackConnectionWrite, session: SessionDep, use
         "webhook_url_encrypted": encrypt_secret(url),
         "channel_label": (payload.channel_label or None),
     }
-    now = datetime.now(timezone.utc)
-
-    row = _get_connection(session, user, "slack")
-    if row is None:
-        row = IntegrationConnection(
-            scope="user",
-            scope_id=user.user_id,
-            kind="slack",
-            config_json=json.dumps(cfg),
-            created_at=now,
-            updated_at=now,
-        )
-    else:
-        row.config_json = json.dumps(cfg)
-        row.updated_at = now
-    session.add(row)
-    session.commit()
-    session.refresh(row)
+    scope, scope_id = _validate_write_scope(user, payload.scope)
+    row = _upsert_connection(session, scope=scope, scope_id=scope_id, kind="slack", cfg=cfg)
     return _to_slack_read(row)
 
 
 @router.delete("/api/integrations/slack/connection", status_code=204)
-def delete_slack_connection(session: SessionDep, user: UserDep) -> None:
-    row = _get_connection(session, user, "slack")
+def delete_slack_connection(
+    session: SessionDep, user: UserDep, scope: str = "user",
+) -> None:
+    s, sid = _validate_write_scope(user, scope)
+    row = _get_connection_at(session, s, sid, "slack")
     if row is None:
         return
     session.delete(row)
@@ -596,6 +629,7 @@ def _to_notion_read(row: IntegrationConnection) -> NotionConnectionRead:
     return NotionConnectionRead(
         token_preview=key_preview(plain or ""),
         default_database_id=cfg.get("default_database_id"),
+        scope=row.scope,
         created_at=row.created_at,
         updated_at=row.updated_at,
     )
@@ -603,7 +637,7 @@ def _to_notion_read(row: IntegrationConnection) -> NotionConnectionRead:
 
 @router.get("/api/integrations/notion/connection", response_model=NotionConnectionRead | None)
 def get_notion_connection(session: SessionDep, user: UserDep):
-    row = _get_connection(session, user, "notion")
+    row, _ = _resolve_connection(session, user, "notion")
     return _to_notion_read(row) if row else None
 
 
@@ -613,30 +647,17 @@ def put_notion_connection(payload: NotionConnectionWrite, session: SessionDep, u
         "token_encrypted": encrypt_secret((payload.token or "").strip()),
         "default_database_id": (payload.default_database_id or None),
     }
-    now = datetime.now(timezone.utc)
-
-    row = _get_connection(session, user, "notion")
-    if row is None:
-        row = IntegrationConnection(
-            scope="user",
-            scope_id=user.user_id,
-            kind="notion",
-            config_json=json.dumps(cfg),
-            created_at=now,
-            updated_at=now,
-        )
-    else:
-        row.config_json = json.dumps(cfg)
-        row.updated_at = now
-    session.add(row)
-    session.commit()
-    session.refresh(row)
+    scope, scope_id = _validate_write_scope(user, payload.scope)
+    row = _upsert_connection(session, scope=scope, scope_id=scope_id, kind="notion", cfg=cfg)
     return _to_notion_read(row)
 
 
 @router.delete("/api/integrations/notion/connection", status_code=204)
-def delete_notion_connection(session: SessionDep, user: UserDep) -> None:
-    row = _get_connection(session, user, "notion")
+def delete_notion_connection(
+    session: SessionDep, user: UserDep, scope: str = "user",
+) -> None:
+    s, sid = _validate_write_scope(user, scope)
+    row = _get_connection_at(session, s, sid, "notion")
     if row is None:
         return
     session.delete(row)

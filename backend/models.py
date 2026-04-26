@@ -399,24 +399,36 @@ class ExtractionShareRead(BaseModel):
 
 class JiraConnectionRead(BaseModel):
     """Connection metadata returned to the frontend. Token is NEVER included
-    in any read response — only the existence + a preview is exposed."""
+    in any read response — only the existence + a preview is exposed.
+
+    M6.2.c: `scope` indicates whether this connection is personal ('user')
+    or org-shared ('org'). When the user has both, GET returns the personal
+    one (per the resolver rule); the UI calls the explicit-scope variants
+    to read each independently.
+    """
     model_config = ConfigDict(extra="forbid")
     base_url: str
     email: str
     api_token_preview: str       # ••••XYZK style, computed from the stored token
     default_project_key: str | None = None
+    scope: Literal["user", "org"] = "user"
     created_at: datetime
     updated_at: datetime
 
 
 class JiraConnectionWrite(BaseModel):
     """PUT body — full replacement of the saved connection. Frontend sends
-    the token in the clear; backend encrypts before persisting."""
+    the token in the clear; backend encrypts before persisting.
+
+    M6.2.c: optional `scope` — defaults to 'user' (personal). Set 'org' to
+    save the connection at the workspace level so every member can use it
+    (caller must have an active org context)."""
     model_config = ConfigDict(extra="forbid")
     base_url: str       # e.g. "https://acme.atlassian.net" (no trailing slash)
     email: str          # Atlassian account email
     api_token: str      # https://id.atlassian.com/manage-profile/security/api-tokens
     default_project_key: str | None = None
+    scope: Literal["user", "org"] = "user"
 
 
 class JiraProject(BaseModel):
@@ -461,6 +473,7 @@ class LinearConnectionRead(BaseModel):
     model_config = ConfigDict(extra="forbid")
     api_key_preview: str       # ••••XYZK
     default_team_id: str | None = None
+    scope: Literal["user", "org"] = "user"   # M6.2.c
     created_at: datetime
     updated_at: datetime
 
@@ -471,6 +484,7 @@ class LinearConnectionWrite(BaseModel):
     model_config = ConfigDict(extra="forbid")
     api_key: str       # https://linear.app/settings/api
     default_team_id: str | None = None
+    scope: Literal["user", "org"] = "user"   # M6.2.c
 
 
 class LinearTeam(BaseModel):
@@ -504,6 +518,7 @@ class GitHubConnectionRead(BaseModel):
     model_config = ConfigDict(extra="forbid")
     api_token_preview: str       # ••••XYZK
     default_repo: str | None = None      # "owner/name" form
+    scope: Literal["user", "org"] = "user"   # M6.2.c
     created_at: datetime
     updated_at: datetime
 
@@ -512,6 +527,7 @@ class GitHubConnectionWrite(BaseModel):
     model_config = ConfigDict(extra="forbid")
     api_token: str       # PAT from github.com/settings/tokens (`repo` scope)
     default_repo: str | None = None
+    scope: Literal["user", "org"] = "user"   # M6.2.c
 
 
 class GitHubRepo(BaseModel):
@@ -546,6 +562,7 @@ class SlackConnectionRead(BaseModel):
     model_config = ConfigDict(extra="forbid")
     webhook_url_preview: str         # https://hooks.slack.com/…/••••XYZK
     channel_label: str | None = None  # cosmetic — "we send to #dev-team"
+    scope: Literal["user", "org"] = "user"   # M6.2.c
     created_at: datetime
     updated_at: datetime
 
@@ -554,6 +571,7 @@ class SlackConnectionWrite(BaseModel):
     model_config = ConfigDict(extra="forbid")
     webhook_url: str         # https://hooks.slack.com/services/T../B../...
     channel_label: str | None = None
+    scope: Literal["user", "org"] = "user"   # M6.2.c
 
 
 class PushToSlackRequest(BaseModel):
@@ -576,6 +594,7 @@ class NotionConnectionRead(BaseModel):
     model_config = ConfigDict(extra="forbid")
     token_preview: str       # ••••XYZK
     default_database_id: str | None = None
+    scope: Literal["user", "org"] = "user"   # M6.2.c
     created_at: datetime
     updated_at: datetime
 
@@ -584,6 +603,7 @@ class NotionConnectionWrite(BaseModel):
     model_config = ConfigDict(extra="forbid")
     token: str       # secret_… from notion.so/my-integrations
     default_database_id: str | None = None
+    scope: Literal["user", "org"] = "user"   # M6.2.c
 
 
 class NotionDatabase(BaseModel):
