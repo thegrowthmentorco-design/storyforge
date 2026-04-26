@@ -35,12 +35,17 @@ from services.extractions import (
     save_upload,
 )
 from services.limits import enforce_limits
+from services.obs import install_json_logging, install_request_id, install_sentry
 from services.onboarding import welcome_check
 
 MAX_BYTES = 10 * 1024 * 1024  # 10 MB
 SUPPORTED_EXT = {".pdf", ".docx", ".txt", ".md", ".markdown", ".rst"}
 
-logging.basicConfig(level=logging.INFO)
+# Install JSON logging + Sentry BEFORE FastAPI app construction so any
+# import-time log lines from routers/services land in the structured pipeline
+# and any startup error is reported to Sentry.
+install_json_logging()
+install_sentry()
 log = logging.getLogger("storyforge")
 
 @asynccontextmanager
@@ -50,6 +55,10 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(title="StoryForge backend", version="0.3.0", lifespan=lifespan)
+
+# Request id + access logging. Installed BEFORE CORS so the id is bound for
+# the preflight OPTIONS too — useful when debugging cross-origin failures.
+install_request_id(app)
 
 # CORS — local dev origins always allowed; prod adds anything in CORS_ORIGINS
 # (comma-separated). On Render's single-container deploy the SPA is served

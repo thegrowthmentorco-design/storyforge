@@ -1,271 +1,223 @@
-"""User-isolation regression test (M3.2.7).
+"""Per-user + per-org data isolation regression tests (M3.2 + M3.3).
 
-Verifies that User A's projects + extractions are invisible to User B at
-every read endpoint, and that User B can't mutate User A's rows. Uses
-FastAPI's TestClient with `dependency_overrides` on `current_user` instead
-of generating real Clerk JWTs — same code path the production routes hit,
-just with a stubbed identity.
+Same scenarios as the original standalone smoke script (commit history shows
+the migration), but split into pytest functions for CI runtime + targeted
+re-runs. Fixtures from conftest.py provide the TestClient + identity switch.
 
-Runs standalone (no pytest needed):
-    cd backend && .venv/bin/python -m tests.test_isolation
-
-Designed to fail loud: the first failed assertion exits with status 1 and
-prints the offending step. Self-cleans on success and best-effort on failure
-(uses a separate sqlite file so a crashed run doesn't poison the dev DB).
+Two scopes covered:
+  Personal — A/B can't see each other's rows
+  Workspaces — A in org-X / C in org-X / D in org-Y / A-personal — three-way
+    cross-isolation: org sharing within X, total invisibility from Y, and
+    personal-vs-org separation for the same human user.
 """
 
 from __future__ import annotations
 
-import os
-import sys
-import tempfile
-from pathlib import Path
+import pytest
+from sqlalchemy import text
+from sqlmodel import Session
 
-# Force a throwaway DB BEFORE importing the app (otherwise it'd read the dev one).
-_TMPDIR = Path(tempfile.mkdtemp(prefix="storyforge_test_"))
-os.environ["STORYFORGE_DB"] = str(_TMPDIR / "test.db")
-os.environ["STORYFORGE_UPLOAD_DIR"] = str(_TMPDIR / "uploads")
-# CRITICAL: blank out DATABASE_URL before main.py's load_dotenv runs.
-# load_dotenv (override=False by default) skips vars already set, so an
-# explicit empty string keeps backend/.env's Supabase URL from leaking in
-# and pointing the test at the real Postgres.
-os.environ["DATABASE_URL"] = ""
-# CLERK_PUBLISHABLE_KEY isn't read by our test path (we override current_user)
-# but app import-time module load still needs the env var to be sane.
-os.environ.setdefault("CLERK_PUBLISHABLE_KEY", "pk_test_dummy")
-# Make sure we never accidentally hit Anthropic — extract route stays mock-mode.
-os.environ.pop("ANTHROPIC_API_KEY", None)
-
-# `backend` isn't on sys.path when this script runs from inside `backend/`.
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
-from fastapi.testclient import TestClient  # noqa: E402
-
-from auth.deps import CurrentUser, current_user  # noqa: E402
-from main import app  # noqa: E402
-
-# --- stubbed identities -----------------------------------------------------
-
-# Personal users (no org context)
-USER_A = CurrentUser(user_id="user_test_aaa")
-USER_B = CurrentUser(user_id="user_test_bbb")
-# Org members (M3.3) — A_IN_ORG is the same person as A but switched into org-X;
-# C_IN_ORG_X is a teammate (different user, same org); D_IN_ORG_Y is a stranger.
-A_IN_ORG_X = CurrentUser(user_id="user_test_aaa", org_id="org_test_xxx")
-C_IN_ORG_X = CurrentUser(user_id="user_test_ccc", org_id="org_test_xxx")
-D_IN_ORG_Y = CurrentUser(user_id="user_test_ddd", org_id="org_test_yyy")
-_active_user: CurrentUser = USER_A
+from db.session import engine
+from tests.conftest import (
+    USER_A,
+    USER_A_IN_ORG_X,
+    USER_B,
+    USER_C_IN_ORG_X,
+    USER_D_IN_ORG_X,
+    USER_E_IN_ORG_Y,
+)
 
 
-def _override():
-    return _active_user
+_ALL_USER_IDS = [
+    USER_A.user_id,
+    USER_B.user_id,
+    USER_C_IN_ORG_X.user_id,
+    USER_D_IN_ORG_X.user_id,
+    USER_E_IN_ORG_Y.user_id,
+]
+_ALL_ORG_IDS = [
+    USER_A_IN_ORG_X.org_id,
+    USER_C_IN_ORG_X.org_id,
+    USER_D_IN_ORG_X.org_id,
+    USER_E_IN_ORG_Y.org_id,
+]
 
 
-app.dependency_overrides[current_user] = _override
+@pytest.fixture(autouse=True)
+def _reset_test_data():
+    """Wipe all rows owned by any test user/org before each test.
 
-# Module-level placeholder; main() rebinds inside the `with TestClient(app) as`
-# context so the FastAPI lifespan (which runs init_db) actually fires.
-client: TestClient | None = None
-
-
-def as_user(user: CurrentUser):
-    """Switch the stubbed current_user for subsequent requests."""
-    global _active_user
-    _active_user = user
-
-
-# --- assertions -------------------------------------------------------------
-
-_failed = False
-
-
-def check(label: str, condition: bool, detail: str = "") -> None:
-    global _failed
-    status = "PASS" if condition else "FAIL"
-    print(f"  [{status}] {label}" + (f" -- {detail}" if detail and not condition else ""))
-    if not condition:
-        _failed = True
+    Without this, projects + extractions created in one test leak into the
+    next, breaking ownership-counting assertions like
+    `len(projects) == 1` in test_a_still_owns_after_b_attempts.
+    """
+    with Session(engine) as s:
+        for uid in _ALL_USER_IDS:
+            for tbl in ("usage_log", "extraction", "project", "user_settings"):
+                s.execute(text(f"DELETE FROM {tbl} WHERE user_id = :uid"), {"uid": uid})
+        for oid in _ALL_ORG_IDS:
+            for tbl in ("extraction", "project"):
+                s.execute(text(f"DELETE FROM {tbl} WHERE org_id = :oid"), {"oid": oid})
+        s.commit()
+    yield
 
 
-# --- the actual scenarios ---------------------------------------------------
+# ---- shared setup helpers -------------------------------------------------
 
 
-def _run_scenarios() -> None:
-    """All the actual scenarios — wrapped so we can use the TestClient as a
-    context manager (which fires lifespan + creates tables)."""
-    # ===== User A creates a project + an extraction =====
+def _create_extraction_in_personal_scope(client, project_id: str | None = None) -> str:
+    """Create one extraction (mock-mode) in current user's personal scope.
+    Returns the extraction id."""
+    data = {"text": "isolation test doc", "filename": "iso.txt"}
+    if project_id:
+        data["project_id"] = project_id
+    r = client.post("/api/extract", data=data)
+    assert r.status_code == 200, r.text
+    return r.json()["id"]
+
+
+# ---- M3.2 — personal-vs-personal isolation -------------------------------
+
+
+def test_b_cannot_see_a_extractions(client, as_user):
     as_user(USER_A)
+    a_ext = _create_extraction_in_personal_scope(client)
 
-    r = client.post("/api/projects", json={"name": "A-only project"})
-    check("A creates project", r.status_code == 201, f"status={r.status_code} body={r.text[:200]}")
-    a_project = r.json()["id"]
-
-    r = client.post(
-        "/api/extract",
-        files={"file": ("a.txt", b"User A's secret document.", "text/plain")},
-        data={"project_id": a_project},
-    )
-    check("A creates extraction in A's project", r.status_code == 200, f"status={r.status_code} body={r.text[:200]}")
-    a_ext = r.json()["id"]
-    check("A's extraction has user_id-scoped project_id", r.json().get("project_id") == a_project)
-
-    # ===== Switch to User B =====
     as_user(USER_B)
+    assert client.get("/api/extractions").json() == []
+    assert client.get(f"/api/extractions/{a_ext}").status_code == 404
+    assert client.get(f"/api/extractions/{a_ext}/versions").status_code == 404
+    assert client.get(f"/api/extractions/{a_ext}/gaps").status_code == 404
+    assert client.get(f"/api/extractions/{a_ext}/source").status_code == 404
 
-    r = client.get("/api/extractions")
-    check("B sees zero extractions in list", r.status_code == 200 and r.json() == [], f"got: {r.json() if r.status_code == 200 else r.text}")
 
-    r = client.get("/api/projects")
-    check("B sees zero projects in list", r.status_code == 200 and r.json() == [], f"got: {r.json() if r.status_code == 200 else r.text}")
+def test_b_cannot_mutate_a_extractions(client, as_user):
+    as_user(USER_A)
+    a_ext = _create_extraction_in_personal_scope(client)
 
-    # ===== B tries to read A's extraction by id =====
-    r = client.get(f"/api/extractions/{a_ext}")
-    check("B GET A's extraction -> 404", r.status_code == 404, f"got {r.status_code}")
+    as_user(USER_B)
+    assert client.patch(f"/api/extractions/{a_ext}", json={"filename": "hacked.txt"}).status_code == 404
+    assert client.delete(f"/api/extractions/{a_ext}").status_code == 404
+    assert client.patch(f"/api/extractions/{a_ext}/gaps/0", json={"resolved": True}).status_code == 404
+    assert client.post(f"/api/extractions/{a_ext}/rerun", json={}).status_code == 404
 
-    r = client.get(f"/api/extractions/{a_ext}/versions")
-    check("B GET A's versions -> 404", r.status_code == 404, f"got {r.status_code}")
 
-    r = client.get(f"/api/extractions/{a_ext}/gaps")
-    check("B GET A's gap states -> 404", r.status_code == 404, f"got {r.status_code}")
+def test_b_cannot_see_or_attach_to_a_projects(client, as_user):
+    as_user(USER_A)
+    a_proj = client.post("/api/projects", json={"name": "A's project"}).json()["id"]
 
-    r = client.get(f"/api/extractions/{a_ext}/source")
-    # No file uploaded for our text-mode extraction; A would also get 404.
-    # We expect 404 here for the same reason — but importantly NOT a 200.
-    check("B GET A's source -> 404", r.status_code == 404)
+    as_user(USER_B)
+    assert client.get("/api/projects").json() == []
+    assert client.patch(f"/api/projects/{a_proj}", json={"name": "stolen"}).status_code == 404
+    assert client.delete(f"/api/projects/{a_proj}").status_code == 404
+    # Attempt to attach a new B extraction to A's project should 400
+    r = client.post("/api/extract", data={"text": "x", "filename": "x.txt", "project_id": a_proj})
+    assert r.status_code == 400
 
-    # ===== B tries to mutate A's extraction =====
-    r = client.patch(f"/api/extractions/{a_ext}", json={"filename": "hacked.txt"})
-    check("B PATCH A's extraction -> 404", r.status_code == 404)
 
-    r = client.delete(f"/api/extractions/{a_ext}")
-    check("B DELETE A's extraction -> 404", r.status_code == 404)
+def test_b_import_collision_on_a_extraction_id(client, as_user):
+    as_user(USER_A)
+    a_ext = _create_extraction_in_personal_scope(client)
 
-    r = client.patch(f"/api/extractions/{a_ext}/gaps/0", json={"resolved": True})
-    check("B PATCH A's gap state -> 404", r.status_code == 404)
-
-    r = client.post(f"/api/extractions/{a_ext}/rerun", json={})
-    check("B re-run A's extraction -> 404", r.status_code == 404)
-
-    # ===== B tries to mutate A's project =====
-    r = client.patch(f"/api/projects/{a_project}", json={"name": "stolen"})
-    check("B PATCH A's project -> 404", r.status_code == 404)
-
-    r = client.delete(f"/api/projects/{a_project}")
-    check("B DELETE A's project -> 404", r.status_code == 404)
-
-    # ===== B tries to attach a new extraction to A's project =====
-    r = client.post(
-        "/api/extract",
-        files={"file": ("b.txt", b"User B's doc.", "text/plain")},
-        data={"project_id": a_project},
-    )
-    check("B extract into A's project -> 400", r.status_code == 400, f"got {r.status_code}: {r.text[:200]}")
-
-    # ===== B tries to import a record into A's id =====
-    r = client.post(
-        "/api/extractions/import",
-        json={
-            "id": a_ext,
+    as_user(USER_B)
+    payload = {
+        "id": a_ext,
+        "filename": "evil.txt",
+        "saved_at": "2025-01-01T00:00:00Z",
+        "payload": {
             "filename": "evil.txt",
-            "saved_at": "2025-01-01T00:00:00Z",
-            "payload": {
-                "filename": "evil.txt",
-                "raw_text": "x",
-                "live": False,
-                "brief": {"summary": "x", "tags": []},
-                "actors": [],
-                "stories": [],
-                "nfrs": [],
-                "gaps": [],
-            },
+            "raw_text": "x",
+            "live": False,
+            "brief": {"summary": "x", "tags": []},
+            "actors": [],
+            "stories": [],
+            "nfrs": [],
+            "gaps": [],
         },
-    )
-    check("B import collision on A's id -> 409", r.status_code == 409, f"got {r.status_code}: {r.text[:200]}")
+    }
+    assert client.post("/api/extractions/import", json=payload).status_code == 409
 
-    # ===== B's own work is fine =====
-    r = client.post("/api/projects", json={"name": "B's project"})
-    check("B creates own project", r.status_code == 201)
-    b_project = r.json()["id"]
-    check("B sees one project after create", client.get("/api/projects").json() and len(client.get("/api/projects").json()) == 1)
 
-    # ===== A still sees their own row, untouched =====
+def test_a_still_owns_after_b_attempts(client, as_user):
     as_user(USER_A)
+    a_ext = _create_extraction_in_personal_scope(client)
+    a_proj = client.post("/api/projects", json={"name": "A's project"}).json()["id"]
 
+    as_user(USER_B)
+    client.delete(f"/api/extractions/{a_ext}")  # 404 — no-op
+    client.delete(f"/api/projects/{a_proj}")     # 404 — no-op
+    client.post("/api/projects", json={"name": "B's project"})  # creates B's own
+
+    as_user(USER_A)
     r = client.get(f"/api/extractions/{a_ext}")
-    check("A still sees own extraction", r.status_code == 200)
-    check("A's extraction filename unchanged", r.json().get("filename") == "a.txt", f"got {r.json().get('filename')}")
+    assert r.status_code == 200
+    assert r.json()["filename"] == "iso.txt"
+    projects = client.get("/api/projects").json()
+    assert len(projects) == 1 and projects[0]["id"] == a_proj
 
-    r = client.get("/api/projects")
-    check("A still sees only their own project", r.status_code == 200 and len(r.json()) == 1 and r.json()[0]["id"] == a_project)
 
-    # ========== M3.3 — workspace (org) isolation ==========
-    # Same user A switches into org-X. Personal data must NOT leak into the
-    # org view, and org rows must NOT leak back into A's personal view.
-    as_user(A_IN_ORG_X)
+# ---- M3.3 — workspace (org) isolation ------------------------------------
 
-    r = client.get("/api/extractions")
-    check("A-in-org-X sees zero personal-context extractions", r.status_code == 200 and r.json() == [], f"got {r.json() if r.status_code == 200 else r.text}")
-    r = client.get("/api/projects")
-    check("A-in-org-X sees zero personal-context projects", r.status_code == 200 and r.json() == [], f"got {r.json() if r.status_code == 200 else r.text}")
 
-    # A creates a project + extraction inside org-X
-    r = client.post("/api/projects", json={"name": "org-X shared project"})
-    check("A-in-org-X creates a project", r.status_code == 201)
-    org_x_project = r.json()["id"]
-
-    r = client.post(
-        "/api/extract",
-        files={"file": ("org-x.txt", b"workspace doc.", "text/plain")},
-        data={"project_id": org_x_project},
-    )
-    check("A-in-org-X creates extraction in org project", r.status_code == 200)
-    org_x_ext = r.json()["id"]
-
-    # ===== Teammate C in same org sees the same data (workspace = shared) =====
-    as_user(C_IN_ORG_X)
-    extractions_c = client.get("/api/extractions").json()
-    projects_c = client.get("/api/projects").json()
-    check("Teammate C-in-org-X sees A-in-org-X's extraction (workspaces are shared)", any(e["id"] == org_x_ext for e in extractions_c), f"got {[e['id'] for e in extractions_c]}")
-    check("Teammate C-in-org-X sees A-in-org-X's project", any(p["id"] == org_x_project for p in projects_c), f"got {[p['id'] for p in projects_c]}")
-    # And can mutate (free-for-all within an org for now)
-    r = client.patch(f"/api/extractions/{org_x_ext}", json={"filename": "edited-by-c.txt"})
-    check("Teammate C can PATCH org extraction", r.status_code == 200)
-
-    # ===== Stranger D in DIFFERENT org sees nothing =====
-    as_user(D_IN_ORG_Y)
-    check("D-in-org-Y sees zero extractions", client.get("/api/extractions").json() == [])
-    check("D-in-org-Y sees zero projects", client.get("/api/projects").json() == [])
-    r = client.get(f"/api/extractions/{org_x_ext}")
-    check("D-in-org-Y GET org-X extraction -> 404", r.status_code == 404)
-    r = client.delete(f"/api/extractions/{org_x_ext}")
-    check("D-in-org-Y DELETE org-X extraction -> 404", r.status_code == 404)
-    r = client.patch(f"/api/projects/{org_x_project}", json={"name": "stolen"})
-    check("D-in-org-Y PATCH org-X project -> 404", r.status_code == 404)
-
-    # ===== Personal A still doesn't see the org row =====
+def test_personal_data_invisible_in_org_context(client, as_user):
+    """A's personal extraction must NOT show up when A switches into org-X."""
     as_user(USER_A)
-    extractions_personal = client.get("/api/extractions").json()
-    check("A-personal still does NOT see org row (personal vs org are separate)", not any(e["id"] == org_x_ext for e in extractions_personal), f"got {[e['id'] for e in extractions_personal]}")
-    r = client.get(f"/api/extractions/{org_x_ext}")
-    check("A-personal GET org-X extraction -> 404 (org context required)", r.status_code == 404)
+    a_ext = _create_extraction_in_personal_scope(client)
+
+    as_user(USER_A_IN_ORG_X)
+    assert client.get("/api/extractions").json() == []
+    assert client.get(f"/api/extractions/{a_ext}").status_code == 404
 
 
-def main() -> int:
-    global client
-    print("M3.2.7 user-isolation test")
-    print(f"  test DB: {os.environ['STORYFORGE_DB']}")
+def test_org_data_visible_to_all_org_members(client, as_user):
+    """Workspace data is shared — C creates, D sees, both can mutate."""
+    as_user(USER_C_IN_ORG_X)
+    proj = client.post("/api/projects", json={"name": "shared org-X project"}).json()["id"]
+    ext = client.post(
+        "/api/extract",
+        files={"file": ("doc.txt", b"shared.", "text/plain")},
+        data={"project_id": proj},
+    ).json()["id"]
 
-    with TestClient(app) as c:
-        client = c
-        _run_scenarios()
-
-    print()
-    if _failed:
-        print("FAILED — at least one assertion did not match expected behavior")
-        return 1
-    print("All checks passed.")
-    return 0
+    as_user(USER_D_IN_ORG_X)
+    extractions = client.get("/api/extractions").json()
+    assert any(e["id"] == ext for e in extractions), "D should see C's extraction"
+    projects = client.get("/api/projects").json()
+    assert any(p["id"] == proj for p in projects), "D should see C's project"
+    # And mutate
+    r = client.patch(f"/api/extractions/{ext}", json={"filename": "edited-by-d.txt"})
+    assert r.status_code == 200
 
 
-if __name__ == "__main__":
-    raise SystemExit(main())
+def test_other_org_sees_nothing(client, as_user):
+    """E in org-Y must be totally blind to org-X data."""
+    as_user(USER_C_IN_ORG_X)
+    proj = client.post("/api/projects", json={"name": "org-X only"}).json()["id"]
+    ext = client.post(
+        "/api/extract",
+        files={"file": ("d.txt", b"x", "text/plain")},
+        data={"project_id": proj},
+    ).json()["id"]
+
+    as_user(USER_E_IN_ORG_Y)
+    assert client.get("/api/extractions").json() == []
+    assert client.get("/api/projects").json() == []
+    assert client.get(f"/api/extractions/{ext}").status_code == 404
+    assert client.delete(f"/api/extractions/{ext}").status_code == 404
+    assert client.patch(f"/api/projects/{proj}", json={"name": "stolen"}).status_code == 404
+
+
+def test_org_data_invisible_when_user_returns_to_personal(client, as_user):
+    """A creates in org-X, switches back to personal — org row gone from view."""
+    as_user(USER_A_IN_ORG_X)
+    proj = client.post("/api/projects", json={"name": "org-X work"}).json()["id"]
+    ext = client.post(
+        "/api/extract",
+        files={"file": ("o.txt", b"x", "text/plain")},
+        data={"project_id": proj},
+    ).json()["id"]
+
+    as_user(USER_A)
+    extractions = client.get("/api/extractions").json()
+    assert not any(e["id"] == ext for e in extractions)
+    assert client.get(f"/api/extractions/{ext}").status_code == 404
