@@ -83,9 +83,12 @@ def create_checkout(payload: CheckoutRequest, user: UserDep) -> CheckoutResponse
             user_email=email,
             user_name=name,
         )
-    except RuntimeError as e:
+    except Exception as e:  # noqa: BLE001 — surface root cause to the client
+        # Catch broadly: httpx network errors, JSON parse errors, env-var
+        # RuntimeErrors all bubble through here. The user-facing detail
+        # gives us a clue from the browser without needing log access.
         log.exception("checkout failed")
-        raise HTTPException(status_code=502, detail=f"Could not create checkout: {e}")
+        raise HTTPException(status_code=502, detail=f"Could not create checkout ({type(e).__name__}): {e}")
     return CheckoutResponse(url=url)
 
 
@@ -101,9 +104,9 @@ def get_portal(session: SessionDep, user: UserDep) -> PortalResponse:
         raise HTTPException(status_code=404, detail="No active subscription")
     try:
         url = lsq.customer_portal_url(settings.lsq_customer_id)
-    except RuntimeError as e:
+    except Exception as e:  # noqa: BLE001 — surface root cause
         log.exception("portal lookup failed")
-        raise HTTPException(status_code=502, detail=f"Could not load portal: {e}")
+        raise HTTPException(status_code=502, detail=f"Could not load portal ({type(e).__name__}): {e}")
     return PortalResponse(url=url)
 
 
