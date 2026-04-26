@@ -89,6 +89,46 @@ class Extraction(SQLModel, table=True):
     gaps: list[dict[str, Any]] = Field(sa_column=Column(JSON, nullable=False))
 
 
+class ApiToken(SQLModel, table=True):
+    """Long-lived API tokens for programmatic access (M6.7).
+
+    Authenticates the same `current_user` dependency as Clerk JWTs — the
+    `auth.deps` resolver inspects the Bearer header, dispatches by prefix
+    (`sk_*` → token lookup; otherwise → JWT verify), and produces a
+    `CurrentUser` either way. So plan limits (M3.5), scope filtering
+    (M3.3) etc. all work transparently with API tokens.
+
+    Storage:
+      * `token_hash` is SHA-256(plaintext) — we NEVER store the plaintext.
+        Plaintext is shown to the user exactly once at creation and lost.
+      * `prefix` (e.g. "sk_live_") and `last4` are kept clear so the
+        Settings UI can render `sk_live_…••••XYZK` previews without
+        decrypting anything.
+      * `org_id` snapshots the user's active org context at token-create
+        time. The token always acts in that scope (personal vs org-X);
+        deferred (M6.7.b) is a "switch scope" operation post-creation.
+
+    Lifecycle: tokens never auto-expire in v1 (`expires_at` reserved for
+    future "expire in 90 days" UX). Soft-revoke via `revoked_at` so
+    bookmarked tokens fail closed instead of accidentally re-activating
+    if the row gets resurrected.
+    """
+
+    __tablename__ = "api_token"
+
+    id: str = Field(primary_key=True)        # `tok_<base36-ts>_<rand6>` — public id for Settings UI
+    name: str                                 # user-given label, e.g. "production-pipeline"
+    prefix: str                               # e.g. "sk_live_" — for preview; cosmetic
+    last4: str                                # last 4 chars of plaintext — for preview
+    token_hash: str = Field(index=True)       # SHA-256 of plaintext, hex; lookup key on auth
+    user_id: str = Field(index=True)
+    org_id: str | None = Field(default=None, index=True)
+    created_at: datetime = Field(default_factory=_utcnow)
+    last_used_at: datetime | None = Field(default=None)
+    expires_at: datetime | None = Field(default=None)
+    revoked_at: datetime | None = Field(default=None)
+
+
 class IntegrationConnection(SQLModel, table=True):
     """Per-user (or per-org) credentials for a third-party integration (M6.2+).
 

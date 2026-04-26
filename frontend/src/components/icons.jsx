@@ -301,6 +301,16 @@ export const Copy = (p) => (
   </I>
 )
 
+/* Key icon — used for the M6.7 API tokens section. */
+export const Key = (p) => (
+  <I {...p}>
+    <circle cx="7.5" cy="15.5" r="4" />
+    <line x1="10.3" y1="12.7" x2="21" y2="2" />
+    <line x1="14" y1="9" x2="17" y2="12" />
+    <line x1="17" y1="6" x2="20" y2="9" />
+  </I>
+)
+
 /* Power-plug icon — used for the M6.2 Integrations section + the
  * "Push to Jira" button. Lucide "plug-zap" simplified. */
 export const Plug = (p) => (

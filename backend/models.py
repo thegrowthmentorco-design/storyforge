@@ -587,3 +587,39 @@ class PushToNotionResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
     pushed: list[PushedIssue]
     failed: list[dict]
+
+
+# ----- API tokens (M6.7) -----
+
+
+class ApiTokenCreateRequest(BaseModel):
+    """POST /api/me/api-tokens body. Just a label."""
+    model_config = ConfigDict(extra="forbid")
+    name: str   # e.g. "production-pipeline", "zapier-bot"
+
+
+class ApiTokenCreateResponse(BaseModel):
+    """The ONLY response that ever carries the plaintext token. Frontend
+    must surface a "save this now — you won't see it again" UX."""
+    model_config = ConfigDict(extra="forbid")
+    id: str
+    name: str
+    token: str          # plaintext — shown exactly once
+    prefix: str
+    last4: str
+    org_id: str | None = None
+    created_at: datetime
+
+
+class ApiTokenRead(BaseModel):
+    """List + read shape — preview only, never the plaintext."""
+    model_config = ConfigDict(extra="forbid")
+    id: str
+    name: str
+    prefix: str
+    last4: str
+    org_id: str | None = None
+    created_at: datetime
+    last_used_at: datetime | None = None
+    expires_at: datetime | None = None
+    revoked_at: datetime | None = None

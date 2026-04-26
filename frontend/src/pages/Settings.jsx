@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import {
+  createApiTokenApi,
   deleteGitHubConnectionApi,
   deleteJiraConnectionApi,
   deleteLinearConnectionApi,
@@ -11,6 +12,7 @@ import {
   getMeSettingsApi,
   getNotionConnectionApi,
   getSlackConnectionApi,
+  listApiTokensApi,
   listGitHubReposApi,
   listJiraProjectsApi,
   listLinearTeamsApi,
@@ -21,12 +23,14 @@ import {
   putMeSettingsApi,
   putNotionConnectionApi,
   putSlackConnectionApi,
+  revokeApiTokenApi,
   testApiKey,
 } from '../api.js'
+import { copyToClipboard } from '../lib/clipboard.js'
 import { useApp } from '../lib/AppContext.jsx'
 import { useToast } from '../components/Toast.jsx'
 import { Badge, Button, Card, IconTile, Spinner } from '../components/primitives.jsx'
-import { Eye, Monitor, Moon, Plug, Shield, Sparkles, Sun } from '../components/icons.jsx'
+import { Eye, Key, Monitor, Moon, Plug, Shield, Sparkles, Sun } from '../components/icons.jsx'
 
 function Section({ icon, tone, title, description, comingIn, children }) {
   return (
@@ -1209,6 +1213,215 @@ function NotionConnectionForm() {
   )
 }
 
+/* M6.7 — API tokens management.
+ *
+ * UX:
+ *   - Empty state: "Create your first token" CTA + curl example.
+ *   - Created: in-place reveal panel with copy button + "I've saved it"
+ *     dismiss. Plaintext is held in component state only — never
+ *     re-fetched (and the backend can't return it again).
+ *   - List: each token row shows name, prefix•••last4, created/last-used,
+ *     status (Active / Revoked), and a Revoke button.
+ *   - Below the list: copy-able curl snippet so users see the auth shape
+ *     without leaving Settings.
+ */
+function ApiTokensSection() {
+  const { toast } = useToast()
+  const [tokens, setTokens] = useState(null)        // null=loading, []=empty, [...]=loaded
+  const [creating, setCreating] = useState(false)
+  const [name, setName] = useState('')
+  const [revealed, setRevealed] = useState(null)    // freshly-minted token (plaintext) or null
+
+  const refresh = async () => {
+    try {
+      const rows = await listApiTokensApi()
+      setTokens(rows)
+    } catch (e) {
+      toast.error(e.message || 'Could not load API tokens')
+    }
+  }
+
+  useEffect(() => { refresh() }, [])
+
+  const create = async (e) => {
+    e?.preventDefault()
+    if (!name.trim() || creating) return
+    setCreating(true)
+    try {
+      const r = await createApiTokenApi(name.trim())
+      setRevealed(r)
+      setName('')
+      await refresh()
+    } catch (e) {
+      toast.error(e.message || 'Could not create token')
+    } finally {
+      setCreating(false)
+    }
+  }
+
+  const revoke = async (id, label) => {
+    if (!window.confirm(`Revoke "${label}"? Anything using this token stops working immediately.`)) return
+    try {
+      await revokeApiTokenApi(id)
+      toast.success('Token revoked')
+      await refresh()
+    } catch (e) {
+      toast.error(e.message || 'Could not revoke')
+    }
+  }
+
+  const copyToken = async () => {
+    const ok = await copyToClipboard(revealed?.token || '')
+    if (ok) toast.success('Token copied to clipboard', { duration: 2500 })
+    else toast.error("Couldn't copy — clipboard access blocked")
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <p style={{ fontSize: 12.5, color: 'var(--text-muted)', margin: 0, lineHeight: 1.55 }}>
+        Long-lived bearer tokens for programmatic access (curl, Zapier, custom scripts).
+        Same scope as your account; tokens never expire but can be revoked any time.
+      </p>
+
+      {/* Reveal panel — only visible after a successful create. */}
+      {revealed && (
+        <Card padding={14} style={{ background: 'var(--accent-soft)', borderColor: 'var(--accent)' }}>
+          <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--accent-ink)', marginBottom: 6 }}>
+            Save this token now — you won't see it again
+          </div>
+          <div style={{
+            display: 'flex', gap: 6, marginBottom: 8,
+          }}>
+            <input
+              type="text"
+              value={revealed.token}
+              readOnly
+              onFocus={(e) => e.target.select()}
+              style={{
+                ...inputStyle,
+                fontFamily: 'var(--font-mono)',
+                fontSize: 12,
+                background: 'var(--bg)',
+              }}
+            />
+            <Button variant="primary" size="sm" onClick={copyToken}>Copy</Button>
+          </div>
+          <Button variant="secondary" size="sm" onClick={() => setRevealed(null)}>
+            I've saved it — dismiss
+          </Button>
+        </Card>
+      )}
+
+      {/* Create form — hidden while a freshly-minted token is on screen
+       *  to prevent the user from creating another one before saving the
+       *  first. */}
+      {!revealed && (
+        <form onSubmit={create} style={{ display: 'flex', gap: 6 }}>
+          <input
+            type="text"
+            placeholder="Token name (e.g. production-pipeline)"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            disabled={creating}
+            maxLength={100}
+            style={{ ...inputStyle, flex: 1 }}
+          />
+          <Button variant="primary" size="sm" type="submit" disabled={creating || !name.trim()}>
+            {creating ? 'Creating…' : 'Create token'}
+          </Button>
+        </form>
+      )}
+
+      {/* Token list. */}
+      {tokens === null ? (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-muted)', fontSize: 13 }}>
+          <Spinner size={14} /> Loading…
+        </div>
+      ) : tokens.length === 0 ? (
+        <div style={{
+          padding: '14px 16px', fontSize: 12.5, color: 'var(--text-soft)',
+          fontStyle: 'italic', textAlign: 'center',
+          background: 'var(--bg-subtle)', border: '1px dashed var(--border)',
+          borderRadius: 'var(--radius)',
+        }}>
+          No tokens yet.
+        </div>
+      ) : (
+        <div style={{
+          display: 'flex', flexDirection: 'column',
+          border: '1px solid var(--border)', borderRadius: 'var(--radius)',
+        }}>
+          {tokens.map((t, i) => (
+            <TokenRow
+              key={t.id}
+              token={t}
+              isLast={i === tokens.length - 1}
+              onRevoke={() => revoke(t.id, t.name)}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Curl example — small, monospace, copy-able. */}
+      <div style={{
+        padding: 12, background: 'var(--bg-subtle)',
+        border: '1px solid var(--border)', borderRadius: 'var(--radius)',
+      }}>
+        <div style={{
+          fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5,
+          color: 'var(--text-soft)', marginBottom: 6,
+        }}>
+          Example
+        </div>
+        <pre style={{
+          margin: 0, fontFamily: 'var(--font-mono)', fontSize: 11.5,
+          color: 'var(--text)', whiteSpace: 'pre-wrap', wordBreak: 'break-all',
+          lineHeight: 1.6,
+        }}>{`curl ${window.location.origin}/api/extract \\
+  -H "Authorization: Bearer sk_live_…" \\
+  -F "text=Your source document content" \\
+  -F "filename=spec.txt"`}</pre>
+      </div>
+    </div>
+  )
+}
+
+function TokenRow({ token, isLast, onRevoke }) {
+  const isRevoked = !!token.revoked_at
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 10,
+      padding: '10px 14px',
+      borderBottom: isLast ? 'none' : '1px solid var(--border)',
+      opacity: isRevoked ? 0.55 : 1,
+    }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{
+          fontSize: 13, fontWeight: 500, color: 'var(--text-strong)',
+          textDecoration: isRevoked ? 'line-through' : 'none',
+        }}>
+          {token.name}
+        </div>
+        <div style={{ fontSize: 11, color: 'var(--text-soft)', fontFamily: 'var(--font-mono)', marginTop: 2 }}>
+          {token.prefix}••••{token.last4}
+        </div>
+        <div style={{ fontSize: 10.5, color: 'var(--text-soft)', marginTop: 2 }}>
+          Created {new Date(token.created_at).toLocaleDateString()}
+          {token.last_used_at && ` · last used ${new Date(token.last_used_at).toLocaleDateString()}`}
+        </div>
+      </div>
+      {isRevoked ? (
+        <Badge tone="danger" size="sm">Revoked</Badge>
+      ) : (
+        <>
+          <Badge tone="success" size="sm">Active</Badge>
+          <Button variant="ghost" size="sm" onClick={onRevoke}>Revoke</Button>
+        </>
+      )}
+    </div>
+  )
+}
+
 function FieldLabel({ children }) {
   return (
     <label style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, color: 'var(--text-soft)' }}>
@@ -1366,6 +1579,14 @@ export default function Settings() {
           description="Push extracted user stories into a Notion database. Title goes in the database's title column; the rest of the story (As-a / I want / so that, criteria, source quote) renders as page body blocks."
         >
           <NotionConnectionForm />
+        </Section>
+        <Section
+          icon={<Key size={16} />}
+          tone="info"
+          title="API tokens"
+          description="Programmatic access via Bearer tokens — for curl, Zapier, Make, custom scripts. Same scope as your account; tokens never expire but can be revoked any time."
+        >
+          <ApiTokensSection />
         </Section>
       </div>
     </div>

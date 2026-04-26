@@ -478,6 +478,35 @@ export async function pushToNotionApi(extractionId, { database_id, title_prop })
   return jsonOrThrow(res)
 }
 
+// ---------- API tokens (M6.7) ----------
+
+/** List the caller's API tokens (preview only — never plaintext). Includes
+ *  revoked rows so users have a complete audit trail. Newest first. */
+export async function listApiTokensApi() {
+  const res = await apiFetch('/api/me/api-tokens')
+  return jsonOrThrow(res)
+}
+
+/** Create a new API token. Response carries the plaintext ONCE — frontend
+ *  must surface a "save this now — you won't see it again" UX. Returns
+ *  {id, name, token, prefix, last4, org_id, created_at}. */
+export async function createApiTokenApi(name) {
+  const res = await apiFetch('/api/me/api-tokens', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  })
+  return jsonOrThrow(res)
+}
+
+/** Soft-revoke a token. The row stays in the list as 'Revoked' so
+ *  bookmarked CI configs that still reference it get a clean 401. */
+export async function revokeApiTokenApi(id) {
+  const res = await apiFetch(`/api/me/api-tokens/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  if (!res.ok) await jsonOrThrow(res)
+  return null
+}
+
 // ---------- comments (M4.5) ----------
 
 /** All comments on an extraction. Oldest first. */
