@@ -76,7 +76,11 @@ def variant_to_plan(variant_id: str) -> str | None:
 
 
 def _headers() -> dict:
-    api_key = os.environ.get("LSQ_API_KEY")
+    # `.strip()` is defensive — copy-pasting a long JWT into a dashboard
+    # textarea (Render's UI in particular) often picks up a trailing
+    # newline. httpx then refuses the `Authorization: Bearer ...\n` header
+    # with `LocalProtocolError: Illegal header value`.
+    api_key = (os.environ.get("LSQ_API_KEY") or "").strip()
     if not api_key:
         raise RuntimeError("LSQ_API_KEY not set in backend/.env")
     return {

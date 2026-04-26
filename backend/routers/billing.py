@@ -118,15 +118,20 @@ def get_portal(session: SessionDep, user: UserDep) -> PortalResponse:
 def _verify_signature(raw_body: bytes, signature_hex: str | None) -> bool:
     """LSQ signs every webhook with HMAC-SHA256 of the raw request body using
     the secret we configured in their dashboard. Constant-time compare prevents
-    timing attacks on the signature."""
+    timing attacks on the signature.
+
+    `.strip()` on both inputs because dashboard paste often picks up trailing
+    whitespace — silent mismatches here would 401 every webhook with no
+    obvious cause.
+    """
     if not signature_hex:
         return False
-    secret = os.environ.get("LSQ_WEBHOOK_SECRET")
+    secret = (os.environ.get("LSQ_WEBHOOK_SECRET") or "").strip()
     if not secret:
         log.error("LSQ_WEBHOOK_SECRET not set — refusing all webhooks")
         return False
     expected = hmac.new(secret.encode("utf-8"), raw_body, hashlib.sha256).hexdigest()
-    return hmac.compare_digest(expected, signature_hex)
+    return hmac.compare_digest(expected, signature_hex.strip())
 
 
 def _to_dt(s: str | None) -> datetime | None:

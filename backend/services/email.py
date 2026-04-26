@@ -38,7 +38,10 @@ def fetch_clerk_user(user_id: str) -> Optional[dict]:
     keeping the call site narrow — every fetch is a billed call against
     Clerk's API limits in higher tiers.
     """
-    secret = os.environ.get("CLERK_SECRET_KEY")
+    # `.strip()` because dashboard paste of long secrets often picks up a
+    # trailing newline; httpx then refuses the resulting `Bearer ...\n`
+    # header. Same guard added in services/lsq.py and webhook signature check.
+    secret = (os.environ.get("CLERK_SECRET_KEY") or "").strip()
     if not secret:
         log.warning("CLERK_SECRET_KEY not set; cannot fetch Clerk user")
         return None
@@ -91,7 +94,7 @@ def send_welcome_email(to_email: str, *, display_name: Optional[str] = None) -> 
     sets `user_settings.welcome_sent_at` first so a repeated request never
     reaches us. We only get called once per user.
     """
-    api_key = os.environ.get("RESEND_API_KEY")
+    api_key = (os.environ.get("RESEND_API_KEY") or "").strip()
     if not api_key:
         log.warning("RESEND_API_KEY not set; skipping welcome to %s", to_email)
         return False
