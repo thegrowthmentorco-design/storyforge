@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react'
-import { listVersionsApi } from '../api.js'
+import { downloadExtractionDocxApi, listVersionsApi } from '../api.js'
 import { track } from '../lib/analytics.js'
+import { buildCsv, buildJson, buildMarkdown, downloadFile, exportBaseName } from '../lib/exports.js'
+import { useToast } from './Toast.jsx'
 import { Badge, Button, IconButton } from './primitives.jsx'
 import {
   AlertTriangle,
@@ -17,36 +19,123 @@ import {
   Zap,
 } from './icons.jsx'
 
-function exportMarkdown(extraction) {
-  const e = extraction
-  const lines = []
-  lines.push(`# ${e.filename}\n`)
-  lines.push(`> ${e.brief.summary}\n`)
-  if (e.brief.tags?.length) {
-    lines.push(e.brief.tags.map((t) => `\`${t}\``).join(' ') + '\n')
-  }
-  lines.push('## Actors\n')
-  e.actors.forEach((a) => lines.push(`- ${a}`))
-  lines.push('\n## User Stories\n')
-  e.stories.forEach((s) => {
-    lines.push(`### ${s.id} — ${s.actor}`)
-    lines.push(`**As a** ${s.actor} **I want** ${s.want} **so that** ${s.so_that}`)
-    if (s.section) lines.push(`_Source: ${s.section}_`)
-    if (s.criteria?.length) {
-      lines.push('\n**Acceptance criteria:**')
-      s.criteria.forEach((c) => lines.push(`- ${c}`))
+/* M6.1 — Export menu. Dropdown with 4 formats. MD/JSON/CSV are pure
+ * client-side; DOCX hits the backend (python-docx). Click-outside + Esc
+ * dismiss; same pattern as CommentThread. */
+function ExportMenu({ extraction, busy }) {
+  const [open, setOpen] = useState(false)
+  const [downloading, setDownloading] = useState(false)
+  const { toast } = useToast()
+  const popRef = React.useRef(null)
+  const btnRef = React.useRef(null)
+
+  React.useEffect(() => {
+    if (!open) return
+    const onClick = (e) => {
+      if (popRef.current?.contains(e.target)) return
+      if (btnRef.current?.contains(e.target)) return
+      setOpen(false)
     }
-    lines.push('')
-  })
-  lines.push('## Non-Functional Requirements\n')
-  lines.push('| Category | Value |')
-  lines.push('|---|---|')
-  e.nfrs.forEach((n) => lines.push(`| ${n.category} | ${n.value} |`))
-  lines.push('\n## Gaps & questions\n')
-  e.gaps.forEach((g) =>
-    lines.push(`- **[${g.severity}]** ${g.question} _(${g.section})_ — ${g.context}`),
+    const onKey = (e) => { if (e.key === 'Escape') setOpen(false) }
+    window.addEventListener('mousedown', onClick)
+    window.addEventListener('keydown', onKey)
+    return () => {
+      window.removeEventListener('mousedown', onClick)
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [open])
+
+  const base = exportBaseName(extraction.filename)
+
+  const exportClient = (format) => {
+    setOpen(false)
+    if (format === 'md') {
+      downloadFile(`${base}.md`, buildMarkdown(extraction), 'text/markdown')
+    } else if (format === 'json') {
+      downloadFile(`${base}.json`, buildJson(extraction), 'application/json')
+    } else if (format === 'csv') {
+      downloadFile(`${base}.csv`, buildCsv(extraction), 'text/csv')
+    }
+    track('export_clicked', { format })
+  }
+
+  const exportDocx = async () => {
+    setOpen(false)
+    setDownloading(true)
+    try {
+      await downloadExtractionDocxApi(extraction.id)
+      track('export_clicked', { format: 'docx' })
+    } catch (err) {
+      toast.error(err.message || 'DOCX export failed')
+    } finally {
+      setDownloading(false)
+    }
+  }
+
+  return (
+    <span style={{ position: 'relative', display: 'inline-block' }}>
+      <span ref={btnRef} style={{ display: 'inline-block' }}>
+        <Button
+          variant="primary"
+          size="sm"
+          icon={<Download size={13} />}
+          onClick={() => setOpen((x) => !x)}
+          disabled={busy || downloading}
+        >
+          {downloading ? 'Exporting…' : 'Export'}
+        </Button>
+      </span>
+      {open && (
+        <div
+          ref={popRef}
+          role="menu"
+          style={{
+            position: 'absolute',
+            top: 'calc(100% + 4px)',
+            right: 0,
+            minWidth: 180,
+            background: 'var(--bg-elevated)',
+            border: '1px solid var(--border)',
+            borderRadius: 'var(--radius)',
+            boxShadow: 'var(--shadow-lg)',
+            padding: 4,
+            zIndex: 50,
+          }}
+        >
+          <ExportMenuItem onClick={() => exportClient('md')}  title="Markdown (.md)" hint="Headings + bullets" />
+          <ExportMenuItem onClick={() => exportClient('json')} title="JSON (.json)"   hint="Full structured payload" />
+          <ExportMenuItem onClick={() => exportClient('csv')}  title="CSV (.csv)"     hint="Spreadsheet-friendly" />
+          <ExportMenuItem onClick={exportDocx}                 title="Word (.docx)"   hint="Formatted document" />
+        </div>
+      )}
+    </span>
   )
-  return lines.join('\n')
+}
+
+function ExportMenuItem({ onClick, title, hint }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      role="menuitem"
+      style={{
+        display: 'block',
+        width: '100%',
+        textAlign: 'left',
+        background: 'transparent',
+        border: 'none',
+        borderRadius: 'var(--radius-sm)',
+        padding: '6px 10px',
+        cursor: 'pointer',
+        fontFamily: 'inherit',
+      }}
+      onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg-hover)' }}
+      onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
+    >
+      <div style={{ fontSize: 12.5, fontWeight: 500, color: 'var(--text-strong)' }}>{title}</div>
+      <div style={{ fontSize: 11, color: 'var(--text-soft)', marginTop: 1 }}>{hint}</div>
+    </button>
+  )
 }
 
 function fmtTime(iso) {
@@ -211,19 +300,6 @@ export default function TopBar({
     return () => { alive = false }
   }, [extractionId])
 
-  const onExport = () => {
-    if (!extraction) return
-    const md = exportMarkdown(extraction)
-    const blob = new Blob([md], { type: 'text/markdown' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `${extraction.filename.replace(/\.[^/.]+$/, '')}.stories.md`
-    a.click()
-    URL.revokeObjectURL(url)
-    track('export_clicked', { format: 'md' })
-  }
-
   const currentVersion = versions.find((v) => v.id === extractionId)?.version
 
   return (
@@ -326,9 +402,7 @@ export default function TopBar({
               Share
             </Button>
           )}
-          <Button variant="primary" size="sm" icon={<Download size={13} />} onClick={onExport}>
-            Export .md
-          </Button>
+          <ExportMenu extraction={extraction} busy={loading || rerunning} />
         </>
       )}
     </div>

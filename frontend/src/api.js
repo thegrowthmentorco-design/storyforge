@@ -195,6 +195,30 @@ export async function importExtractionApi(record) {
   return jsonOrThrow(res)
 }
 
+/** M6.1 — fetch a DOCX rendering of an extraction and trigger save.
+ *  Server-side because python-docx is already installed (vs a 250 KB
+ *  client-side lib). Returns nothing (side-effect: download). */
+export async function downloadExtractionDocxApi(id) {
+  const res = await apiFetch(`/api/extractions/${encodeURIComponent(id)}/export.docx`)
+  if (!res.ok) {
+    const err = new Error(await readError(res))
+    err.status = res.status
+    throw err
+  }
+  const blob = await res.blob()
+  const cd = res.headers.get('content-disposition') || ''
+  const match = cd.match(/filename="([^"]+)"/)
+  const filename = match ? match[1] : 'extraction.docx'
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
 /** Re-run extraction on the same source. Uses current header model + key. */
 export async function rerunExtractionApi(id) {
   const res = await apiFetch(`/api/extractions/${encodeURIComponent(id)}/rerun`, {

@@ -201,6 +201,29 @@ def get_source(extraction_id: str, session: SessionDep, user: UserDep):
     )
 
 
+# ---------------- export (M6.1) ----------------
+
+
+@router.get("/{extraction_id}/export.docx")
+def export_docx(extraction_id: str, session: SessionDep, user: UserDep):
+    """Render the extraction as a .docx file. MD/JSON/CSV are generated
+    client-side (the frontend already holds the full record); DOCX needs
+    python-docx + zipping, so it lives server-side."""
+    from fastapi.responses import Response
+    from services.exports import build_docx
+
+    row = _owned_extraction(session, extraction_id, user)
+    data = build_docx(row)
+    # Strip the source-file extension so the export name reads clean
+    # ("requirements.docx" not "requirements.pdf.docx").
+    base = (row.filename or "extraction").rsplit(".", 1)[0]
+    return Response(
+        content=data,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": f'attachment; filename="{base}.docx"'},
+    )
+
+
 # ---------------- delete ----------------
 
 
