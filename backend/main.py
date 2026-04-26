@@ -26,6 +26,7 @@ from models import ExtractionRecord
 from routers import billing as billing_router
 from routers import comments as comments_router
 from routers import extractions as extractions_router
+from routers import integrations as integrations_router
 from routers import me as me_router
 from routers import projects as projects_router
 from routers import share as share_router
@@ -89,6 +90,7 @@ app.include_router(extractions_router.router, dependencies=_protected_deps)
 app.include_router(projects_router.router, dependencies=_protected_deps)
 app.include_router(me_router.router, dependencies=_protected_deps)
 app.include_router(comments_router.router, dependencies=_protected_deps)
+app.include_router(integrations_router.router, dependencies=_protected_deps)
 # M4.6: share has split posture — owner endpoints are auth+ownership, the
 # public read uses token only. Mounted as two separate routers in share.py.
 app.include_router(share_router.owner_router, dependencies=_protected_deps)

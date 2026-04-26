@@ -301,6 +301,17 @@ export const Copy = (p) => (
   </I>
 )
 
+/* Power-plug icon — used for the M6.2 Integrations section + the
+ * "Push to Jira" button. Lucide "plug-zap" simplified. */
+export const Plug = (p) => (
+  <I {...p}>
+    <path d="M6 7v6a6 6 0 0 0 12 0V7" />
+    <line x1="9" y1="2" x2="9" y2="7" />
+    <line x1="15" y1="2" x2="15" y2="7" />
+    <line x1="12" y1="19" x2="12" y2="22" />
+  </I>
+)
+
 /* Share icon — three nodes connected, Lucide "share-2" silhouette. Used
  * for the M4.6 share-link button. */
 export const Share2 = (p) => (

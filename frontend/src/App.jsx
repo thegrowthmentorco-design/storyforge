@@ -8,6 +8,7 @@ import { getSettings, setSettings } from './lib/settings.js'
 import { AppProvider } from './lib/AppContext.jsx'
 import { useToast } from './components/Toast.jsx'
 import ShareModal from './components/ShareModal.jsx'
+import PushToJiraModal from './components/PushToJiraModal.jsx'
 import { setSentryUser } from './lib/sentry.js'
 import { identifyUser, track } from './lib/analytics.js'
 import Account from './pages/Account.jsx'
@@ -487,6 +488,8 @@ function AuthedApp() {
   // alongside other owner controls; the public viewer renders ShareView
   // (a different page) and never sees this state.
   const [shareOpen, setShareOpen] = useState(false)
+  // M6.2 — push-to-Jira modal toggle. Same pattern as ShareModal.
+  const [pushJiraOpen, setPushJiraOpen] = useState(false)
   const handleRegenSection = async (section) => {
     if (!extractionId || regenBusy) return
     if (!window.confirm(`Replace your ${section} with a fresh draft from Claude?`)) return
@@ -595,6 +598,7 @@ function AuthedApp() {
           onRerun={handleRerun}
           onSwitchVersion={switchVersion}
           onShare={extractionId ? () => setShareOpen(true) : undefined}
+          onPushToJira={extractionId ? () => setPushJiraOpen(true) : undefined}
         />
         <Routes>
           <Route
@@ -652,6 +656,9 @@ function AuthedApp() {
       <PaywallModal paywall={paywall} onClose={() => setPaywall(null)} />
       {shareOpen && extractionId && (
         <ShareModal extractionId={extractionId} onClose={() => setShareOpen(false)} />
+      )}
+      {pushJiraOpen && extraction && (
+        <PushToJiraModal extraction={extraction} onClose={() => setPushJiraOpen(false)} />
       )}
     </div>
     </AppProvider>

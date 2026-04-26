@@ -89,6 +89,34 @@ class Extraction(SQLModel, table=True):
     gaps: list[dict[str, Any]] = Field(sa_column=Column(JSON, nullable=False))
 
 
+class IntegrationConnection(SQLModel, table=True):
+    """Per-user (or per-org) credentials for a third-party integration (M6.2+).
+
+    One row per (scope, kind). Composite primary key on (scope_id, kind) so
+    a user can have at most one connection per integration type — keeps the
+    UX simple ("connect Jira" → one button, not a list).
+
+    `scope_id` is `user_id` for personal connections or `org_id` for shared
+    org connections — disambiguated by `scope` ('user' | 'org'). v1 ships
+    user-only; org sharing is M6.2.c.
+
+    `config_json` is opaque per-integration JSON (varies by `kind`). For
+    `kind='jira'` it's `{base_url, email, api_token_encrypted, default_project_key?}`.
+    The token is Fernet-encrypted via `services/byok.encrypt_secret` —
+    same path the Anthropic BYOK key uses. Routes never echo the token
+    back to the client (only the connection metadata).
+    """
+
+    __tablename__ = "integration_connection"
+
+    scope: str = Field(primary_key=True)        # 'user' | 'org'
+    scope_id: str = Field(primary_key=True)     # user_id or org_id
+    kind: str = Field(primary_key=True)         # 'jira' | future: 'linear', 'github', ...
+    config_json: str                            # JSON string; per-kind shape
+    created_at: datetime = Field(default_factory=_utcnow)
+    updated_at: datetime = Field(default_factory=_utcnow)
+
+
 class ExtractionShare(SQLModel, table=True):
     """Public read-only share token for an extraction (M4.6).
 

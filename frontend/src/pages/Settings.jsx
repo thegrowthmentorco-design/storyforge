@@ -1,9 +1,17 @@
 import React, { useEffect, useState } from 'react'
-import { getMeSettingsApi, putMeSettingsApi, testApiKey } from '../api.js'
+import {
+  deleteJiraConnectionApi,
+  getJiraConnectionApi,
+  getMeSettingsApi,
+  listJiraProjectsApi,
+  putJiraConnectionApi,
+  putMeSettingsApi,
+  testApiKey,
+} from '../api.js'
 import { useApp } from '../lib/AppContext.jsx'
 import { useToast } from '../components/Toast.jsx'
 import { Badge, Button, Card, IconTile, Spinner } from '../components/primitives.jsx'
-import { Eye, Monitor, Moon, Shield, Sparkles, Sun } from '../components/icons.jsx'
+import { Eye, Monitor, Moon, Plug, Shield, Sparkles, Sun } from '../components/icons.jsx'
 
 function Section({ icon, tone, title, description, comingIn, children }) {
   return (
@@ -477,6 +485,196 @@ function ApiKeyForm({ keySet, keyPreview, onSaved }) {
   )
 }
 
+/* M6.2 — Jira connection form. Two states: not-connected (full form
+ * with Connect + Cancel) and connected (preview row with Test + Edit
+ * + Disconnect). Edit puts us back in form mode with the existing
+ * fields pre-filled (token shown blank — never round-tripped from
+ * backend, user must re-enter to change). */
+function JiraConnectionForm() {
+  const { toast } = useToast()
+  const [conn, setConn] = useState(null)        // saved connection or null
+  const [loading, setLoading] = useState(true)
+  const [editing, setEditing] = useState(false) // form open
+  const [busy, setBusy] = useState(false)
+
+  // Form fields (only used while editing)
+  const [baseUrl, setBaseUrl] = useState('')
+  const [email, setEmail] = useState('')
+  const [token, setToken] = useState('')
+
+  useEffect(() => {
+    let alive = true
+    setLoading(true)
+    getJiraConnectionApi()
+      .then((c) => { if (alive) setConn(c) })
+      .catch((e) => { if (alive) toast.error(e.message || 'Could not load Jira connection') })
+      .finally(() => { if (alive) setLoading(false) })
+    return () => { alive = false }
+  }, [])
+
+  const startEdit = () => {
+    setBaseUrl(conn?.base_url || '')
+    setEmail(conn?.email || '')
+    setToken('')
+    setEditing(true)
+  }
+  const cancelEdit = () => {
+    setEditing(false)
+    setBaseUrl(''); setEmail(''); setToken('')
+  }
+
+  const save = async () => {
+    if (!baseUrl.trim() || !email.trim() || !token.trim()) {
+      toast.error('All fields required')
+      return
+    }
+    setBusy(true)
+    try {
+      const c = await putJiraConnectionApi({
+        base_url: baseUrl.trim(),
+        email: email.trim(),
+        api_token: token.trim(),
+      })
+      setConn(c)
+      setEditing(false)
+      setToken('')   // never keep the plaintext in component state
+      toast.success('Jira connection saved')
+    } catch (e) {
+      toast.error(e.message || 'Could not save Jira connection')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const test = async () => {
+    setBusy(true)
+    try {
+      const projects = await listJiraProjectsApi()
+      toast.success(`Connection OK — ${projects.length} project${projects.length === 1 ? '' : 's'} visible`)
+    } catch (e) {
+      toast.error(e.message || 'Connection test failed')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const disconnect = async () => {
+    if (!window.confirm('Disconnect Jira? You can reconnect any time.')) return
+    setBusy(true)
+    try {
+      await deleteJiraConnectionApi()
+      setConn(null)
+      toast.success('Jira disconnected')
+    } catch (e) {
+      toast.error(e.message || 'Could not disconnect')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-muted)', fontSize: 13 }}>
+        <Spinner size={14} /> Loading Jira connection…
+      </div>
+    )
+  }
+
+  if (conn && !editing) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '90px 1fr', gap: '4px 12px', fontSize: 13 }}>
+          <div style={{ color: 'var(--text-soft)' }}>URL</div>
+          <div style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-strong)' }}>{conn.base_url}</div>
+          <div style={{ color: 'var(--text-soft)' }}>Email</div>
+          <div style={{ color: 'var(--text-strong)' }}>{conn.email}</div>
+          <div style={{ color: 'var(--text-soft)' }}>Token</div>
+          <div style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>{conn.api_token_preview}</div>
+        </div>
+        <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+          <Button variant="secondary" size="sm" onClick={test} disabled={busy}>
+            {busy ? 'Testing…' : 'Test'}
+          </Button>
+          <Button variant="secondary" size="sm" onClick={startEdit} disabled={busy}>Edit</Button>
+          <Button variant="ghost" size="sm" onClick={disconnect} disabled={busy}>Disconnect</Button>
+        </div>
+      </div>
+    )
+  }
+
+  // Form mode (no saved conn, or editing)
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxWidth: 480 }}>
+      <p style={{ fontSize: 12.5, color: 'var(--text-muted)', margin: 0, lineHeight: 1.55 }}>
+        Generate an API token at{' '}
+        <a
+          href="https://id.atlassian.com/manage-profile/security/api-tokens"
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{ color: 'var(--accent-strong)' }}
+        >
+          id.atlassian.com → API tokens
+        </a>
+        . The token is encrypted before storage and only decrypted at push time.
+      </p>
+      <FieldLabel>Atlassian URL</FieldLabel>
+      <input
+        type="url"
+        placeholder="https://your-team.atlassian.net"
+        value={baseUrl}
+        onChange={(e) => setBaseUrl(e.target.value)}
+        disabled={busy}
+        style={inputStyle}
+      />
+      <FieldLabel>Email</FieldLabel>
+      <input
+        type="email"
+        placeholder="you@company.com"
+        value={email}
+        onChange={(e) => setEmail(e.target.value)}
+        disabled={busy}
+        style={inputStyle}
+      />
+      <FieldLabel>API token</FieldLabel>
+      <input
+        type="password"
+        placeholder="paste token here"
+        value={token}
+        onChange={(e) => setToken(e.target.value)}
+        disabled={busy}
+        style={inputStyle}
+      />
+      <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+        <Button variant="primary" size="sm" onClick={save} disabled={busy}>
+          {busy ? 'Saving…' : conn ? 'Save changes' : 'Connect'}
+        </Button>
+        {(conn || editing) && (
+          <Button variant="secondary" size="sm" onClick={cancelEdit} disabled={busy}>Cancel</Button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function FieldLabel({ children }) {
+  return (
+    <label style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, color: 'var(--text-soft)' }}>
+      {children}
+    </label>
+  )
+}
+
+const inputStyle = {
+  border: '1px solid var(--border-strong)',
+  borderRadius: 'var(--radius-sm)',
+  padding: '8px 10px',
+  fontFamily: 'inherit',
+  fontSize: 13,
+  background: 'var(--bg)',
+  color: 'inherit',
+  outline: 'none',
+}
+
 export default function Settings() {
   const { toast } = useToast()
   const [serverSettings, setServerSettings] = useState(null)
@@ -575,6 +773,14 @@ export default function Settings() {
           description="Light, dark, or follow your system preference. Persists across sessions."
         >
           <ThemePicker />
+        </Section>
+        <Section
+          icon={<Plug size={16} />}
+          tone="success"
+          title="Integrations · Jira"
+          description="Push extracted user stories straight into a Jira project. One issue per story; criteria included as bullet points in the description."
+        >
+          <JiraConnectionForm />
         </Section>
       </div>
     </div>

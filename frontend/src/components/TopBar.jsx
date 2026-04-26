@@ -12,6 +12,7 @@ import {
   Download,
   FileText,
   Moon,
+  Plug,
   RefreshCw,
   Share2,
   Sparkles,
@@ -285,6 +286,7 @@ export default function TopBar({
   onRerun,
   onSwitchVersion,
   onShare,
+  onPushToJira,
 }) {
   const [versions, setVersions] = useState([])
 
@@ -400,6 +402,17 @@ export default function TopBar({
               title="Generate a public read-only URL for this document"
             >
               Share
+            </Button>
+          )}
+          {typeof onPushToJira === 'function' && (
+            <Button
+              variant="secondary"
+              size="sm"
+              icon={<Plug size={13} />}
+              onClick={onPushToJira}
+              title="Push extracted stories to a Jira project"
+            >
+              Push to Jira
             </Button>
           )}
           <ExportMenu extraction={extraction} busy={loading || rerunning} />

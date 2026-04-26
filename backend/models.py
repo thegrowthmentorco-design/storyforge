@@ -376,3 +376,57 @@ class ExtractionShareRead(BaseModel):
     created_at: datetime
     expires_at: datetime | None = None
     revoked_at: datetime | None = None
+
+
+# ----- Integrations (M6.2 — Jira) -----
+
+
+class JiraConnectionRead(BaseModel):
+    """Connection metadata returned to the frontend. Token is NEVER included
+    in any read response — only the existence + a preview is exposed."""
+    model_config = ConfigDict(extra="forbid")
+    base_url: str
+    email: str
+    api_token_preview: str       # ••••XYZK style, computed from the stored token
+    default_project_key: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class JiraConnectionWrite(BaseModel):
+    """PUT body — full replacement of the saved connection. Frontend sends
+    the token in the clear; backend encrypts before persisting."""
+    model_config = ConfigDict(extra="forbid")
+    base_url: str       # e.g. "https://acme.atlassian.net" (no trailing slash)
+    email: str          # Atlassian account email
+    api_token: str      # https://id.atlassian.com/manage-profile/security/api-tokens
+    default_project_key: str | None = None
+
+
+class JiraProject(BaseModel):
+    """One Jira project as returned by /rest/api/3/project."""
+    model_config = ConfigDict(extra="forbid")
+    id: str
+    key: str
+    name: str
+
+
+class PushToJiraRequest(BaseModel):
+    """POST /api/extractions/{id}/push/jira body."""
+    model_config = ConfigDict(extra="forbid")
+    project_key: str
+    issue_type: str = "Story"   # default; user can override
+
+
+class PushedIssue(BaseModel):
+    """One created Jira issue, returned per pushed story."""
+    model_config = ConfigDict(extra="forbid")
+    story_id: str
+    issue_key: str
+    issue_url: str
+
+
+class PushToJiraResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    pushed: list[PushedIssue]
+    failed: list[dict]   # [{story_id, error}] — non-fatal per-story failures

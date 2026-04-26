@@ -277,6 +277,51 @@ export async function fetchSharedExtraction(token) {
   return jsonOrThrow(res)
 }
 
+// ---------- integrations: Jira (M6.2) ----------
+
+/** Get the saved Jira connection for the current user, or null. The
+ *  response carries `api_token_preview` (••••XYZK) but never the token
+ *  itself — backend strips it. */
+export async function getJiraConnectionApi() {
+  const res = await apiFetch('/api/integrations/jira/connection')
+  return jsonOrThrow(res)
+}
+
+/** Save / replace the Jira connection. Body: {base_url, email, api_token, default_project_key?}. */
+export async function putJiraConnectionApi(body) {
+  const res = await apiFetch('/api/integrations/jira/connection', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  return jsonOrThrow(res)
+}
+
+/** Delete the saved Jira connection. */
+export async function deleteJiraConnectionApi() {
+  const res = await apiFetch('/api/integrations/jira/connection', { method: 'DELETE' })
+  if (!res.ok) await jsonOrThrow(res)
+  return null
+}
+
+/** List the user's Jira projects (live fetch — doubles as a "test
+ *  connection" probe). 401 → token rejected; 502 → URL/network bad. */
+export async function listJiraProjectsApi() {
+  const res = await apiFetch('/api/integrations/jira/projects')
+  return jsonOrThrow(res)
+}
+
+/** Push every story in the extraction as a Jira issue. Returns
+ *  {pushed: [{story_id, issue_key, issue_url}], failed: [{story_id, error}]}. */
+export async function pushToJiraApi(extractionId, { project_key, issue_type = 'Story' }) {
+  const res = await apiFetch(`/api/extractions/${encodeURIComponent(extractionId)}/push/jira`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ project_key, issue_type }),
+  })
+  return jsonOrThrow(res)
+}
+
 // ---------- comments (M4.5) ----------
 
 /** All comments on an extraction. Oldest first. */
