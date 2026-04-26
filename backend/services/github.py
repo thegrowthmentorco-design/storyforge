@@ -46,29 +46,71 @@ class GitHubClient:
             "X-GitHub-Api-Version": "2022-11-28",
         }
 
+    # M6.4.c — pagination cap. GitHub returns up to 100 per page; we walk
+    # pages until either an empty/short page or this many total. 1000 covers
+    # ~all real users without blowing memory or burning API quota.
+    LIST_REPOS_MAX = 1000
+
     def list_repos(self) -> list[GitHubRepo]:
-        """First 100 repos visible to the token, sorted by recent activity.
-        Pagination beyond 100 isn't a v1 concern — the picker UX would need
-        search anyway, and most users push to repos they touched recently."""
-        url = f"{GITHUB_API}/user/repos?per_page=100&sort=updated&type=all"
+        """All repos visible to the token, sorted by recent activity, up to
+        `LIST_REPOS_MAX` (M6.4.c). Walks pages with `per_page=100`; stops on
+        the first short page (GitHub's signal that we've passed the end).
+        """
+        out: list[GitHubRepo] = []
+        per_page = 100
+        page = 1
+        while len(out) < self.LIST_REPOS_MAX:
+            url = (
+                f"{GITHUB_API}/user/repos"
+                f"?per_page={per_page}&sort=updated&type=all&page={page}"
+            )
+            try:
+                r = httpx.get(url, headers=self._headers(), timeout=HTTP_TIMEOUT)
+            except httpx.HTTPError as e:
+                raise HTTPException(status_code=502, detail=f"Could not reach GitHub: {e}")
+            if r.status_code == 401:
+                raise HTTPException(status_code=401, detail="GitHub auth failed — re-enter the PAT in Settings.")
+            if not r.is_success:
+                raise HTTPException(status_code=502, detail=f"GitHub repos fetch failed ({r.status_code}): {r.text[:200]}")
+            items = r.json() or []
+            if not items:
+                break
+            for p in items:
+                out.append(GitHubRepo(
+                    full_name=p["full_name"],
+                    owner=p["owner"]["login"],
+                    name=p["name"],
+                    private=p.get("private", False),
+                ))
+                if len(out) >= self.LIST_REPOS_MAX:
+                    break
+            # Short page = last page (GitHub's pagination signal).
+            if len(items) < per_page:
+                break
+            page += 1
+        return out
+
+    def list_labels(self, owner: str, repo: str) -> list[dict]:
+        """Labels defined on the repo. M6.4.b — used by the push modal so
+        the user can multi-select labels to apply to every created issue.
+
+        Returns `[{name, color}]` (color as hex without '#'). Up to 100 —
+        we don't paginate because >100 labels is rare and the list is cosmetic
+        anyway; users picking from a 200-label set would benefit more from
+        search than infinite scroll, and that's a future-UX call.
+        """
+        url = f"{GITHUB_API}/repos/{owner}/{repo}/labels?per_page=100"
         try:
             r = httpx.get(url, headers=self._headers(), timeout=HTTP_TIMEOUT)
         except httpx.HTTPError as e:
             raise HTTPException(status_code=502, detail=f"Could not reach GitHub: {e}")
         if r.status_code == 401:
             raise HTTPException(status_code=401, detail="GitHub auth failed — re-enter the PAT in Settings.")
+        if r.status_code == 404:
+            raise HTTPException(status_code=404, detail=f"Repo not found: {owner}/{repo}")
         if not r.is_success:
-            raise HTTPException(status_code=502, detail=f"GitHub repos fetch failed ({r.status_code}): {r.text[:200]}")
-        items = r.json()
-        return [
-            GitHubRepo(
-                full_name=p["full_name"],
-                owner=p["owner"]["login"],
-                name=p["name"],
-                private=p.get("private", False),
-            )
-            for p in items
-        ]
+            raise HTTPException(status_code=502, detail=f"GitHub labels fetch failed ({r.status_code}): {r.text[:200]}")
+        return [{"name": l["name"], "color": l.get("color", "888888")} for l in (r.json() or [])]
 
     def create_issue(
         self,
@@ -77,18 +119,21 @@ class GitHubClient:
         repo: str,
         title: str,
         body_md: str,
+        labels: list[str] | None = None,
     ) -> dict[str, Any]:
         """Create one issue. GitHub accepts markdown directly in `body` (no
         conversion needed — same as Linear, unlike Jira's ADF). Returns
         {number, url}.
 
-        We intentionally don't apply labels in v1: a label has to exist on
-        the repo first, and listing labels per push would double the API
-        round-trip count. Add labels via M6.4.b once we have a "label
-        picker" UX worth the extra call.
+        M6.4.b: `labels` is a list of label names to apply to the new issue.
+        GitHub silently ignores unknown labels (no per-label validation
+        round-trip needed); the modal-side list is the source of truth for
+        what's valid. Empty/None = no labels.
         """
         url = f"{GITHUB_API}/repos/{owner}/{repo}/issues"
-        payload = {"title": title[:256], "body": body_md}
+        payload: dict[str, Any] = {"title": title[:256], "body": body_md}
+        if labels:
+            payload["labels"] = list(labels)
         try:
             r = httpx.post(url, headers=self._headers(), json=payload, timeout=HTTP_TIMEOUT)
         except httpx.HTTPError as e:
@@ -140,17 +185,23 @@ def push_extraction(
     *,
     owner: str,
     repo: str,
+    labels: list[str] | None = None,
 ) -> PushToGitHubResult:
     """Push every story as a GitHub issue. Per-story failures land in
     `failed[]` (mirrors Jira/Linear push contracts) so a partial success
-    keeps the work that landed."""
+    keeps the work that landed.
+
+    M6.4.b: `labels` is applied to every story-issue created in the batch.
+    """
     pushed: list[PushedIssue] = []
     failed: list[dict] = []
     for s in (extraction.stories or []):
         try:
             title = f"{s.get('id', '?')}: {s.get('want', '')[:200]}"
             body = _build_story_description(s)
-            res = client.create_issue(owner=owner, repo=repo, title=title, body_md=body)
+            res = client.create_issue(
+                owner=owner, repo=repo, title=title, body_md=body, labels=labels,
+            )
             pushed.append(PushedIssue(
                 story_id=s.get("id", ""),
                 # Use "owner/repo#N" so the displayed key is unambiguous in

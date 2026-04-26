@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react'
-import { listGitHubReposApi, pushToGitHubApi } from '../api.js'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { listGitHubLabelsApi, listGitHubReposApi, pushToGitHubApi } from '../api.js'
 import { useToast } from './Toast.jsx'
 import { Card } from './primitives.jsx'
 import { track } from '../lib/analytics.js'
@@ -23,6 +23,13 @@ export default function PushToGitHubModal({ extraction, onClose }) {
   const [filter, setFilter] = useState('')
   const [pushing, setPushing] = useState(false)
   const [result, setResult] = useState(null)
+  // M6.4.b — labels for the picked repo. `labels` is the loaded list,
+  // `selectedLabels` is the user's multi-pick, and `labelsCache` keeps
+  // per-repo label fetches so re-picking a repo doesn't re-fetch.
+  const [labels, setLabels] = useState(null)         // null=loading, []=loaded
+  const [selectedLabels, setSelectedLabels] = useState([])
+  const [labelsErr, setLabelsErr] = useState(null)
+  const labelsCache = useRef(new Map())  // full_name -> labels[]
 
   useEffect(() => {
     let alive = true
@@ -45,6 +52,40 @@ export default function PushToGitHubModal({ extraction, onClose }) {
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose, pushing])
 
+  // M6.4.b — load labels when the repo selection changes (cached per repo).
+  useEffect(() => {
+    if (!selected) return
+    setSelectedLabels([])  // reset picks when switching repos
+    if (labelsCache.current.has(selected)) {
+      setLabels(labelsCache.current.get(selected))
+      setLabelsErr(null)
+      return
+    }
+    setLabels(null)
+    setLabelsErr(null)
+    const [owner, repo] = selected.split('/')
+    if (!owner || !repo) return
+    let alive = true
+    listGitHubLabelsApi(owner, repo)
+      .then((rows) => {
+        if (!alive) return
+        labelsCache.current.set(selected, rows)
+        setLabels(rows)
+      })
+      .catch((err) => {
+        if (!alive) return
+        setLabelsErr(err.message || 'Could not load labels')
+        setLabels([])
+      })
+    return () => { alive = false }
+  }, [selected])
+
+  const toggleLabel = (name) => {
+    setSelectedLabels((prev) =>
+      prev.includes(name) ? prev.filter((n) => n !== name) : [...prev, name],
+    )
+  }
+
   // Client-side filter — substring match on full_name. With first-100 rows
   // this is cheap; no need for a server search endpoint.
   const filtered = useMemo(() => {
@@ -62,13 +103,14 @@ export default function PushToGitHubModal({ extraction, onClose }) {
       return
     }
     setPushing(true)
-    track('push_to_github_started', { repo: selected })
+    track('push_to_github_started', { repo: selected, label_count: selectedLabels.length })
     try {
-      const r = await pushToGitHubApi(extraction.id, { owner, repo })
+      const r = await pushToGitHubApi(extraction.id, { owner, repo, labels: selectedLabels })
       setResult(r)
       track('push_to_github_finished', {
         pushed: r.pushed.length,
         failed: r.failed.length,
+        label_count: selectedLabels.length,
       })
     } catch (err) {
       toast.error(err.message || 'Push failed')
@@ -194,7 +236,7 @@ export default function PushToGitHubModal({ extraction, onClose }) {
               onChange={(e) => setSelected(e.target.value)}
               disabled={pushing}
               size={Math.min(8, Math.max(3, filtered.length))}
-              style={{ ...inputStyle, marginBottom: 14, fontFamily: 'var(--font-mono)', fontSize: 12.5 }}
+              style={{ ...inputStyle, marginBottom: 12, fontFamily: 'var(--font-mono)', fontSize: 12.5 }}
             >
               {filtered.map((r) => (
                 <option key={r.full_name} value={r.full_name}>
@@ -202,6 +244,56 @@ export default function PushToGitHubModal({ extraction, onClose }) {
                 </option>
               ))}
             </select>
+
+            {/* M6.4.b — labels picker. One round-trip per repo selection
+                (cached); empty list = repo has no labels. Optional pick. */}
+            <SectionLabel>
+              Labels {labels && labels.length > 0 && `(${selectedLabels.length} of ${labels.length})`}
+            </SectionLabel>
+            {labels === null ? (
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 14, padding: '4px 0' }}>
+                Loading labels…
+              </div>
+            ) : labelsErr ? (
+              <div style={{ fontSize: 12, color: 'var(--danger-ink)', marginBottom: 14 }}>
+                {labelsErr}
+              </div>
+            ) : labels.length === 0 ? (
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 14, fontStyle: 'italic' }}>
+                Repo has no labels yet — push without any.
+              </div>
+            ) : (
+              <div
+                style={{
+                  display: 'flex', flexWrap: 'wrap', gap: 6,
+                  marginBottom: 14, maxHeight: 100, overflow: 'auto',
+                  padding: 6, border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
+                }}
+              >
+                {labels.map((l) => {
+                  const on = selectedLabels.includes(l.name)
+                  return (
+                    <button
+                      key={l.name}
+                      type="button"
+                      onClick={() => toggleLabel(l.name)}
+                      disabled={pushing}
+                      style={{
+                        fontSize: 11.5, padding: '3px 8px',
+                        borderRadius: 11, cursor: pushing ? 'not-allowed' : 'pointer',
+                        border: `1px solid #${l.color}`,
+                        background: on ? `#${l.color}` : 'transparent',
+                        color: on ? '#fff' : 'var(--text)',
+                        fontFamily: 'inherit',
+                      }}
+                      title={on ? 'Click to remove' : 'Click to apply'}
+                    >
+                      {l.name}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
               <button type="button" onClick={onClose} disabled={pushing} style={ghostBtn}>Cancel</button>
               <button type="button" onClick={doPush} disabled={pushing || !selected} style={primaryBtn}>

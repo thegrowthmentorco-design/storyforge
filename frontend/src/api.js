@@ -450,12 +450,21 @@ export async function listGitHubReposApi() {
   return jsonOrThrow(res)
 }
 
-/** Push every story as a GitHub issue. issue_key uses `owner/repo#N`. */
-export async function pushToGitHubApi(extractionId, { owner, repo }) {
+/** M6.4.b — list labels defined on a specific repo. One round-trip per
+ *  repo pick; the frontend caches per (owner, repo). */
+export async function listGitHubLabelsApi(owner, repo) {
+  const qs = new URLSearchParams({ owner, repo }).toString()
+  const res = await apiFetch(`/api/integrations/github/labels?${qs}`)
+  return jsonOrThrow(res)
+}
+
+/** Push every story as a GitHub issue. issue_key uses `owner/repo#N`.
+ *  M6.4.b: `labels` is an array of label names applied to every issue. */
+export async function pushToGitHubApi(extractionId, { owner, repo, labels = [] }) {
   const res = await apiFetch(`/api/extractions/${encodeURIComponent(extractionId)}/push/github`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ owner, repo }),
+    body: JSON.stringify({ owner, repo, labels }),
   })
   return jsonOrThrow(res)
 }

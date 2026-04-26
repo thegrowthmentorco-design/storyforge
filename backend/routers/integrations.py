@@ -31,6 +31,7 @@ from db.session import get_session
 from models import (
     GitHubConnectionRead,
     GitHubConnectionWrite,
+    GitHubLabel,
     GitHubRepo,
     JiraConnectionRead,
     JiraConnectionWrite,
@@ -452,14 +453,27 @@ def delete_github_connection(
 
 @router.get("/api/integrations/github/repos", response_model=list[GitHubRepo])
 def list_github_repos(session: SessionDep, user: UserDep):
-    """Live fetch — doubles as the test-connection probe. First 100 repos
-    sorted by recent activity (no pagination — see services/github.py)."""
+    """Live fetch — doubles as the test-connection probe. M6.4.c: walks
+    GitHub's pagination up to ~1000 repos sorted by recent activity."""
     row = _get_connection(session, user, "github")
     if row is None:
         raise HTTPException(status_code=400, detail="No GitHub connection saved. Connect in Settings.")
     cfg = _decrypt_github_config(row)
     client = GitHubClient(api_token=cfg["api_token"])
     return client.list_repos()
+
+
+@router.get("/api/integrations/github/labels", response_model=list[GitHubLabel])
+def list_github_labels(owner: str, repo: str, session: SessionDep, user: UserDep):
+    """M6.4.b — labels defined on the picked repo, for the push modal's
+    multi-select. One round-trip per repo selection (frontend caches
+    per-repo so re-opening the modal is free)."""
+    row = _get_connection(session, user, "github")
+    if row is None:
+        raise HTTPException(status_code=400, detail="No GitHub connection saved. Connect in Settings.")
+    cfg = _decrypt_github_config(row)
+    client = GitHubClient(api_token=cfg["api_token"])
+    return client.list_labels(owner=owner, repo=repo)
 
 
 @router.post("/api/extractions/{extraction_id}/push/github", response_model=PushToGitHubResult)
@@ -487,6 +501,7 @@ def push_to_github(
         extraction,
         owner=payload.owner,
         repo=payload.repo,
+        labels=list(payload.labels or []),
     )
 
 

@@ -542,6 +542,17 @@ class PushToGitHubRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     owner: str
     repo: str
+    # M6.4.b — labels to apply to every created issue. Names must already
+    # exist on the repo (GitHub silently drops unknowns; the picker UI
+    # only shows real labels).
+    labels: list[str] = Field(default_factory=list)
+
+
+class GitHubLabel(BaseModel):
+    """One label as returned by /repos/{owner}/{repo}/labels (M6.4.b)."""
+    model_config = ConfigDict(extra="forbid")
+    name: str
+    color: str = "888888"   # hex without leading '#'
 
 
 class PushToGitHubResult(BaseModel):
