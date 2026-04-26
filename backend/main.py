@@ -303,6 +303,13 @@ async def extract_stream(
     x_anthropic_key: str | None = Header(default=None, alias="X-Anthropic-Key"),
     x_storyforge_model: str | None = Header(default=None, alias="X-Storyforge-Model"),
 ):
+    # IMPORTANT: the request-scoped `session` above is for pre-flight only.
+    # FastAPI tears down `Depends(get_session)` right after this handler
+    # returns the StreamingResponse object — *before* Starlette iterates the
+    # generator to send the body. So inside `event_gen` we open a *fresh*
+    # session via `Session(engine)`. This was the M5.3 regression that made
+    # extraction silently hang: persist_extraction would run against the
+    # closed session, raise inside the generator, and never emit `complete`.
     # ----- pre-flight: identical guards to /api/extract --------------------
     if file is None and not text:
         raise HTTPException(status_code=400, detail="Provide either a file or text.")
@@ -360,8 +367,17 @@ async def extract_stream(
             log.exception("upload save failed")
             raise HTTPException(status_code=500, detail=f"Could not store uploaded file: {e}")
 
+    # Snapshot the values we need inside the generator so we don't hold a
+    # closure over `session` (which FastAPI is about to close).
+    _user_id = user.user_id
+    _org_id = user.org_id
+    _project_id = project_id or None
+
     # ----- the SSE generator ------------------------------------------------
     def event_gen():
+        from db.session import engine as _engine  # local import to avoid main.py import-time cycle
+        from sqlmodel import Session as _Session
+
         yield _sse("start", {"id": extraction_id, "filename": source_name})
         try:
             for ev in stream_extraction(
@@ -378,29 +394,32 @@ async def extract_stream(
                     yield _sse("error", {"status": ev["status"], "detail": ev["detail"]})
                     return
                 elif etype == "complete":
-                    # Persist + record_usage right before the terminal frame
-                    # so the record returned to the frontend is canonical.
-                    row = persist_extraction(
-                        session,
-                        result=ev["result"],
-                        model_used=ev["model_used"],
-                        user_id=user.user_id,
-                        org_id=user.org_id,
-                        project_id=project_id or None,
-                        extraction_id=extraction_id,
-                        source_file_path=source_path,
-                    )
-                    record_usage(
-                        session,
-                        user_id=user.user_id,
-                        org_id=user.org_id,
-                        extraction_id=row.id,
-                        action="extract",
-                        model=ev["model_used"],
-                        live=ev["result"].live,
-                        usage=ev["usage"],
-                    )
-                    yield _sse("complete", extraction_to_record(row).model_dump(mode="json"))
+                    # Open a *fresh* session for persistence — the request-
+                    # scoped one is closed by now (see note at the top of the
+                    # handler).
+                    with _Session(_engine) as s:
+                        row = persist_extraction(
+                            s,
+                            result=ev["result"],
+                            model_used=ev["model_used"],
+                            user_id=_user_id,
+                            org_id=_org_id,
+                            project_id=_project_id,
+                            extraction_id=extraction_id,
+                            source_file_path=source_path,
+                        )
+                        record_usage(
+                            s,
+                            user_id=_user_id,
+                            org_id=_org_id,
+                            extraction_id=row.id,
+                            action="extract",
+                            model=ev["model_used"],
+                            live=ev["result"].live,
+                            usage=ev["usage"],
+                        )
+                        record = extraction_to_record(row)
+                    yield _sse("complete", record.model_dump(mode="json"))
         except Exception as e:
             # Last-resort safety net — anything inside the generator that
             # isn't already converted to an `error` event lands here.
