@@ -36,6 +36,10 @@ class CurrentUser:
     org_id: str | None = None
     org_role: str | None = None
     token_scope: str = "rw"
+    # M6.7.c — populated only when the request authenticated via an API
+    # token. Used by the rate-limit dep to key the per-token bucket; None
+    # for Clerk-session requests (which aren't rate-limited at this layer).
+    token_id: str | None = None
 
 
 # M6.7 — API tokens are dispatched on prefix. `sk_*` (live, test, …)
@@ -83,6 +87,8 @@ def current_user(
             # M6.7.b — read-only tokens stamp 'ro'; the enforce dep below
             # rejects non-safe HTTP methods when this is 'ro'.
             token_scope=row.scope or "rw",
+            # M6.7.c — token id keys the per-token rate-limit bucket.
+            token_id=row.id,
         )
 
     # ----- Clerk JWT path (M3.1) ------------------------------------------
@@ -123,3 +129,26 @@ def enforce_token_scope(
             status_code=403,
             detail="This API token is read-only. Use a read/write token for non-GET requests.",
         )
+
+
+def enforce_token_rate_limit(
+    user: Annotated[CurrentUser, Depends(current_user)],
+) -> None:
+    """M6.7.c — fixed-window rate limit per API token (default 60 req/min).
+
+    Clerk-session requests skip the check (no `token_id`). API-token requests
+    increment the bucket; on hit, raises 429 with a `Retry-After` header.
+    Disabled entirely when `STORYFORGE_API_RATE_LIMIT_PER_MINUTE=0`.
+    """
+    if not user.token_id:
+        return
+    from services.rate_limit import check_and_record  # local import — keeps
+                                                      # auth import graph tiny.
+    retry_after = check_and_record(user.token_id)
+    if retry_after is None:
+        return
+    raise HTTPException(
+        status_code=429,
+        detail=f"API token rate limit exceeded. Retry in {int(retry_after)}s.",
+        headers={"Retry-After": str(int(retry_after))},
+    )

@@ -20,7 +20,12 @@ from pypdf import PdfReader
 from docx import Document
 from sqlmodel import Session
 
-from auth.deps import CurrentUser, current_user, enforce_token_scope
+from auth.deps import (
+    CurrentUser,
+    current_user,
+    enforce_token_rate_limit,
+    enforce_token_scope,
+)
 from db.session import get_session, init_db
 from models import ExtractionRecord
 from routers import api_tokens as api_tokens_router
@@ -101,6 +106,7 @@ app.add_middleware(
 _protected_deps = [
     Depends(current_user),
     Depends(enforce_token_scope),
+    Depends(enforce_token_rate_limit),   # M6.7.c — no-op for Clerk sessions
     Depends(welcome_check),
 ]
 app.include_router(extractions_router.router, dependencies=_protected_deps)
@@ -158,7 +164,7 @@ def health():
     return {"ok": True, "live": bool(os.environ.get("ANTHROPIC_API_KEY"))}
 
 
-@app.post("/api/test-key", dependencies=[Depends(enforce_token_scope), Depends(welcome_check)])
+@app.post("/api/test-key", dependencies=[Depends(enforce_token_scope), Depends(enforce_token_rate_limit), Depends(welcome_check)])
 def test_key(
     _user: Annotated[CurrentUser, Depends(current_user)],
     x_anthropic_key: str | None = Header(default=None, alias="X-Anthropic-Key"),
@@ -190,7 +196,7 @@ def test_key(
         raise HTTPException(status_code=500, detail=f"Test failed: {e}")
 
 
-@app.post("/api/extract", response_model=ExtractionRecord, dependencies=[Depends(enforce_token_scope), Depends(welcome_check)])
+@app.post("/api/extract", response_model=ExtractionRecord, dependencies=[Depends(enforce_token_scope), Depends(enforce_token_rate_limit), Depends(welcome_check)])
 async def extract(
     session: Annotated[Session, Depends(get_session)],
     user: Annotated[CurrentUser, Depends(current_user)],
@@ -335,7 +341,7 @@ def _sse(event: str, data: dict | str) -> bytes:
     return f"event: {event}\ndata: {payload}\n\n".encode("utf-8")
 
 
-@app.post("/api/extract/stream", dependencies=[Depends(enforce_token_scope), Depends(welcome_check)])
+@app.post("/api/extract/stream", dependencies=[Depends(enforce_token_scope), Depends(enforce_token_rate_limit), Depends(welcome_check)])
 async def extract_stream(
     session: Annotated[Session, Depends(get_session)],
     user: Annotated[CurrentUser, Depends(current_user)],
