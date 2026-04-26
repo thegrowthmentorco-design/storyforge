@@ -11,6 +11,7 @@ import ShareModal from './components/ShareModal.jsx'
 import PushToJiraModal from './components/PushToJiraModal.jsx'
 import PushToLinearModal from './components/PushToLinearModal.jsx'
 import PushToGitHubModal from './components/PushToGitHubModal.jsx'
+import PushToSlackModal from './components/PushToSlackModal.jsx'
 import { setSentryUser } from './lib/sentry.js'
 import { identifyUser, track } from './lib/analytics.js'
 import Account from './pages/Account.jsx'
@@ -496,6 +497,8 @@ function AuthedApp() {
   const [pushLinearOpen, setPushLinearOpen] = useState(false)
   // M6.4 — push-to-GitHub modal toggle. Same pattern.
   const [pushGitHubOpen, setPushGitHubOpen] = useState(false)
+  // M6.6 — push-to-Slack modal toggle.
+  const [pushSlackOpen, setPushSlackOpen] = useState(false)
   const handleRegenSection = async (section) => {
     if (!extractionId || regenBusy) return
     if (!window.confirm(`Replace your ${section} with a fresh draft from Claude?`)) return
@@ -607,6 +610,7 @@ function AuthedApp() {
           onPushToJira={extractionId ? () => setPushJiraOpen(true) : undefined}
           onPushToLinear={extractionId ? () => setPushLinearOpen(true) : undefined}
           onPushToGitHub={extractionId ? () => setPushGitHubOpen(true) : undefined}
+          onPushToSlack={extractionId ? () => setPushSlackOpen(true) : undefined}
         />
         <Routes>
           <Route
@@ -673,6 +677,9 @@ function AuthedApp() {
       )}
       {pushGitHubOpen && extraction && (
         <PushToGitHubModal extraction={extraction} onClose={() => setPushGitHubOpen(false)} />
+      )}
+      {pushSlackOpen && extraction && (
+        <PushToSlackModal extraction={extraction} onClose={() => setPushSlackOpen(false)} />
       )}
     </div>
     </AppProvider>

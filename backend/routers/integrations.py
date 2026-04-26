@@ -26,7 +26,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select
 
 from auth.deps import CurrentUser, current_user
-from db.models import Extraction, IntegrationConnection
+from db.models import Extraction, GapState, IntegrationConnection
 from db.session import get_session
 from models import (
     GitHubConnectionRead,
@@ -44,11 +44,16 @@ from models import (
     PushToJiraResult,
     PushToLinearRequest,
     PushToLinearResult,
+    PushToSlackRequest,
+    PushToSlackResult,
+    SlackConnectionRead,
+    SlackConnectionWrite,
 )
 from services.byok import decrypt_secret, encrypt_secret, key_preview
 from services.github import GitHubClient, push_extraction as push_extraction_github
 from services.jira import JiraClient, push_extraction as push_extraction_jira
 from services.linear import LinearClient, push_extraction as push_extraction_linear
+from services.slack import post_gaps as slack_post_gaps
 from services.scope import in_scope
 
 log = logging.getLogger("storyforge.integrations")
@@ -431,3 +436,130 @@ def push_to_github(
         owner=payload.owner,
         repo=payload.repo,
     )
+
+
+# ---- Slack connection (M6.6) ----------------------------------------------
+
+
+def _decrypt_slack_config(row: IntegrationConnection) -> dict:
+    cfg = json.loads(row.config_json)
+    enc = cfg.get("webhook_url_encrypted")
+    url = decrypt_secret(enc) if enc else None
+    if not url:
+        raise HTTPException(
+            status_code=400,
+            detail="Saved Slack webhook is unreadable (master key may have rotated). Reconnect in Settings.",
+        )
+    cfg["webhook_url"] = url
+    cfg.pop("webhook_url_encrypted", None)
+    return cfg
+
+
+def _slack_url_preview(url: str) -> str:
+    """Show prefix + ••••<last 4 of trailing token>. Slack webhook URLs
+    look like .../services/T../B../<long secret>; the secret is the only
+    thing worth hiding."""
+    if not url:
+        return ""
+    tail = url.rstrip("/").split("/")[-1]
+    masked = "•••• " + (tail[-4:] if len(tail) >= 4 else tail)
+    return f"https://hooks.slack.com/…/{masked}"
+
+
+def _to_slack_read(row: IntegrationConnection) -> SlackConnectionRead:
+    cfg = json.loads(row.config_json)
+    enc = cfg.get("webhook_url_encrypted")
+    plain = decrypt_secret(enc) if enc else ""
+    return SlackConnectionRead(
+        webhook_url_preview=_slack_url_preview(plain or ""),
+        channel_label=cfg.get("channel_label"),
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+    )
+
+
+@router.get("/api/integrations/slack/connection", response_model=SlackConnectionRead | None)
+def get_slack_connection(session: SessionDep, user: UserDep):
+    row = _get_connection(session, user, "slack")
+    return _to_slack_read(row) if row else None
+
+
+@router.put("/api/integrations/slack/connection", response_model=SlackConnectionRead)
+def put_slack_connection(payload: SlackConnectionWrite, session: SessionDep, user: UserDep):
+    """Upsert. Light shape validation — Slack webhook URLs always start
+    with `https://hooks.slack.com/services/`. Reject anything else early
+    so a typo doesn't burn the first push attempt."""
+    url = (payload.webhook_url or "").strip()
+    if not url.startswith("https://hooks.slack.com/services/"):
+        raise HTTPException(
+            status_code=400,
+            detail="Webhook URL must start with https://hooks.slack.com/services/",
+        )
+
+    cfg = {
+        "webhook_url_encrypted": encrypt_secret(url),
+        "channel_label": (payload.channel_label or None),
+    }
+    now = datetime.now(timezone.utc)
+
+    row = _get_connection(session, user, "slack")
+    if row is None:
+        row = IntegrationConnection(
+            scope="user",
+            scope_id=user.user_id,
+            kind="slack",
+            config_json=json.dumps(cfg),
+            created_at=now,
+            updated_at=now,
+        )
+    else:
+        row.config_json = json.dumps(cfg)
+        row.updated_at = now
+    session.add(row)
+    session.commit()
+    session.refresh(row)
+    return _to_slack_read(row)
+
+
+@router.delete("/api/integrations/slack/connection", status_code=204)
+def delete_slack_connection(session: SessionDep, user: UserDep) -> None:
+    row = _get_connection(session, user, "slack")
+    if row is None:
+        return
+    session.delete(row)
+    session.commit()
+
+
+@router.post("/api/extractions/{extraction_id}/push/slack", response_model=PushToSlackResult)
+def push_to_slack(
+    extraction_id: str,
+    payload: PushToSlackRequest,
+    session: SessionDep,
+    user: UserDep,
+) -> PushToSlackResult:
+    extraction = session.get(Extraction, extraction_id)
+    if not in_scope(extraction, user):
+        raise HTTPException(status_code=404, detail="Extraction not found")
+
+    row = _get_connection(session, user, "slack")
+    if row is None:
+        raise HTTPException(status_code=400, detail="No Slack connection saved. Connect in Settings.")
+    cfg = _decrypt_slack_config(row)
+
+    # Pull the resolved-gap indexes from gap_state so we can filter them
+    # out of the post (default — user can override with include_resolved=true).
+    resolved_indexes: set[int] = set()
+    if not payload.include_resolved:
+        from sqlmodel import select as sql_select
+        rows = session.exec(
+            sql_select(GapState).where(GapState.extraction_id == extraction_id)
+        ).all()
+        resolved_indexes = {gs.gap_idx for gs in rows if gs.resolved}
+
+    posted = slack_post_gaps(
+        webhook_url=cfg["webhook_url"],
+        extraction=extraction,
+        include_resolved=payload.include_resolved,
+        gap_resolved_indexes=resolved_indexes,
+    )
+    return PushToSlackResult(posted_gap_count=posted)

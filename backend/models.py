@@ -513,3 +513,35 @@ class PushToGitHubResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
     pushed: list[PushedIssue]
     failed: list[dict]
+
+
+# ----- Integrations (M6.6 — Slack) -----
+
+
+class SlackConnectionRead(BaseModel):
+    """Slack webhook metadata. URL is partially redacted in the preview
+    (only the trailing /XXXX shown) — it's a secret in the same way an
+    API token is."""
+    model_config = ConfigDict(extra="forbid")
+    webhook_url_preview: str         # https://hooks.slack.com/…/••••XYZK
+    channel_label: str | None = None  # cosmetic — "we send to #dev-team"
+    created_at: datetime
+    updated_at: datetime
+
+
+class SlackConnectionWrite(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    webhook_url: str         # https://hooks.slack.com/services/T../B../...
+    channel_label: str | None = None
+
+
+class PushToSlackRequest(BaseModel):
+    """POST body — `include_resolved` lets the user re-send everything for
+    posterity (default: only unresolved gaps)."""
+    model_config = ConfigDict(extra="forbid")
+    include_resolved: bool = False
+
+
+class PushToSlackResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    posted_gap_count: int

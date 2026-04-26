@@ -3,10 +3,12 @@ import {
   deleteGitHubConnectionApi,
   deleteJiraConnectionApi,
   deleteLinearConnectionApi,
+  deleteSlackConnectionApi,
   getGitHubConnectionApi,
   getJiraConnectionApi,
   getLinearConnectionApi,
   getMeSettingsApi,
+  getSlackConnectionApi,
   listGitHubReposApi,
   listJiraProjectsApi,
   listLinearTeamsApi,
@@ -14,6 +16,7 @@ import {
   putJiraConnectionApi,
   putLinearConnectionApi,
   putMeSettingsApi,
+  putSlackConnectionApi,
   testApiKey,
 } from '../api.js'
 import { useApp } from '../lib/AppContext.jsx'
@@ -924,6 +927,149 @@ function GitHubConnectionForm() {
   )
 }
 
+/* M6.6 — Slack connection form. Slightly different from the others —
+ * Slack uses an incoming webhook URL (channel-specific) rather than an
+ * API key. No "test" button: a test post would publish a real message
+ * to the user's Slack channel, which is annoying as a UX. The first
+ * real push doubles as the test. */
+function SlackConnectionForm() {
+  const { toast } = useToast()
+  const [conn, setConn] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [editing, setEditing] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [url, setUrl] = useState('')
+  const [label, setLabel] = useState('')
+
+  useEffect(() => {
+    let alive = true
+    setLoading(true)
+    getSlackConnectionApi()
+      .then((c) => { if (alive) setConn(c) })
+      .catch((e) => { if (alive) toast.error(e.message || 'Could not load Slack connection') })
+      .finally(() => { if (alive) setLoading(false) })
+    return () => { alive = false }
+  }, [])
+
+  const startEdit = () => {
+    setUrl('')
+    setLabel(conn?.channel_label || '')
+    setEditing(true)
+  }
+  const cancelEdit = () => { setEditing(false); setUrl(''); setLabel('') }
+
+  const save = async () => {
+    if (!url.trim()) {
+      toast.error('Webhook URL required')
+      return
+    }
+    setBusy(true)
+    try {
+      const c = await putSlackConnectionApi({
+        webhook_url: url.trim(),
+        channel_label: label.trim() || null,
+      })
+      setConn(c)
+      setEditing(false)
+      setUrl(''); setLabel('')
+      toast.success('Slack connection saved')
+    } catch (e) {
+      toast.error(e.message || 'Could not save Slack connection')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const disconnect = async () => {
+    if (!window.confirm('Disconnect Slack? You can reconnect any time.')) return
+    setBusy(true)
+    try {
+      await deleteSlackConnectionApi()
+      setConn(null)
+      toast.success('Slack disconnected')
+    } catch (e) {
+      toast.error(e.message || 'Could not disconnect')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-muted)', fontSize: 13 }}>
+        <Spinner size={14} /> Loading Slack connection…
+      </div>
+    )
+  }
+
+  if (conn && !editing) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '90px 1fr', gap: '4px 12px', fontSize: 13 }}>
+          <div style={{ color: 'var(--text-soft)' }}>Webhook</div>
+          <div style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-muted)', wordBreak: 'break-all' }}>
+            {conn.webhook_url_preview}
+          </div>
+          {conn.channel_label && (
+            <>
+              <div style={{ color: 'var(--text-soft)' }}>Channel</div>
+              <div style={{ color: 'var(--text-strong)' }}>{conn.channel_label}</div>
+            </>
+          )}
+        </div>
+        <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+          <Button variant="secondary" size="sm" onClick={startEdit} disabled={busy}>Edit</Button>
+          <Button variant="ghost" size="sm" onClick={disconnect} disabled={busy}>Disconnect</Button>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxWidth: 480 }}>
+      <p style={{ fontSize: 12.5, color: 'var(--text-muted)', margin: 0, lineHeight: 1.55 }}>
+        Create an Incoming Webhook in Slack — pick a channel, install the app, copy the URL.
+        See{' '}
+        <a
+          href="https://api.slack.com/messaging/webhooks"
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{ color: 'var(--accent-strong)' }}
+        >
+          api.slack.com → Incoming Webhooks
+        </a>
+        . The URL is channel-specific (one webhook = one channel) and is encrypted before storage.
+      </p>
+      <FieldLabel>Webhook URL</FieldLabel>
+      <input
+        type="password"
+        placeholder="https://hooks.slack.com/services/T…/B…/…"
+        value={url}
+        onChange={(e) => setUrl(e.target.value)}
+        disabled={busy}
+        style={inputStyle}
+      />
+      <FieldLabel>Channel name (cosmetic, optional)</FieldLabel>
+      <input
+        type="text"
+        placeholder="#dev-team"
+        value={label}
+        onChange={(e) => setLabel(e.target.value)}
+        disabled={busy}
+        style={inputStyle}
+      />
+      <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+        <Button variant="primary" size="sm" onClick={save} disabled={busy}>
+          {busy ? 'Saving…' : conn ? 'Save changes' : 'Connect'}
+        </Button>
+        {(conn || editing) && (
+          <Button variant="secondary" size="sm" onClick={cancelEdit} disabled={busy}>Cancel</Button>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function FieldLabel({ children }) {
   return (
     <label style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, color: 'var(--text-soft)' }}>
@@ -1065,6 +1211,14 @@ export default function Settings() {
           description="Push extracted user stories into a GitHub repo as issues. Criteria render as a clickable task list in each issue body."
         >
           <GitHubConnectionForm />
+        </Section>
+        <Section
+          icon={<Plug size={16} />}
+          tone="warn"
+          title="Integrations · Slack"
+          description="Send unresolved gaps to a Slack channel as a Block Kit message. Webhook is bound to one channel — connect different webhooks for different channels."
+        >
+          <SlackConnectionForm />
         </Section>
       </div>
     </div>

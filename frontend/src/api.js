@@ -402,6 +402,40 @@ export async function pushToGitHubApi(extractionId, { owner, repo }) {
   return jsonOrThrow(res)
 }
 
+// ---------- integrations: Slack (M6.6) ----------
+
+export async function getSlackConnectionApi() {
+  const res = await apiFetch('/api/integrations/slack/connection')
+  return jsonOrThrow(res)
+}
+
+/** Save / replace. Body: {webhook_url, channel_label?}. */
+export async function putSlackConnectionApi(body) {
+  const res = await apiFetch('/api/integrations/slack/connection', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  return jsonOrThrow(res)
+}
+
+export async function deleteSlackConnectionApi() {
+  const res = await apiFetch('/api/integrations/slack/connection', { method: 'DELETE' })
+  if (!res.ok) await jsonOrThrow(res)
+  return null
+}
+
+/** Send unresolved gaps to the connected Slack channel.
+ *  Returns {posted_gap_count: number}. include_resolved=true to send all. */
+export async function pushToSlackApi(extractionId, { include_resolved = false } = {}) {
+  const res = await apiFetch(`/api/extractions/${encodeURIComponent(extractionId)}/push/slack`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ include_resolved }),
+  })
+  return jsonOrThrow(res)
+}
+
 // ---------- comments (M4.5) ----------
 
 /** All comments on an extraction. Oldest first. */
