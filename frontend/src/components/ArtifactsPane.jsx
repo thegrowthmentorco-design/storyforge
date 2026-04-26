@@ -66,30 +66,54 @@ function formatStoryMarkdown(s) {
   return lines.join('\n')
 }
 
-/* M5.1 — verbatim source snippet rendered as a left-bordered italic quote.
- * Used by stories, NFRs, and gaps. M5.2 will turn this into a click target
- * that scrolls SourcePane to the matching passage. */
-function SourceQuote({ text, compact = false }) {
+/* M5.1/M5.2 — verbatim source snippet. Clickable when `onPick` is wired —
+ * sends the quote up to App.jsx which forwards it to SourcePane to scroll +
+ * flash. We render a button (not a div) when clickable so it gets focus +
+ * keyboard activation for free. */
+function SourceQuote({ text, compact = false, onPick }) {
   if (!text) return null
+  const interactive = typeof onPick === 'function'
+  const baseStyle = {
+    marginTop: compact ? 6 : 12,
+    paddingLeft: 10,
+    borderLeft: '2px solid var(--border)',
+    fontSize: compact ? 11.5 : 12.5,
+    lineHeight: 1.5,
+    color: 'var(--text-soft)',
+    fontStyle: 'italic',
+    textAlign: 'left',
+  }
+  if (!interactive) {
+    return (
+      <div style={baseStyle} title="Source quote">
+        “{text}”
+      </div>
+    )
+  }
   return (
-    <div
+    <button
+      type="button"
+      onClick={() => onPick(text)}
+      title="Click to find in source"
+      className="quote-pick"
       style={{
-        marginTop: compact ? 6 : 12,
-        paddingLeft: 10,
+        ...baseStyle,
+        background: 'transparent',
+        border: 'none',
         borderLeft: '2px solid var(--border)',
-        fontSize: compact ? 11.5 : 12.5,
-        lineHeight: 1.5,
-        color: 'var(--text-soft)',
-        fontStyle: 'italic',
+        cursor: 'pointer',
+        fontFamily: 'inherit',
+        width: '100%',
+        display: 'block',
+        transition: 'border-color .12s, color .12s',
       }}
-      title="Source quote"
     >
       “{text}”
-    </div>
+    </button>
   )
 }
 
-function StoryCard({ story, idx, onCopy }) {
+function StoryCard({ story, idx, onCopy, onPickQuote }) {
   return (
     <Card
       hover
@@ -155,8 +179,9 @@ function StoryCard({ story, idx, onCopy }) {
         <span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>so that</span> {story.so_that}
       </div>
 
-      {/* Source quote — verbatim snippet that grounds this story (M5.1) */}
-      <SourceQuote text={story.source_quote} />
+      {/* Source quote — verbatim snippet that grounds this story (M5.1).
+       * Clicking sends the quote up to App.jsx which forwards to SourcePane. */}
+      <SourceQuote text={story.source_quote} onPick={onPickQuote} />
 
       {/* Acceptance criteria */}
       {story.criteria?.length > 0 && (
@@ -239,7 +264,7 @@ const SECTIONS = [
   { id: 'nfrs', label: 'NFRs' },
 ]
 
-export default function ArtifactsPane({ extraction }) {
+export default function ArtifactsPane({ extraction, onPickQuote }) {
   const containerRef = useRef(null)
   const [activeTab, setActiveTab] = useState('brief')
   const userClickRef = useRef(false)
@@ -458,7 +483,7 @@ export default function ArtifactsPane({ extraction }) {
         {extraction.stories.length ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {extraction.stories.map((s, i) => (
-              <StoryCard key={s.id} story={s} idx={i} onCopy={onCopyStory} />
+              <StoryCard key={s.id} story={s} idx={i} onCopy={onCopyStory} onPickQuote={onPickQuote} />
             ))}
           </div>
         ) : (
@@ -503,21 +528,46 @@ export default function ArtifactsPane({ extraction }) {
                         }}
                       >
                         {n.value}
-                        {n.source_quote && (
-                          <div
-                            style={{
-                              marginTop: 4,
-                              fontFamily: 'inherit',
-                              fontSize: 11.5,
-                              fontStyle: 'italic',
-                              color: 'var(--text-soft)',
-                              lineHeight: 1.4,
-                            }}
-                            title="Source quote"
-                          >
-                            “{n.source_quote}”
-                          </div>
-                        )}
+                        {n.source_quote &&
+                          (typeof onPickQuote === 'function' ? (
+                            <button
+                              type="button"
+                              onClick={() => onPickQuote(n.source_quote)}
+                              title="Click to find in source"
+                              className="quote-pick"
+                              style={{
+                                display: 'block',
+                                marginTop: 4,
+                                background: 'transparent',
+                                border: 'none',
+                                padding: 0,
+                                fontFamily: 'inherit',
+                                fontSize: 11.5,
+                                fontStyle: 'italic',
+                                color: 'var(--text-soft)',
+                                lineHeight: 1.4,
+                                cursor: 'pointer',
+                                textAlign: 'left',
+                                width: '100%',
+                              }}
+                            >
+                              “{n.source_quote}”
+                            </button>
+                          ) : (
+                            <div
+                              style={{
+                                marginTop: 4,
+                                fontFamily: 'inherit',
+                                fontSize: 11.5,
+                                fontStyle: 'italic',
+                                color: 'var(--text-soft)',
+                                lineHeight: 1.4,
+                              }}
+                              title="Source quote"
+                            >
+                              “{n.source_quote}”
+                            </div>
+                          ))}
                       </td>
                     </tr>
                   )

@@ -162,6 +162,16 @@ function AuthedApp() {
   const [loading, setLoading] = useState(false)
   const [rerunning, setRerunning] = useState(false)
   const [showGaps, setShowGaps] = useState(true)
+  // M5.2 — when a user clicks a source_quote on an artifact, this gets set
+  // and SourcePane scrolls + flashes the matching <mark>. We re-set even
+  // when the same quote is picked twice (object wrapper with a nonce so the
+  // SourcePane effect re-fires) — useful when the user clicks a quote again
+  // after scrolling away.
+  const [selectedQuote, setSelectedQuote] = useState(null)
+  const pickQuote = (text) => {
+    if (!text) return
+    setSelectedQuote({ text, nonce: Date.now() })
+  }
   const [theme, setThemeRaw] = useState(() => getSettings().theme || 'light')
   const [pendingName, setPendingName] = useState('')
   const [projects, setProjects] = useState([])
@@ -383,8 +393,8 @@ function AuthedApp() {
                 {loading && <LoadingState filename={pendingName} />}
                 {extraction && !loading && (
                   <div className="body">
-                    <SourcePane extraction={extraction} />
-                    <ArtifactsPane extraction={extraction} />
+                    <SourcePane extraction={extraction} selectedQuote={selectedQuote} />
+                    <ArtifactsPane extraction={extraction} onPickQuote={pickQuote} />
                   </div>
                 )}
               </>
@@ -400,7 +410,7 @@ function AuthedApp() {
         </Routes>
       </main>
       {isHome && extraction && !loading && showGaps && (
-        <GapsRail gaps={extraction.gaps} extractionId={extractionId} />
+        <GapsRail gaps={extraction.gaps} extractionId={extractionId} onPickQuote={pickQuote} />
       )}
       <PaywallModal paywall={paywall} onClose={() => setPaywall(null)} />
     </div>

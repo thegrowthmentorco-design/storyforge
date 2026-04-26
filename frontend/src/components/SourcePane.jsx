@@ -1,24 +1,85 @@
-import React, { useMemo } from 'react'
+import React, { useEffect, useMemo, useRef } from 'react'
 import { Badge } from './primitives.jsx'
 import { FileText, AlertTriangle } from './icons.jsx'
 
-function highlightForGaps(paragraph, gapContexts) {
-  if (!gapContexts.length) return [{ text: paragraph, hit: null }]
-  for (const g of gapContexts) {
-    const ctx = g.context?.trim()
-    if (!ctx || ctx.length < 8) continue
-    const idx = paragraph.toLowerCase().indexOf(ctx.toLowerCase())
-    if (idx === -1) continue
-    return [
-      { text: paragraph.slice(0, idx), hit: null },
-      { text: paragraph.slice(idx, idx + ctx.length), hit: g },
-      { text: paragraph.slice(idx + ctx.length), hit: null },
-    ]
+/* M5.2 — collect every (quote, source-of-quote) pair from the extraction so
+ * we can highlight them inline in the source text. Stories + NFRs get an
+ * "info" tone; gap source_quotes (and the legacy gap.context heuristic) keep
+ * the warn tone so users can tell them apart at a glance.
+ *
+ * Returns a list of { quote, kind: 'story'|'nfr'|'gap', label } sorted by
+ * quote length DESC so longer quotes win when one is a substring of another
+ * (otherwise the shorter match would get found first and break the longer
+ * highlight). */
+function collectQuotes(extraction) {
+  const out = []
+  for (const s of extraction.stories || []) {
+    if (s.source_quote) out.push({ quote: s.source_quote, kind: 'story', label: `${s.id} · ${s.actor}` })
   }
-  return [{ text: paragraph, hit: null }]
+  for (const n of extraction.nfrs || []) {
+    if (n.source_quote) out.push({ quote: n.source_quote, kind: 'nfr', label: `${n.category} · ${n.value}` })
+  }
+  for (const g of extraction.gaps || []) {
+    if (g.source_quote) out.push({ quote: g.source_quote, kind: 'gap', label: `${g.severity?.toUpperCase()} · ${g.question}` })
+    // Legacy fallback — pre-M5.1 gaps only had `context`. Keep highlighting
+    // those until the data is rerun against the new prompt.
+    else if (g.context && g.context.length >= 8) out.push({ quote: g.context, kind: 'gap', label: `${g.severity?.toUpperCase()} · ${g.question}` })
+  }
+  return out.sort((a, b) => b.quote.length - a.quote.length)
 }
 
-export default function SourcePane({ extraction }) {
+/* Walk a paragraph and split it into segments at every quote-match (case-
+ * insensitive substring). Greedy left-to-right; once a span is matched it's
+ * not re-considered for other quotes. Returns [{text, hit?}]. */
+function segmentParagraph(paragraph, quotes) {
+  if (!quotes.length) return [{ text: paragraph, hit: null }]
+  const lower = paragraph.toLowerCase()
+  // Build [start, end, hit] spans
+  const spans = []
+  for (const q of quotes) {
+    const needle = q.quote.trim().toLowerCase()
+    if (!needle || needle.length < 4) continue
+    let from = 0
+    while (true) {
+      const idx = lower.indexOf(needle, from)
+      if (idx === -1) break
+      const end = idx + needle.length
+      // Skip if overlaps an already-claimed span
+      if (!spans.some((s) => idx < s[1] && end > s[0])) {
+        spans.push([idx, end, q])
+      }
+      from = end
+    }
+  }
+  if (!spans.length) return [{ text: paragraph, hit: null }]
+  spans.sort((a, b) => a[0] - b[0])
+  const segs = []
+  let cursor = 0
+  for (const [start, end, hit] of spans) {
+    if (start > cursor) segs.push({ text: paragraph.slice(cursor, start), hit: null })
+    segs.push({ text: paragraph.slice(start, end), hit })
+    cursor = end
+  }
+  if (cursor < paragraph.length) segs.push({ text: paragraph.slice(cursor), hit: null })
+  return segs
+}
+
+const TONE_STYLE = {
+  story: { bg: 'var(--accent-soft)', ink: 'var(--accent-ink)' },
+  nfr: { bg: 'var(--info-soft)', ink: 'var(--info-ink)' },
+  gap: { bg: 'var(--warn-soft)', ink: 'var(--warn-ink)' },
+}
+
+/* Stable DOM id for a quote string. Just lowercased + collapsed whitespace +
+ * truncated to keep attribute size bounded. We don't need cryptographic
+ * uniqueness — the SourcePane effect just needs to find SOMETHING that
+ * matches `selectedQuote.text`. */
+function quoteId(text) {
+  return text.trim().toLowerCase().replace(/\s+/g, ' ').slice(0, 200)
+}
+
+export default function SourcePane({ extraction, selectedQuote }) {
+  const bodyRef = useRef(null)
   const paragraphs = useMemo(() => {
     return (extraction.raw_text || '')
       .split(/\n{2,}/)
@@ -26,7 +87,23 @@ export default function SourcePane({ extraction }) {
       .filter(Boolean)
   }, [extraction.raw_text])
 
+  const quotes = useMemo(() => collectQuotes(extraction), [extraction])
+
   const wordCount = (extraction.raw_text || '').trim().split(/\s+/).filter(Boolean).length
+
+  // M5.2 — when an artifact picks a quote, scroll to + flash the first
+  // <mark> whose data-quote-id matches. Empty selection / no match = no-op.
+  useEffect(() => {
+    if (!selectedQuote || !bodyRef.current) return
+    const id = quoteId(selectedQuote.text)
+    const target = bodyRef.current.querySelector(`[data-quote-id="${CSS.escape(id)}"]`)
+    if (!target) return
+    target.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    target.classList.remove('quote-flash')
+    // Force reflow so the animation re-fires when the same target is picked twice
+    void target.offsetWidth
+    target.classList.add('quote-flash')
+  }, [selectedQuote])
 
   return (
     <section
@@ -94,7 +171,7 @@ export default function SourcePane({ extraction }) {
       </div>
 
       {/* Body */}
-      <div style={{ padding: '20px 24px 40px', flex: 1 }}>
+      <div ref={bodyRef} style={{ padding: '20px 24px 40px', flex: 1 }}>
         {paragraphs.length === 0 && (
           <div
             style={{
@@ -109,7 +186,7 @@ export default function SourcePane({ extraction }) {
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           {paragraphs.map((p, i) => {
-            const segments = highlightForGaps(p, extraction.gaps)
+            const segments = segmentParagraph(p, quotes)
             const hasHit = segments.some((s) => s.hit)
             return (
               <p
@@ -121,7 +198,7 @@ export default function SourcePane({ extraction }) {
                   color: 'var(--text)',
                   whiteSpace: 'pre-wrap',
                   paddingLeft: hasHit ? 12 : 0,
-                  borderLeft: hasHit ? '3px solid var(--warn)' : 'none',
+                  borderLeft: hasHit ? '3px solid var(--border)' : 'none',
                   position: 'relative',
                 }}
               >
@@ -129,13 +206,15 @@ export default function SourcePane({ extraction }) {
                   s.hit ? (
                     <mark
                       key={j}
-                      title={`${s.hit.severity.toUpperCase()} · ${s.hit.question}`}
+                      data-quote-id={quoteId(s.hit.quote)}
+                      title={s.hit.label}
                       style={{
-                        background: 'var(--warn-soft)',
-                        color: 'var(--warn-ink)',
+                        background: TONE_STYLE[s.hit.kind].bg,
+                        color: TONE_STYLE[s.hit.kind].ink,
                         padding: '1px 3px',
                         borderRadius: 3,
                         fontWeight: 500,
+                        scrollMarginTop: 80,
                       }}
                     >
                       {s.text}

@@ -269,6 +269,38 @@ a:hover {
   }
 }
 
+/* M5.2 — fired on a SourcePane <mark> when an artifact's source_quote is
+ * clicked. Pulses the background twice + adds a thin outline so the eye can
+ * land on it after the smooth-scroll. */
+@keyframes quote-flash {
+  0% {
+    box-shadow: 0 0 0 0 var(--accent);
+    background-color: var(--accent-soft);
+  }
+  40% {
+    box-shadow: 0 0 0 4px var(--accent-soft);
+    background-color: var(--accent);
+    color: white;
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+.quote-flash {
+  animation: quote-flash 1.1s ease-out both;
+}
+
+/* M5.2 — clickable quote buttons in ArtifactsPane / GapsRail. Hover darkens
+ * the left border + ink to telegraph clickability without screaming. */
+.quote-pick:hover {
+  border-left-color: var(--accent) !important;
+  color: var(--text) !important;
+}
+.quote-pick:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 /* =========================================================================
    Reusable utility classes
    ========================================================================= */

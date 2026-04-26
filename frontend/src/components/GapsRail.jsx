@@ -65,7 +65,7 @@ function ActionDot() {
   return <span style={{ color: 'var(--text-soft)', fontSize: 11.5 }}>·</span>
 }
 
-function GapCard({ gap, idx, state, onResolve, onIgnore, onAsk, onReopen, onCopy }) {
+function GapCard({ gap, idx, state, onResolve, onIgnore, onAsk, onReopen, onCopy, onPickQuote }) {
   const meta = SEVERITY_META[gap.severity] || SEVERITY_META.low
   const isResolved = !!state?.resolved
   const wasAsked = !!state?.askedAt
@@ -167,23 +167,50 @@ function GapCard({ gap, idx, state, onResolve, onIgnore, onAsk, onReopen, onCopy
       )}
 
       {/* Source quote — verbatim passage that makes the gap evident (M5.1).
-       * Empty for "absence-of-info" gaps, where context already paraphrases. */}
-      {gap.source_quote && (
-        <div
-          style={{
-            paddingLeft: 10,
-            borderLeft: '2px solid var(--border)',
-            fontSize: 11.5,
-            lineHeight: 1.5,
-            color: 'var(--text-soft)',
-            fontStyle: 'italic',
-            marginBottom: 10,
-          }}
-          title="Source quote"
-        >
-          “{gap.source_quote}”
-        </div>
-      )}
+       * Empty for "absence-of-info" gaps, where context already paraphrases.
+       * Clickable when onPickQuote is wired (M5.2). */}
+      {gap.source_quote &&
+        (typeof onPickQuote === 'function' ? (
+          <button
+            type="button"
+            onClick={() => onPickQuote(gap.source_quote)}
+            title="Click to find in source"
+            className="quote-pick"
+            style={{
+              display: 'block',
+              width: '100%',
+              textAlign: 'left',
+              paddingLeft: 10,
+              border: 'none',
+              borderLeft: '2px solid var(--border)',
+              background: 'transparent',
+              fontFamily: 'inherit',
+              fontSize: 11.5,
+              lineHeight: 1.5,
+              color: 'var(--text-soft)',
+              fontStyle: 'italic',
+              marginBottom: 10,
+              cursor: 'pointer',
+            }}
+          >
+            “{gap.source_quote}”
+          </button>
+        ) : (
+          <div
+            style={{
+              paddingLeft: 10,
+              borderLeft: '2px solid var(--border)',
+              fontSize: 11.5,
+              lineHeight: 1.5,
+              color: 'var(--text-soft)',
+              fontStyle: 'italic',
+              marginBottom: 10,
+            }}
+            title="Source quote"
+          >
+            “{gap.source_quote}”
+          </div>
+        ))}
 
       {/* Actions */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -216,7 +243,7 @@ const SEVERITY_FILTERS = [
   { id: 'low', label: 'Low' },
 ]
 
-export default function GapsRail({ gaps = [], extractionId }) {
+export default function GapsRail({ gaps = [], extractionId, onPickQuote }) {
   const { toast } = useToast()
   const [states, setStates] = useState({})
   const [showIgnored, setShowIgnored] = useState(false)
@@ -483,6 +510,7 @@ export default function GapsRail({ gaps = [], extractionId }) {
             onAsk={onAsk}
             onReopen={onReopen}
             onCopy={onCopy}
+            onPickQuote={onPickQuote}
           />
         ))}
 
