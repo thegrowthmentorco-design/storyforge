@@ -108,6 +108,14 @@ def _apply_soft_migrations() -> None:
             conn.exec_driver_sql("ALTER TABLE extraction ADD COLUMN org_id VARCHAR")
             conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_extraction_org_id ON extraction (org_id)")
             conn.commit()
+        if "source_file_paths" not in ext_cols:
+            log.info("migrating: adding extraction.source_file_paths (M7.5.b)")
+            # Both SQLite + Postgres accept TEXT/JSON column with a default;
+            # normalize to JSON storing an empty list.
+            conn.exec_driver_sql(
+                "ALTER TABLE extraction ADD COLUMN source_file_paths JSON DEFAULT '[]'"
+            )
+            conn.commit()
 
         # ---- project ----
         proj_cols = _columns("project")

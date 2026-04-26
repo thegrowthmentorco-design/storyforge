@@ -220,7 +220,11 @@ async def extract(
     # ----- ingest each file (M7.5) -----------------------------------------
     # Loop calls services/ingest.ingest_file, which handles
     # parse + image vision + OCR fallback + usage_log per pre-pass.
-    upload_bytes: bytes | None = None
+    # M7.5.b: persist every uploaded file (not just single-file) so the
+    # studio can offer per-doc downloads. We collect (name, bytes) tuples
+    # here and write them to R2 / disk after Claude succeeds (so failed
+    # extractions don't strand uploads).
+    pending_uploads: list[tuple[str, bytes]] = []
     if files:
         per_doc: list[tuple[str, str]] = []
         for f in files:
@@ -232,11 +236,7 @@ async def extract(
                 parse_text=_parse_file,
             )
             per_doc.append((name, text_chunk))
-            # Source-file persistence (M3.9 R2) is single-file only in v1.
-            # When multi, we save no source — the combined raw_text holds
-            # everything, and the user has the originals locally.
-            if len(files) == 1:
-                upload_bytes = data
+            pending_uploads.append((name, data))
         raw_text, source_name = combine_raw_texts(per_doc)
     else:
         raw_text = text or ""
@@ -263,16 +263,21 @@ async def extract(
     )
 
     # Mint the id up front so the upload path can reference it before the
-    # row exists. If the disk write fails, we 500 without persisting — no
+    # row exists. If a disk write fails, we 500 without persisting — no
     # orphaned row pointing at a missing file.
     extraction_id = mint_extraction_id()
-    source_path: str | None = None
-    if upload_bytes is not None:
+    source_path: str | None = None        # legacy single-file column
+    source_paths: list[str] = []          # M7.5.b — every uploaded file
+    if pending_uploads:
         try:
-            source_path = save_upload(extraction_id, source_name, upload_bytes)
+            for name, data in pending_uploads:
+                source_paths.append(save_upload(extraction_id, name, data))
         except OSError as e:
             log.exception("upload save failed")
             raise HTTPException(status_code=500, detail=f"Could not store uploaded file: {e}")
+        # Mirror the first path into the legacy column for back-compat with
+        # any reader that still keys off `source_file_path`.
+        source_path = source_paths[0]
 
     row = persist_extraction(
         session,
@@ -283,6 +288,7 @@ async def extract(
         project_id=project_id or None,
         extraction_id=extraction_id,
         source_file_path=source_path,
+        source_file_paths=source_paths,
     )
     record_usage(
         session,
@@ -356,7 +362,8 @@ async def extract_stream(
     effective_model = x_storyforge_model or stored_model
 
     # ----- ingest each file (M7.5) -----------------------------------------
-    upload_bytes: bytes | None = None
+    # M7.5.b: persist every file (see /api/extract for the rationale).
+    pending_uploads: list[tuple[str, bytes]] = []
     if files:
         per_doc: list[tuple[str, str]] = []
         for f in files:
@@ -368,8 +375,7 @@ async def extract_stream(
                 parse_text=_parse_file,
             )
             per_doc.append((name, text_chunk))
-            if len(files) == 1:
-                upload_bytes = data
+            pending_uploads.append((name, data))
         raw_text, source_name = combine_raw_texts(per_doc)
     else:
         raw_text = text or ""
@@ -395,12 +401,15 @@ async def extract_stream(
     # to wire the in-flight extraction to the persisted row on `complete`).
     extraction_id = mint_extraction_id()
     source_path: str | None = None
-    if upload_bytes is not None:
+    source_paths: list[str] = []
+    if pending_uploads:
         try:
-            source_path = save_upload(extraction_id, source_name, upload_bytes)
+            for name, data in pending_uploads:
+                source_paths.append(save_upload(extraction_id, name, data))
         except OSError as e:
             log.exception("upload save failed")
             raise HTTPException(status_code=500, detail=f"Could not store uploaded file: {e}")
+        source_path = source_paths[0]
 
     # Snapshot the values we need inside the generator so we don't hold a
     # closure over `session` (which FastAPI is about to close).
@@ -444,6 +453,7 @@ async def extract_stream(
                             project_id=_project_id,
                             extraction_id=extraction_id,
                             source_file_path=source_path,
+                            source_file_paths=source_paths,
                         )
                         record_usage(
                             s,

@@ -75,6 +75,7 @@ def extraction_to_record(row: Extraction) -> ExtractionRecord:
         live=row.live,
         project_id=row.project_id,
         source_file_path=row.source_file_path,
+        source_file_paths=resolved_source_paths(row),
         created_at=row.created_at,
         root_id=row.root_id,
         brief=row.brief,
@@ -83,6 +84,21 @@ def extraction_to_record(row: Extraction) -> ExtractionRecord:
         nfrs=row.nfrs,
         gaps=row.gaps,
     )
+
+
+def resolved_source_paths(row: Extraction) -> list[str]:
+    """Read-side resolution per the M7.5.b rule on `Extraction.source_file_paths`.
+
+    Prefer the multi-doc list when populated; else wrap the legacy single-file
+    path; else empty list. Centralised so callers (record/serialize/cleanup)
+    stay consistent.
+    """
+    paths = list(row.source_file_paths or [])
+    if paths:
+        return paths
+    if row.source_file_path:
+        return [row.source_file_path]
+    return []
 
 
 def extraction_to_summary(row: Extraction) -> ExtractionSummary:
@@ -128,12 +144,19 @@ def persist_extraction(
     extraction_id: str | None = None,
     created_at: datetime | None = None,
     source_file_path: str | None = None,
+    source_file_paths: list[str] | None = None,
     root_id: str | None = None,
 ) -> Extraction:
     """Insert one Extraction row from a fresh ExtractionResult (or import).
 
     `org_id` is the *workspace* the row belongs to (M3.3) — None for personal-
     context calls. `user_id` records the *creator* either way.
+
+    `source_file_paths` (M7.5.b) is the per-doc list for multi-doc extractions.
+    For single-doc rows the caller passes `source_file_path` and leaves the
+    list empty/None. The schema keeps both columns so legacy single-doc rows
+    keep working unchanged; the read-side resolution lives in
+    `resolved_source_paths`.
     """
     row = Extraction(
         id=extraction_id or mint_extraction_id(),
@@ -145,6 +168,7 @@ def persist_extraction(
         org_id=org_id,
         project_id=project_id,
         source_file_path=source_file_path,
+        source_file_paths=list(source_file_paths or []),
         root_id=root_id,
         created_at=created_at or datetime.now(timezone.utc),
         brief=result.brief.model_dump(),
@@ -214,10 +238,11 @@ def delete_extraction(session: Session, extraction_id: str, *, user) -> bool:
     row = session.get(Extraction, extraction_id)
     if not in_scope(row, user):
         return False
-    # Capture the source path BEFORE deleting the row — once the session
-    # commits, we lose the field. Cleanup happens after commit so a slow R2
-    # delete can't block the DB transaction.
-    source_path = row.source_file_path
+    # Capture all source paths BEFORE deleting the row — once the session
+    # commits, we lose the field. Resolution rule: prefer the M7.5.b list,
+    # fall back to the legacy single-path. Cleanup happens after commit so a
+    # slow R2 delete can't block the DB transaction.
+    source_paths = resolved_source_paths(row)
     # Manually delete gap states — no SA cascade configured (kept the schema simple)
     states = session.exec(
         select(GapState).where(GapState.extraction_id == extraction_id)
@@ -238,7 +263,8 @@ def delete_extraction(session: Session, extraction_id: str, *, user) -> bool:
     session.commit()
     # Best-effort upload cleanup — both R2 and local cases handled by
     # `remove_upload(path)`. Fail silently; row is already gone.
-    remove_upload(source_path)
+    for p in source_paths:
+        remove_upload(p)
     # Belt-and-braces: also clean any local-disk per-extraction directory in
     # case the legacy layout existed in parallel (no-op in pure R2 mode).
     remove_upload_dir(extraction_id)

@@ -228,6 +228,40 @@ export async function downloadExtractionDocxApi(id) {
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
+/** Download an original uploaded source file (M7.5.b — multi-doc).
+ *
+ *  Path: GET /api/extractions/{id}/sources/{idx} — 0-based index into
+ *  `extraction.source_file_paths`. Backend either streams the file (local-
+ *  disk) or 302-redirects to a presigned R2 URL (`fetch` follows the redirect
+ *  with Authorization stripped on cross-origin, which is exactly what we
+ *  want — the presign doesn't need auth).
+ *
+ *  Filename comes from Content-Disposition. Returns nothing (side-effect:
+ *  triggers a browser download). Throws on non-2xx so callers can toast.
+ */
+export async function downloadExtractionSourceApi(id, idx, fallbackName = 'source') {
+  const res = await apiFetch(
+    `/api/extractions/${encodeURIComponent(id)}/sources/${idx}`,
+  )
+  if (!res.ok) {
+    const err = new Error(await readError(res))
+    err.status = res.status
+    throw err
+  }
+  const blob = await res.blob()
+  const cd = res.headers.get('content-disposition') || ''
+  const match = cd.match(/filename="([^"]+)"/)
+  const filename = match ? match[1] : fallbackName
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
 /** Re-run extraction on the same source. Uses current header model + key. */
 export async function rerunExtractionApi(id) {
   const res = await apiFetch(`/api/extractions/${encodeURIComponent(id)}/rerun`, {

@@ -383,23 +383,26 @@ def export_user_data(session: SessionDep, user: UserDep) -> StreamingResponse:
         # backend: R2-stored sources are downloaded once and inlined into the
         # zip; local-disk sources are added directly. Failures are non-fatal —
         # we'd rather ship a partial export than fail the whole download.
+        # M7.5.b: multi-doc rows have N source files in `source_file_paths`;
+        # legacy rows expose a single `source_file_path`. resolved_source_paths
+        # collapses both into one list.
         from services import storage  # local import to keep boto3 off non-export paths
+        from services.extractions import resolved_source_paths
         for e in extractions:
-            if not e.source_file_path:
-                continue
-            if storage.is_r2_path(e.source_file_path):
-                try:
-                    bucket_, key = storage.parse_r2_path(e.source_file_path)
-                    obj = storage._client().get_object(Bucket=bucket_, Key=key)
-                    body = obj["Body"].read()
-                    zf.writestr(f"uploads/{e.id}/{Path(key).name}", body)
-                except Exception as ex:  # noqa: BLE001
-                    log.warning("R2 export fetch failed for %s: %s", e.id, ex)
-                continue
-            p = Path(e.source_file_path)
-            if not p.exists():
-                continue
-            zf.write(p, arcname=f"uploads/{e.id}/{p.name}")
+            for stored in resolved_source_paths(e):
+                if storage.is_r2_path(stored):
+                    try:
+                        bucket_, key = storage.parse_r2_path(stored)
+                        obj = storage._client().get_object(Bucket=bucket_, Key=key)
+                        body = obj["Body"].read()
+                        zf.writestr(f"uploads/{e.id}/{Path(key).name}", body)
+                    except Exception as ex:  # noqa: BLE001
+                        log.warning("R2 export fetch failed for %s: %s", e.id, ex)
+                    continue
+                p = Path(stored)
+                if not p.exists():
+                    continue
+                zf.write(p, arcname=f"uploads/{e.id}/{p.name}")
 
     buf.seek(0)
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")

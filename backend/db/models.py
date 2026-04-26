@@ -64,8 +64,17 @@ class Extraction(SQLModel, table=True):
     live: bool = Field(default=False)
     project_id: str | None = Field(default=None, foreign_key="project.id", index=True)
 
-    # M2.3 will populate this; the file lives at `uploads/<id>/<filename>`.
+    # M2.3 / M3.9 — single source-file path (kept for back-compat; new rows
+    # since M7.5.b populate `source_file_paths` instead). Either an absolute
+    # local-disk path or `r2://<bucket>/<key>` for R2-stored uploads.
     source_file_path: str | None = Field(default=None)
+    # M7.5.b — list of source-file paths for multi-doc extractions. JSON
+    # column. Empty list / null for single-doc rows (use source_file_path
+    # instead). Resolution rule on read: prefer source_file_paths when
+    # non-empty; else fall back to [source_file_path] when set; else [].
+    source_file_paths: list[str] = Field(
+        default_factory=list, sa_column=Column(JSON, nullable=False, server_default="[]"),
+    )
 
     # M2.6 versioning. The original ("v1") has root_id=NULL; every re-run
     # of that document carries root_id=<original.id>. This is a *star* not a

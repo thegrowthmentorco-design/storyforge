@@ -1,6 +1,9 @@
-import React, { useEffect, useMemo, useRef } from 'react'
-import { Badge } from './primitives.jsx'
-import { FileText, AlertTriangle } from './icons.jsx'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { downloadExtractionSourceApi } from '../api.js'
+import { parseDocNames } from '../lib/multi_doc.js'
+import { useToast } from './Toast.jsx'
+import { Badge, Button } from './primitives.jsx'
+import { FileText, AlertTriangle, Download } from './icons.jsx'
 
 /* M5.2 — collect every (quote, source-of-quote) pair from the extraction so
  * we can highlight them inline in the source text. Stories + NFRs get an
@@ -80,6 +83,9 @@ function quoteId(text) {
 
 export default function SourcePane({ extraction, selectedQuote }) {
   const bodyRef = useRef(null)
+  const { toast } = useToast()
+  const [downloadingIdx, setDownloadingIdx] = useState(null)
+
   const paragraphs = useMemo(() => {
     return (extraction.raw_text || '')
       .split(/\n{2,}/)
@@ -90,6 +96,30 @@ export default function SourcePane({ extraction, selectedQuote }) {
   const quotes = useMemo(() => collectQuotes(extraction), [extraction])
 
   const wordCount = (extraction.raw_text || '').trim().split(/\s+/).filter(Boolean).length
+
+  // M7.5.b — per-doc download links. Backend returns one entry per uploaded
+  // file in `source_file_paths`; legacy single-doc rows expose the single
+  // `source_file_path` and an empty list (the resolver in
+  // services.extractions normalises this server-side, but defend in depth
+  // here too in case the field hasn't propagated to a stale cached record).
+  const sourcePaths = useMemo(() => {
+    const list = extraction.source_file_paths || []
+    if (list.length) return list
+    if (extraction.source_file_path) return [extraction.source_file_path]
+    return []
+  }, [extraction.source_file_paths, extraction.source_file_path])
+  const docNames = useMemo(() => parseDocNames(extraction.raw_text || ''), [extraction.raw_text])
+
+  const downloadSource = async (idx, displayName) => {
+    setDownloadingIdx(idx)
+    try {
+      await downloadExtractionSourceApi(extraction.id, idx, displayName || extraction.filename)
+    } catch (err) {
+      toast.error(err?.message || 'Could not download source file')
+    } finally {
+      setDownloadingIdx(null)
+    }
+  }
 
   // M5.2 — when an artifact picks a quote, scroll to + flash the first
   // <mark> whose data-quote-id matches. Empty selection / no match = no-op.
@@ -168,6 +198,60 @@ export default function SourcePane({ extraction, selectedQuote }) {
             </Badge>
           )}
         </div>
+
+        {/* M7.5.b — per-doc downloads. Single-doc rows render one inline
+            "Download original" button; multi-doc rows render a vertical
+            list with the per-doc filename so users can grab any of the N
+            originals without re-uploading. Hidden when no source was saved
+            (paste-mode extractions). */}
+        {sourcePaths.length > 0 && (
+          <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {sourcePaths.length === 1 ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                icon={<Download size={12} />}
+                onClick={() => downloadSource(0, extraction.filename)}
+                disabled={downloadingIdx !== null}
+                title="Download the original uploaded file"
+              >
+                {downloadingIdx === 0 ? 'Downloading…' : 'Download original'}
+              </Button>
+            ) : (
+              <>
+                <div
+                  style={{
+                    fontSize: 10,
+                    fontWeight: 600,
+                    textTransform: 'uppercase',
+                    letterSpacing: 0.5,
+                    color: 'var(--text-soft)',
+                  }}
+                >
+                  Originals · {sourcePaths.length}
+                </div>
+                {sourcePaths.map((_, i) => {
+                  // i is 0-based; doc-name array is 1-based (index 0 reserved).
+                  const display = docNames[i + 1] || `Document ${i + 1}`
+                  return (
+                    <Button
+                      key={i}
+                      variant="ghost"
+                      size="sm"
+                      icon={<Download size={12} />}
+                      onClick={() => downloadSource(i, display)}
+                      disabled={downloadingIdx !== null}
+                      title={`Download "${display}"`}
+                      style={{ justifyContent: 'flex-start' }}
+                    >
+                      {downloadingIdx === i ? 'Downloading…' : display}
+                    </Button>
+                  )
+                })}
+              </>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Body */}

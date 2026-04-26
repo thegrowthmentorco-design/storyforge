@@ -37,6 +37,7 @@ from services.extractions import (
     list_versions,
     persist_extraction,
     record_usage,
+    resolved_source_paths,
     root_id_for,
 )
 from services.few_shot import resolve_enabled_examples
@@ -163,44 +164,92 @@ def patch_extraction(
 # ---------------- source file (M2.3.2) ----------------
 
 
-@router.get("/{extraction_id}/source")
-def get_source(extraction_id: str, session: SessionDep, user: UserDep):
-    """Return the original uploaded file.
+def _serve_source_path(stored_path: str, display_filename: str):
+    """Serve one stored source path — R2 → presigned redirect, else FileResponse.
 
-    M3.9: when the source lives on R2 we 302-redirect to a presigned URL
-    (15-minute TTL) — the browser fetches direct from Cloudflare, no proxy.
-    Local-disk uploads keep using FileResponse for dev parity.
-
-    404 covers five cases (missing row, foreign owner, paste-mode extraction,
-    file vanished, R2 path malformed) — same user-facing answer.
+    Extracted from /source so /sources/{idx} (M7.5.b) shares the exact same
+    serving rules. `display_filename` is the name shown in the Content-
+    Disposition header — for multi-doc rows we use the per-doc filename
+    derived from the R2 key / disk path, not the row's combined filename.
     """
-    from services import storage  # local import keeps boto3 off the import path
+    from services import storage  # local import keeps boto3 off the path
                                   # for callers that don't use it.
 
-    row = _owned_extraction(session, extraction_id, user)
-    if not row.source_file_path:
-        raise HTTPException(status_code=404, detail="No source file for this extraction")
-
-    if storage.is_r2_path(row.source_file_path):
+    if storage.is_r2_path(stored_path):
         try:
-            url = storage.presigned_get_url(row.source_file_path)
+            url = storage.presigned_get_url(stored_path)
         except Exception as e:  # noqa: BLE001
-            log.warning("presigned_get_url failed for %s: %s", row.source_file_path, e)
+            log.warning("presigned_get_url failed for %s: %s", stored_path, e)
             raise HTTPException(status_code=404, detail="Source file is missing on disk")
         # 302 + Cache-Control:no-store so a stale URL doesn't survive past the
         # 15-min presign window in any intermediary cache.
         return RedirectResponse(url=url, status_code=302, headers={"Cache-Control": "no-store"})
 
-    path = Path(row.source_file_path)
+    path = Path(stored_path)
     if not path.exists():
         log.warning("source_file_path missing on disk: %s", path)
         raise HTTPException(status_code=404, detail="Source file is missing on disk")
-    media_type, _ = mimetypes.guess_type(row.filename)
+    media_type, _ = mimetypes.guess_type(display_filename)
     return FileResponse(
         path,
         media_type=media_type or "application/octet-stream",
-        filename=row.filename,
+        filename=display_filename,
     )
+
+
+def _filename_from_stored_path(stored_path: str) -> str:
+    """Recover the per-doc filename from a stored R2/local source path.
+
+    R2 layout from save_upload: `r2://<bucket>/<extraction_id>/<safe_name>`.
+    Local layout: `<UPLOAD_ROOT>/<extraction_id>/<safe_name>`. In both cases
+    the basename is the on-disk safe filename — close enough to the original
+    for the download UX (a user with two .pdfs picks them apart by name).
+    """
+    return Path(stored_path).name or "source"
+
+
+@router.get("/{extraction_id}/source")
+def get_source(extraction_id: str, session: SessionDep, user: UserDep):
+    """Return the original uploaded file (or the first one for multi-doc rows).
+
+    M3.9: when the source lives on R2 we 302-redirect to a presigned URL
+    (15-minute TTL) — the browser fetches direct from Cloudflare, no proxy.
+    Local-disk uploads keep using FileResponse for dev parity.
+
+    M7.5.b: for multi-doc extractions this returns the *first* file (preserves
+    the single-file URL contract for older clients). Use `/sources/{idx}`
+    for explicit per-doc downloads.
+
+    404 covers five cases (missing row, foreign owner, paste-mode extraction,
+    file vanished, R2 path malformed) — same user-facing answer.
+    """
+    row = _owned_extraction(session, extraction_id, user)
+    paths = resolved_source_paths(row)
+    if not paths:
+        raise HTTPException(status_code=404, detail="No source file for this extraction")
+    return _serve_source_path(paths[0], row.filename)
+
+
+@router.get("/{extraction_id}/sources/{idx}")
+def get_source_by_index(extraction_id: str, idx: int, session: SessionDep, user: UserDep):
+    """Return the i-th uploaded source file (M7.5.b — multi-doc).
+
+    Index is 0-based to match the `source_file_paths` array. The 1-based
+    `source_doc` field on stories/nfrs/gaps maps to `idx = source_doc - 1`
+    when source_doc > 0; the frontend handles that mapping.
+    """
+    row = _owned_extraction(session, extraction_id, user)
+    paths = resolved_source_paths(row)
+    if not paths:
+        raise HTTPException(status_code=404, detail="No source file for this extraction")
+    if idx < 0 or idx >= len(paths):
+        raise HTTPException(status_code=404, detail="Source index out of range")
+    stored = paths[idx]
+    # For single-doc rows, use the row's filename (it carries the original
+    # client-supplied name). For multi-doc rows, derive per-doc names from
+    # the stored path so each download is recognisable.
+    display = row.filename if len(paths) == 1 else _filename_from_stored_path(stored)
+    return _serve_source_path(stored, display)
 
 
 # ---------------- export (M6.1) ----------------

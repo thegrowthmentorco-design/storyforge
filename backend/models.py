@@ -94,6 +94,12 @@ class ExtractionRecord(ExtractionPayload):
     live: bool
     project_id: str | None = None
     source_file_path: str | None = None
+    # M7.5.b — per-doc source paths for multi-doc extractions. Resolved server-
+    # side: empty for legacy rows with only a single `source_file_path`; one
+    # entry per uploaded file for new multi-doc rows. Frontend renders one
+    # download link per entry; the indices match the "===== DOC i =====" markers
+    # in raw_text and the `source_doc` field on stories/nfrs/gaps.
+    source_file_paths: list[str] = Field(default_factory=list)
     created_at: datetime
     root_id: str | None = None  # M2.6 — null for v1, set for re-runs
 
