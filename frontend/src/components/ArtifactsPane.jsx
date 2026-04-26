@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import { copyToClipboard } from '../lib/clipboard.js'
 import { useToast } from './Toast.jsx'
 import { Badge, Card, IconTile } from './primitives.jsx'
+import { EditableList, EditableText, EditableTextarea } from './Editable.jsx'
 import {
   Sparkles,
   Users,
@@ -113,7 +114,9 @@ function SourceQuote({ text, compact = false, onPick }) {
   )
 }
 
-function StoryCard({ story, idx, onCopy, onPickQuote }) {
+function StoryCard({ story, idx, onCopy, onPickQuote, onUpdate }) {
+  const editable = typeof onUpdate === 'function'
+  const update = (patch) => onUpdate?.({ ...story, ...patch })
   return (
     <Card
       hover
@@ -156,10 +159,14 @@ function StoryCard({ story, idx, onCopy, onPickQuote }) {
           {story.id}
         </Badge>
         <Badge tone="neutral" size="sm" icon={<User size={11} />}>
-          {story.actor}
+          {editable ? (
+            <EditableText value={story.actor} onSave={(v) => update({ actor: v })} placeholder="Actor" />
+          ) : (
+            story.actor
+          )}
         </Badge>
         <div style={{ flex: 1 }} />
-        {story.section && (
+        {(editable || story.section) && (
           <span
             style={{
               fontFamily: 'var(--font-mono)',
@@ -167,24 +174,61 @@ function StoryCard({ story, idx, onCopy, onPickQuote }) {
               color: 'var(--text-soft)',
             }}
           >
-            {story.section}
+            {editable ? (
+              <EditableText
+                value={story.section}
+                placeholder="§ ?"
+                onSave={(v) => update({ section: v })}
+              />
+            ) : (
+              story.section
+            )}
           </span>
         )}
       </div>
 
-      {/* Story body */}
+      {/* Story body — As a / I want / so that, each clickable to edit */}
       <div style={{ fontSize: 13.5, lineHeight: 1.65, color: 'var(--text)' }}>
-        <span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>As a</span> {story.actor}{' '}
-        <span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>I want</span> {story.want}{' '}
-        <span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>so that</span> {story.so_that}
+        <span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>As a</span>{' '}
+        {editable ? (
+          <EditableText value={story.actor} onSave={(v) => update({ actor: v })} placeholder="actor" />
+        ) : (
+          story.actor
+        )}{' '}
+        <span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>I want</span>{' '}
+        {editable ? (
+          <EditableTextarea
+            value={story.want}
+            onSave={(v) => update({ want: v })}
+            placeholder="capability"
+            rows={2}
+            displayStyle={{ display: 'inline' }}
+          />
+        ) : (
+          story.want
+        )}{' '}
+        <span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>so that</span>{' '}
+        {editable ? (
+          <EditableTextarea
+            value={story.so_that}
+            onSave={(v) => update({ so_that: v })}
+            placeholder="outcome"
+            rows={2}
+            displayStyle={{ display: 'inline' }}
+          />
+        ) : (
+          story.so_that
+        )}
       </div>
 
       {/* Source quote — verbatim snippet that grounds this story (M5.1).
        * Clicking sends the quote up to App.jsx which forwards to SourcePane. */}
       <SourceQuote text={story.source_quote} onPick={onPickQuote} />
 
-      {/* Acceptance criteria */}
-      {story.criteria?.length > 0 && (
+      {/* Acceptance criteria — editable list when onUpdate is wired. We
+       * render the section even when empty in editable mode so users can
+       * "+ Add" the first item. */}
+      {(story.criteria?.length > 0 || editable) && (
         <div
           style={{
             marginTop: 14,
@@ -204,19 +248,13 @@ function StoryCard({ story, idx, onCopy, onPickQuote }) {
           >
             Acceptance criteria
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {story.criteria.map((c, i) => (
-              <div
-                key={i}
-                style={{
-                  display: 'flex',
-                  alignItems: 'flex-start',
-                  gap: 8,
-                  fontSize: 13,
-                  lineHeight: 1.55,
-                  color: 'var(--text)',
-                }}
-              >
+          {editable ? (
+            <EditableList
+              items={story.criteria || []}
+              onSave={(next) => update({ criteria: next })}
+              placeholder="New criterion"
+              addLabel="+ Add criterion"
+              bulletRender={() => (
                 <span
                   style={{
                     width: 16,
@@ -233,10 +271,44 @@ function StoryCard({ story, idx, onCopy, onPickQuote }) {
                 >
                   <Check size={11} />
                 </span>
-                <span>{c}</span>
-              </div>
-            ))}
-          </div>
+              )}
+              itemStyle={{ fontSize: 13, lineHeight: 1.55, color: 'var(--text)' }}
+            />
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {story.criteria.map((c, i) => (
+                <div
+                  key={i}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: 8,
+                    fontSize: 13,
+                    lineHeight: 1.55,
+                    color: 'var(--text)',
+                  }}
+                >
+                  <span
+                    style={{
+                      width: 16,
+                      height: 16,
+                      borderRadius: 999,
+                      background: 'var(--success-soft)',
+                      color: 'var(--success-ink)',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexShrink: 0,
+                      marginTop: 2,
+                    }}
+                  >
+                    <Check size={11} />
+                  </span>
+                  <span>{c}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </Card>
@@ -264,7 +336,30 @@ const SECTIONS = [
   { id: 'nfrs', label: 'NFRs' },
 ]
 
-export default function ArtifactsPane({ extraction, onPickQuote }) {
+export default function ArtifactsPane({ extraction, onPickQuote, onUpdate }) {
+  // Per-artifact callbacks: each takes the new piece + applies to the
+  // corresponding array, then calls the parent's onUpdate({field: ...}).
+  const editable = typeof onUpdate === 'function'
+  const updateStory = (i, story) => {
+    if (!editable) return
+    const next = [...extraction.stories]
+    next[i] = story
+    onUpdate({ stories: next })
+  }
+  const updateNfr = (i, patch) => {
+    if (!editable) return
+    const next = [...extraction.nfrs]
+    next[i] = { ...next[i], ...patch }
+    onUpdate({ nfrs: next })
+  }
+  const updateBrief = (patch) => {
+    if (!editable) return
+    onUpdate({ brief: { ...extraction.brief, ...patch } })
+  }
+  const updateActors = (next) => {
+    if (!editable) return
+    onUpdate({ actors: next })
+  }
   const containerRef = useRef(null)
   const [activeTab, setActiveTab] = useState('brief')
   const userClickRef = useRef(false)
@@ -414,25 +509,44 @@ export default function ArtifactsPane({ extraction, onPickQuote }) {
           title="Business summary"
         />
         <Card padding={20} style={{ background: 'var(--accent-soft)', borderColor: 'transparent' }}>
-          <p
+          <div
             style={{
               fontSize: 14,
               lineHeight: 1.65,
               color: 'var(--accent-ink)',
-              margin: 0,
-              marginBottom: extraction.brief.tags.length ? 14 : 0,
+              marginBottom: 14,
             }}
           >
-            {extraction.brief.summary}
-          </p>
-          {extraction.brief.tags.length > 0 && (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-              {extraction.brief.tags.map((t) => (
-                <Badge key={t} tone="outline" icon={<Tag size={11} />}>
-                  {t}
-                </Badge>
-              ))}
-            </div>
+            {editable ? (
+              <EditableTextarea
+                value={extraction.brief.summary}
+                onSave={(v) => updateBrief({ summary: v })}
+                placeholder="One-line business summary"
+                rows={3}
+              />
+            ) : (
+              extraction.brief.summary
+            )}
+          </div>
+          {editable ? (
+            <EditableList
+              items={extraction.brief.tags || []}
+              onSave={(next) => updateBrief({ tags: next })}
+              placeholder="Tag"
+              addLabel="+ Add tag"
+              bulletRender={() => <Tag size={11} style={{ color: 'var(--accent-ink)' }} />}
+              itemStyle={{ alignItems: 'center' }}
+            />
+          ) : (
+            extraction.brief.tags.length > 0 && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {extraction.brief.tags.map((t) => (
+                  <Badge key={t} tone="outline" icon={<Tag size={11} />}>
+                    {t}
+                  </Badge>
+                ))}
+              </div>
+            )
           )}
         </Card>
       </div>
@@ -445,7 +559,34 @@ export default function ArtifactsPane({ extraction, onPickQuote }) {
           title="Actors"
           count={extraction.actors.length}
         />
-        {extraction.actors.length ? (
+        {editable ? (
+          <Card padding={12} style={{ maxWidth: 480 }}>
+            <EditableList
+              items={extraction.actors || []}
+              onSave={updateActors}
+              placeholder="Actor name"
+              addLabel="+ Add actor"
+              bulletRender={() => (
+                <span
+                  style={{
+                    width: 22,
+                    height: 22,
+                    borderRadius: 999,
+                    background: 'var(--info-soft)',
+                    color: 'var(--info-ink)',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                  }}
+                >
+                  <User size={12} />
+                </span>
+              )}
+              itemStyle={{ fontSize: 13, color: 'var(--text-strong)', alignItems: 'center' }}
+            />
+          </Card>
+        ) : extraction.actors.length ? (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
             {extraction.actors.map((a) => (
               <Card key={a} hover padding="10px 14px" style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
@@ -483,7 +624,14 @@ export default function ArtifactsPane({ extraction, onPickQuote }) {
         {extraction.stories.length ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {extraction.stories.map((s, i) => (
-              <StoryCard key={s.id} story={s} idx={i} onCopy={onCopyStory} onPickQuote={onPickQuote} />
+              <StoryCard
+                key={s.id}
+                story={s}
+                idx={i}
+                onCopy={onCopyStory}
+                onPickQuote={onPickQuote}
+                onUpdate={editable ? (next) => updateStory(i, next) : undefined}
+              />
             ))}
           </div>
         ) : (
@@ -519,7 +667,17 @@ export default function ArtifactsPane({ extraction, onPickQuote }) {
                           {meta.icon}
                         </IconTile>
                       </td>
-                      <td style={{ fontWeight: 500, color: 'var(--text-strong)' }}>{n.category}</td>
+                      <td style={{ fontWeight: 500, color: 'var(--text-strong)' }}>
+                        {editable ? (
+                          <EditableText
+                            value={n.category}
+                            onSave={(v) => updateNfr(i, { category: v })}
+                            placeholder="Category"
+                          />
+                        ) : (
+                          n.category
+                        )}
+                      </td>
                       <td
                         style={{
                           color: 'var(--text)',
@@ -527,7 +685,15 @@ export default function ArtifactsPane({ extraction, onPickQuote }) {
                           fontSize: 12.5,
                         }}
                       >
-                        {n.value}
+                        {editable ? (
+                          <EditableText
+                            value={n.value}
+                            onSave={(v) => updateNfr(i, { value: v })}
+                            placeholder="Value"
+                          />
+                        ) : (
+                          n.value
+                        )}
                         {n.source_quote &&
                           (typeof onPickQuote === 'function' ? (
                             <button

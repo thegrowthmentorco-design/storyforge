@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import { SignedIn, SignedOut, useAuth, useOrganization } from '@clerk/clerk-react'
-import { extractStream, getMePlanApi, listProjectsApi, rerunExtractionApi, setTokenGetter } from './api.js'
+import { extractStream, getMePlanApi, listProjectsApi, patchExtractionApi, rerunExtractionApi, setTokenGetter } from './api.js'
 import { getExtraction } from './lib/store.js'
 import { migrateLocalStorageOnce } from './lib/migrate.js'
 import { getSettings, setSettings } from './lib/settings.js'
@@ -363,6 +363,22 @@ function AuthedApp() {
     if (!isHome) navigate('/')
   }
 
+  // M4.1 — patch artifact fields (brief / actors / stories / nfrs / gaps)
+  // and reflect the canonical record back from the server. Optimistic update
+  // up front so the UI feels instant; revert on error.
+  const updateExtraction = async (patch) => {
+    if (!extractionId) return
+    const prev = extraction
+    setExtraction((cur) => (cur ? { ...cur, ...patch } : cur))
+    try {
+      const updated = await patchExtractionApi(extractionId, patch)
+      setExtraction(updated)
+    } catch (e) {
+      setExtraction(prev)
+      toast.error(e.message || 'Could not save')
+    }
+  }
+
   // Documents page passes a summary row; hydrate the full record from the API
   // before opening the studio so brief/actors/stories/nfrs/gaps are present.
   const restoreExtraction = async (rowOrRecord) => {
@@ -465,7 +481,11 @@ function AuthedApp() {
                 {extraction && !loading && (
                   <div className="body">
                     <SourcePane extraction={extraction} selectedQuote={selectedQuote} />
-                    <ArtifactsPane extraction={extraction} onPickQuote={pickQuote} />
+                    <ArtifactsPane
+                      extraction={extraction}
+                      onPickQuote={pickQuote}
+                      onUpdate={updateExtraction}
+                    />
                   </div>
                 )}
               </>
@@ -481,7 +501,12 @@ function AuthedApp() {
         </Routes>
       </main>
       {isHome && extraction && !loading && showGaps && (
-        <GapsRail gaps={extraction.gaps} extractionId={extractionId} onPickQuote={pickQuote} />
+        <GapsRail
+          gaps={extraction.gaps}
+          extractionId={extractionId}
+          onPickQuote={pickQuote}
+          onUpdate={(nextGaps) => updateExtraction({ gaps: nextGaps })}
+        />
       )}
       <PaywallModal paywall={paywall} onClose={() => setPaywall(null)} />
     </div>

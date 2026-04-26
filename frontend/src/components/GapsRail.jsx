@@ -3,6 +3,7 @@ import { getGapStates, setGapState } from '../lib/store.js'
 import { copyToClipboard } from '../lib/clipboard.js'
 import { useToast } from './Toast.jsx'
 import { Badge, Card, IconTile } from './primitives.jsx'
+import { EditableSelect, EditableText, EditableTextarea } from './Editable.jsx'
 import {
   AlertCircle,
   AlertTriangle,
@@ -65,10 +66,12 @@ function ActionDot() {
   return <span style={{ color: 'var(--text-soft)', fontSize: 11.5 }}>·</span>
 }
 
-function GapCard({ gap, idx, state, onResolve, onIgnore, onAsk, onReopen, onCopy, onPickQuote }) {
+function GapCard({ gap, idx, state, onResolve, onIgnore, onAsk, onReopen, onCopy, onPickQuote, onUpdate }) {
   const meta = SEVERITY_META[gap.severity] || SEVERITY_META.low
   const isResolved = !!state?.resolved
   const wasAsked = !!state?.askedAt
+  const editable = typeof onUpdate === 'function'
+  const update = (patch) => onUpdate?.({ ...gap, ...patch })
 
   return (
     <Card
@@ -107,11 +110,25 @@ function GapCard({ gap, idx, state, onResolve, onIgnore, onAsk, onReopen, onCopy
         <Copy size={13} />
       </button>
 
-      {/* Header row: severity badge + section ref */}
+      {/* Header row: severity badge + section ref. Severity becomes a
+       *  picklist when editable; section becomes a text field. */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, paddingRight: 28 }}>
         {isResolved ? (
           <Badge tone="success" icon={<Check size={11} />} size="sm">
             Resolved
+          </Badge>
+        ) : editable ? (
+          <Badge tone={meta.tone} icon={meta.icon} size="sm">
+            <EditableSelect
+              value={gap.severity}
+              options={[
+                { value: 'high', label: 'High' },
+                { value: 'med', label: 'Medium' },
+                { value: 'low', label: 'Low' },
+              ]}
+              onSave={(v) => update({ severity: v })}
+              renderDisplay={(v) => SEVERITY_META[v]?.label || v}
+            />
           </Badge>
         ) : (
           <Badge tone={meta.tone} icon={meta.icon} size="sm">
@@ -124,7 +141,7 @@ function GapCard({ gap, idx, state, onResolve, onIgnore, onAsk, onReopen, onCopy
           </Badge>
         )}
         <div style={{ flex: 1 }} />
-        {gap.section && (
+        {(editable || gap.section) && (
           <span
             style={{
               fontFamily: 'var(--font-mono)',
@@ -132,7 +149,15 @@ function GapCard({ gap, idx, state, onResolve, onIgnore, onAsk, onReopen, onCopy
               color: 'var(--text-soft)',
             }}
           >
-            {gap.section}
+            {editable ? (
+              <EditableText
+                value={gap.section}
+                placeholder="§ ?"
+                onSave={(v) => update({ section: v })}
+              />
+            ) : (
+              gap.section
+            )}
           </span>
         )}
       </div>
@@ -149,11 +174,20 @@ function GapCard({ gap, idx, state, onResolve, onIgnore, onAsk, onReopen, onCopy
           textDecorationColor: 'var(--text-soft)',
         }}
       >
-        {gap.question}
+        {editable ? (
+          <EditableTextarea
+            value={gap.question}
+            onSave={(v) => update({ question: v })}
+            placeholder="What is the open question?"
+            rows={2}
+          />
+        ) : (
+          gap.question
+        )}
       </div>
 
       {/* Context */}
-      {gap.context && (
+      {(editable || gap.context) && (
         <div
           style={{
             fontSize: 12,
@@ -162,7 +196,16 @@ function GapCard({ gap, idx, state, onResolve, onIgnore, onAsk, onReopen, onCopy
             marginBottom: 10,
           }}
         >
-          {gap.context}
+          {editable ? (
+            <EditableTextarea
+              value={gap.context}
+              onSave={(v) => update({ context: v })}
+              placeholder="Why is this a gap?"
+              rows={2}
+            />
+          ) : (
+            gap.context
+          )}
         </div>
       )}
 
@@ -243,7 +286,17 @@ const SEVERITY_FILTERS = [
   { id: 'low', label: 'Low' },
 ]
 
-export default function GapsRail({ gaps = [], extractionId, onPickQuote }) {
+export default function GapsRail({ gaps = [], extractionId, onPickQuote, onUpdate }) {
+  // M4.1 — gap-level edits. Each card edits its own slot; we hand back the
+  // full new gaps array to the parent's onUpdate callback (App.jsx wraps it
+  // into a {gaps: ...} PATCH).
+  const editable = typeof onUpdate === 'function'
+  const updateGap = (i, next) => {
+    if (!editable) return
+    const arr = [...gaps]
+    arr[i] = next
+    onUpdate(arr)
+  }
   const { toast } = useToast()
   const [states, setStates] = useState({})
   const [showIgnored, setShowIgnored] = useState(false)
@@ -511,6 +564,7 @@ export default function GapsRail({ gaps = [], extractionId, onPickQuote }) {
             onReopen={onReopen}
             onCopy={onCopy}
             onPickQuote={onPickQuote}
+            onUpdate={editable ? (next) => updateGap(idx, next) : undefined}
           />
         ))}
 

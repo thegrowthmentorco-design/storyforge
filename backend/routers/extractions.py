@@ -136,6 +136,20 @@ def patch_extraction(
                 raise HTTPException(status_code=400, detail="Unknown project_id")
             row.project_id = patch.project_id
 
+    # M4.1 — artifact edits. Each present field is a full replacement; the
+    # Pydantic types on ExtractionPatch already validated the shape, so we
+    # just need to dump back to plain dict/list for JSON-column storage.
+    if patch.brief is not None:
+        row.brief = patch.brief.model_dump()
+    if patch.actors is not None:
+        row.actors = patch.actors
+    if patch.stories is not None:
+        row.stories = [s.model_dump() for s in patch.stories]
+    if patch.nfrs is not None:
+        row.nfrs = [n.model_dump() for n in patch.nfrs]
+    if patch.gaps is not None:
+        row.gaps = [g.model_dump() for g in patch.gaps]
+
     session.add(row)
     session.commit()
     session.refresh(row)

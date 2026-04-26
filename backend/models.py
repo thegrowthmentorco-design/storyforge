@@ -111,10 +111,24 @@ class ExtractionSummary(BaseModel):
 
 
 class ExtractionPatch(BaseModel):
-    """PATCH /api/extractions/{id} body — partial update."""
+    """PATCH /api/extractions/{id} body — partial update.
+
+    M4.1: artifact fields (brief / actors / stories / nfrs / gaps) added so
+    inline edits in the studio can persist without a full overwrite. Each is
+    optional; a present value REPLACES the whole field (no merge — keeps the
+    contract simple, and the frontend always sends the intended new shape).
+    Validation reuses the same Pydantic types the extractor produces so
+    junk shapes are rejected at the route boundary.
+    """
     model_config = ConfigDict(extra="forbid")
     filename: str | None = None
     project_id: str | None = None  # set to "" to clear
+    # M4.1 — artifact edits
+    brief: Brief | None = None
+    actors: list[str] | None = None
+    stories: list[UserStory] | None = None
+    nfrs: list[NonFunctional] | None = None
+    gaps: list[Gap] | None = None
 
 
 class ExtractionImport(BaseModel):
