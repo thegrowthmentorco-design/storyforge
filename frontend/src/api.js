@@ -73,15 +73,29 @@ async function jsonOrThrow(res) {
 
 // ---------- extraction ----------
 
-/** Create a new extraction. Backend persists and returns the full ExtractionRecord. */
-export async function extract({ file, text, filename, projectId } = {}) {
+/** Build the multipart form body shared by extract + extractStream.
+ *  M7.5: `file` accepts a single File, an array of Files, or a FileList —
+ *  each file is appended as a separate `file` form field, which FastAPI
+ *  parses into a list[UploadFile] on the backend. Single-file uploads
+ *  produce a one-element list (backward compatible). */
+function buildExtractForm({ file, text, filename, projectId } = {}) {
   const form = new FormData()
-  if (file) form.append('file', file, file.name)
+  const files = file == null ? [] : (Array.isArray(file) || file instanceof FileList) ? Array.from(file) : [file]
+  for (const f of files) {
+    if (f) form.append('file', f, f.name)
+  }
   if (text) form.append('text', text)
   if (filename) form.append('filename', filename)
   if (projectId) form.append('project_id', projectId)
+  return form
+}
 
-  const res = await apiFetch('/api/extract', { method: 'POST', body: form })
+/** Create a new extraction. Backend persists and returns the full ExtractionRecord. */
+export async function extract({ file, text, filename, projectId } = {}) {
+  const res = await apiFetch('/api/extract', {
+    method: 'POST',
+    body: buildExtractForm({ file, text, filename, projectId }),
+  })
   return jsonOrThrow(res)
 }
 
@@ -113,12 +127,7 @@ export async function extractStream(
 ) {
   const { readSSE } = await import('./lib/sse.js')
 
-  const form = new FormData()
-  if (file) form.append('file', file, file.name)
-  if (text) form.append('text', text)
-  if (filename) form.append('filename', filename)
-  if (projectId) form.append('project_id', projectId)
-
+  const form = buildExtractForm({ file, text, filename, projectId })
   const res = await apiFetch('/api/extract/stream', { method: 'POST', body: form, signal })
   if (!res.ok) {
     // Pre-flight error — let jsonOrThrow build the (possibly paywall) Error.

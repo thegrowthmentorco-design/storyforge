@@ -31,28 +31,41 @@ export default function EmptyState({ onSubmit, loading }) {
   const fileRef = useRef(null)
   const [text, setText] = useState('')
   const [dragOver, setDragOver] = useState(false)
-  const [file, setFile] = useState(null)
+  // M7.5 — files is always an array; single-file uploads collapse to a
+  // 1-element array. Empty array = nothing staged.
+  const [files, setFiles] = useState([])
 
   const pickFile = () => fileRef.current?.click()
-  const onFileChange = (e) => {
-    const f = e.target.files?.[0]
-    if (f) setFile(f)
+  const addFiles = (incoming) => {
+    if (!incoming || incoming.length === 0) return
+    // Append to existing — picking again adds, doesn't replace. De-dupe by
+    // (name, size) so reselecting the same file is a no-op.
+    setFiles((prev) => {
+      const seen = new Set(prev.map((f) => `${f.name}::${f.size}`))
+      const next = [...prev]
+      for (const f of incoming) {
+        const k = `${f.name}::${f.size}`
+        if (!seen.has(k)) { next.push(f); seen.add(k) }
+      }
+      return next
+    })
   }
+  const removeFile = (idx) => setFiles((prev) => prev.filter((_, i) => i !== idx))
+  const onFileChange = (e) => addFiles(e.target.files)
   const onDrop = (e) => {
     e.preventDefault()
     setDragOver(false)
-    const f = e.dataTransfer.files?.[0]
-    if (f) setFile(f)
+    addFiles(e.dataTransfer.files)
   }
 
   const submit = (e) => {
     e?.preventDefault()
     if (loading) return
-    if (file) return onSubmit({ file })
+    if (files.length) return onSubmit({ file: files })
     if (text.trim()) return onSubmit({ text, filename: 'pasted_text.txt' })
   }
 
-  const canRun = !!(file || text.trim()) && !loading
+  const canRun = !!(files.length || text.trim()) && !loading
 
   return (
     <div
@@ -106,11 +119,15 @@ export default function EmptyState({ onSubmit, loading }) {
             }}
             onDragLeave={() => setDragOver(false)}
             onDrop={onDrop}
-            onClick={() => !file && pickFile()}
+            onClick={(e) => {
+              // Only open picker when clicking the empty drop area —
+              // not when clicking a staged file row or its remove button.
+              if (e.target === e.currentTarget && files.length === 0) pickFile()
+            }}
             style={{
               padding: '36px 24px',
               textAlign: 'center',
-              cursor: file ? 'default' : 'pointer',
+              cursor: files.length ? 'default' : 'pointer',
               background: dragOver ? 'var(--accent-soft)' : 'transparent',
               border: dragOver
                 ? '2px dashed var(--accent)'
@@ -118,7 +135,7 @@ export default function EmptyState({ onSubmit, loading }) {
               transition: 'background .15s, border-color .15s',
             }}
           >
-            {!file ? (
+            {files.length === 0 ? (
               <>
                 <IconTile tone="accent" size={48} style={{ margin: '0 auto 14px' }}>
                   <UploadCloud size={22} />
@@ -138,62 +155,87 @@ export default function EmptyState({ onSubmit, loading }) {
                   <span style={{ color: 'var(--accent-strong)', fontWeight: 500 }}>browse files</span> ·
                   PDF, .docx, .txt, .md, or images (PNG / JPG) up to 10 MB
                 </div>
+                <div style={{ fontSize: 11, color: 'var(--text-soft)', marginTop: 4 }}>
+                  Multi-doc supported — drop or pick more than one to combine into a single extraction.
+                </div>
               </>
             ) : (
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 12,
-                  padding: '12px 14px',
-                  border: '1px solid var(--border)',
-                  borderRadius: 'var(--radius)',
-                  background: 'var(--bg-elevated)',
-                  textAlign: 'left',
-                  maxWidth: 420,
-                  margin: '0 auto',
-                }}
-              >
-                <IconTile tone="info" size={32}>
-                  <FileText size={16} />
-                </IconTile>
-                <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{
+                display: 'flex', flexDirection: 'column', gap: 6,
+                maxWidth: 480, margin: '0 auto',
+              }}>
+                {files.map((f, i) => (
                   <div
+                    key={`${f.name}::${f.size}::${i}`}
                     style={{
-                      fontSize: 13,
-                      fontWeight: 500,
-                      color: 'var(--text-strong)',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 12,
+                      padding: '10px 12px',
+                      border: '1px solid var(--border)',
+                      borderRadius: 'var(--radius)',
+                      background: 'var(--bg-elevated)',
+                      textAlign: 'left',
                     }}
                   >
-                    {file.name}
+                    <IconTile tone="info" size={28}>
+                      <FileText size={14} />
+                    </IconTile>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div
+                        style={{
+                          fontSize: 13,
+                          fontWeight: 500,
+                          color: 'var(--text-strong)',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {f.name}
+                      </div>
+                      <div style={{ fontSize: 11, color: 'var(--text-soft)' }}>
+                        {(f.size / 1024).toFixed(1)} KB
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      aria-label={`Remove ${f.name}`}
+                      title="Remove"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        removeFile(i)
+                      }}
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        color: 'var(--text-muted)',
+                        cursor: 'pointer',
+                        padding: 4,
+                        borderRadius: 4,
+                        fontSize: 16,
+                        lineHeight: 1,
+                      }}
+                    >
+                      ×
+                    </button>
                   </div>
-                  <div style={{ fontSize: 11, color: 'var(--text-soft)' }}>
-                    {(file.size / 1024).toFixed(1)} KB · ready to extract
-                  </div>
-                </div>
+                ))}
                 <button
                   type="button"
-                  aria-label="Remove file"
-                  title="Remove file"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    setFile(null)
-                  }}
+                  onClick={(e) => { e.stopPropagation(); pickFile() }}
                   style={{
                     background: 'transparent',
                     border: 'none',
-                    color: 'var(--text-muted)',
+                    color: 'var(--accent-strong)',
                     cursor: 'pointer',
-                    padding: 4,
-                    borderRadius: 4,
-                    fontSize: 16,
-                    lineHeight: 1,
+                    fontSize: 12.5,
+                    fontWeight: 500,
+                    fontFamily: 'inherit',
+                    marginTop: 2,
                   }}
                 >
-                  ×
+                  + Add another file
                 </button>
               </div>
             )}
@@ -202,6 +244,9 @@ export default function EmptyState({ onSubmit, loading }) {
               type="file"
               // M7.3 / M7.4 — image extensions go through Claude vision on
               // the backend; PDFs that pypdf can't read fall back to OCR.
+              // M7.5 — `multiple` lets the picker select N files at once;
+              // dropping multiple files into the zone also works.
+              multiple
               accept=".pdf,.docx,.txt,.md,.markdown,.rst,.png,.jpg,.jpeg,.gif,.webp"
               onChange={onFileChange}
               style={{ display: 'none' }}

@@ -40,11 +40,9 @@ from services.extractions import (
     record_usage,
     save_upload,
 )
-from extract import resolve_model
+from services.ingest import combine_raw_texts, ingest_file
 from services.limits import enforce_limits
-from services.ocr import looks_like_empty, ocr_pdf_via_claude
 from services.prompts import resolve_prompt_suffix
-from services.vision import describe_image_via_claude, mime_for_ext
 from services.obs import install_json_logging, install_request_id, install_sentry
 from services.onboarding import welcome_check
 from services.streaming import stream_extraction
@@ -188,52 +186,24 @@ def test_key(
 async def extract(
     session: Annotated[Session, Depends(get_session)],
     user: Annotated[CurrentUser, Depends(current_user)],
-    file: UploadFile | None = File(default=None),
+    # M7.5: list[UploadFile] — FastAPI parses repeated `file` form fields
+    # into a list. Single-file uploads (one `file` field) → 1-element list,
+    # so the existing client doesn't break. Multi-file uploads append the
+    # `file` field N times.
+    file: list[UploadFile] | None = File(default=None),
     text: str | None = Form(default=None),
     filename: str | None = Form(default=None),
     project_id: str | None = Form(default=None),
     x_anthropic_key: str | None = Header(default=None, alias="X-Anthropic-Key"),
     x_storyforge_model: str | None = Header(default=None, alias="X-Storyforge-Model"),
 ) -> ExtractionRecord:
-    if file is None and not text:
+    files = [f for f in (file or []) if f and f.filename]
+    if not files and not text:
         raise HTTPException(status_code=400, detail="Provide either a file or text.")
 
-    upload_bytes: bytes | None = None
-    file_ext = ""
-    image_mime: str | None = None     # M7.4 — set when the upload is an image
-    if file is not None:
-        data = await file.read()
-        if len(data) > MAX_BYTES:
-            raise HTTPException(
-                status_code=413,
-                detail=f"File over {MAX_BYTES // (1024 * 1024)} MB limit.",
-            )
-        file_ext = "." + file.filename.rsplit(".", 1)[-1].lower() if "." in (file.filename or "") else ""
-        if file_ext and file_ext not in SUPPORTED_EXT:
-            raise HTTPException(
-                status_code=415,
-                detail=f"Unsupported file type {file_ext}. Supported: {', '.join(sorted(SUPPORTED_EXT))}",
-            )
-        image_mime = mime_for_ext(file_ext)
-        if image_mime is None:
-            # Text-extractable file (pdf / docx / txt / md / rst).
-            try:
-                raw_text = _parse_file(file.filename or "uploaded", data)
-            except Exception as e:
-                log.exception("file parse failed")
-                raise HTTPException(status_code=422, detail=f"Could not parse file: {e}")
-        else:
-            # Image — vision branch fills raw_text below. _parse_file would
-            # try to UTF-8 decode the bytes and produce mojibake.
-            raw_text = ""
-        source_name = file.filename or "uploaded"
-        upload_bytes = data
-    else:
-        raw_text = text or ""
-        source_name = filename or "pasted_text.txt"
-
-    # Validate project ownership BEFORE the LLM call — no point burning tokens
-    # if the request is going to fail validation anyway.
+    # Validate project ownership BEFORE any Claude call — no point burning
+    # tokens (especially the per-file vision/OCR pre-passes) if the request
+    # is going to fail validation anyway.
     if project_id:
         from db.models import Project as ProjectModel
         from services.scope import in_scope
@@ -246,64 +216,30 @@ async def extract(
     effective_key, stored_model = resolve_user_byok(session, user.user_id, x_anthropic_key)
     effective_model = x_storyforge_model or stored_model
 
-    # M7.4: image-input pre-pass. Hands the image to Claude vision to produce
-    # a prose description; that description becomes the raw_text fed into
-    # the normal extraction pipeline. Same two-call design as M7.3 OCR —
-    # downstream stays oblivious to input modality. Records a separate
-    # `usage_log.action="vision"` row so cost shows up in /api/me/usage.
-    if image_mime is not None and upload_bytes is not None:
-        if not effective_key:
-            raise HTTPException(
-                status_code=400,
-                detail="Image input requires a Claude API key — add one in Settings.",
+    # ----- ingest each file (M7.5) -----------------------------------------
+    # Loop calls services/ingest.ingest_file, which handles
+    # parse + image vision + OCR fallback + usage_log per pre-pass.
+    upload_bytes: bytes | None = None
+    if files:
+        per_doc: list[tuple[str, str]] = []
+        for f in files:
+            text_chunk, name, data, _modality = await ingest_file(
+                f,
+                session=session, user=user,
+                effective_key=effective_key, effective_model=effective_model,
+                max_bytes=MAX_BYTES, supported_ext=SUPPORTED_EXT,
+                parse_text=_parse_file,
             )
-        log.info("triggering vision pre-pass for image: %s (%s)", source_name, image_mime)
-        raw_text, vision_usage = describe_image_via_claude(
-            upload_bytes,
-            image_mime,
-            api_key=effective_key,
-            model=resolve_model(effective_model),
-        )
-        record_usage(
-            session,
-            user_id=user.user_id,
-            org_id=user.org_id,
-            extraction_id=None,
-            action="vision",
-            model=resolve_model(effective_model),
-            live=True,
-            usage=vision_usage,
-        )
-
-    # M7.3: OCR fallback for scanned PDFs. pypdf returns near-empty text on
-    # image-only PDFs; if we have a Claude key, hand the raw bytes to vision
-    # to transcribe. Records a separate UsageLog row (action="ocr") so the
-    # cost shows up alongside extract calls in /api/me/usage breakdowns.
-    ocr_usage = None
-    if (
-        upload_bytes is not None
-        and file_ext == ".pdf"
-        and looks_like_empty(raw_text)
-        and effective_key
-    ):
-        log.info("triggering OCR fallback for scanned PDF: %s", source_name)
-        raw_text, ocr_usage = ocr_pdf_via_claude(
-            upload_bytes,
-            api_key=effective_key,
-            model=resolve_model(effective_model),
-        )
-        # Bill the OCR call up front so the user's monthly count reflects it
-        # even if the subsequent extract fails (avoids "free OCR" exploit).
-        record_usage(
-            session,
-            user_id=user.user_id,
-            org_id=user.org_id,
-            extraction_id=None,
-            action="ocr",
-            model=resolve_model(effective_model),
-            live=True,
-            usage=ocr_usage,
-        )
+            per_doc.append((name, text_chunk))
+            # Source-file persistence (M3.9 R2) is single-file only in v1.
+            # When multi, we save no source — the combined raw_text holds
+            # everything, and the user has the originals locally.
+            if len(files) == 1:
+                upload_bytes = data
+        raw_text, source_name = combine_raw_texts(per_doc)
+    else:
+        raw_text = text or ""
+        source_name = filename or "pasted_text.txt"
 
     if not raw_text.strip():
         raise HTTPException(status_code=422, detail="No readable text in the input.")
@@ -387,7 +323,7 @@ def _sse(event: str, data: dict | str) -> bytes:
 async def extract_stream(
     session: Annotated[Session, Depends(get_session)],
     user: Annotated[CurrentUser, Depends(current_user)],
-    file: UploadFile | None = File(default=None),
+    file: list[UploadFile] | None = File(default=None),  # M7.5 — see /api/extract
     text: str | None = Form(default=None),
     filename: str | None = Form(default=None),
     project_id: str | None = Form(default=None),
@@ -402,39 +338,9 @@ async def extract_stream(
     # extraction silently hang: persist_extraction would run against the
     # closed session, raise inside the generator, and never emit `complete`.
     # ----- pre-flight: identical guards to /api/extract --------------------
-    if file is None and not text:
+    files = [f for f in (file or []) if f and f.filename]
+    if not files and not text:
         raise HTTPException(status_code=400, detail="Provide either a file or text.")
-
-    upload_bytes: bytes | None = None
-    file_ext = ""
-    image_mime: str | None = None     # M7.4 — same as /api/extract
-    if file is not None:
-        data = await file.read()
-        if len(data) > MAX_BYTES:
-            raise HTTPException(
-                status_code=413,
-                detail=f"File over {MAX_BYTES // (1024 * 1024)} MB limit.",
-            )
-        file_ext = "." + file.filename.rsplit(".", 1)[-1].lower() if "." in (file.filename or "") else ""
-        if file_ext and file_ext not in SUPPORTED_EXT:
-            raise HTTPException(
-                status_code=415,
-                detail=f"Unsupported file type {file_ext}. Supported: {', '.join(sorted(SUPPORTED_EXT))}",
-            )
-        image_mime = mime_for_ext(file_ext)
-        if image_mime is None:
-            try:
-                raw_text = _parse_file(file.filename or "uploaded", data)
-            except Exception as e:
-                log.exception("file parse failed")
-                raise HTTPException(status_code=422, detail=f"Could not parse file: {e}")
-        else:
-            raw_text = ""
-        source_name = file.filename or "uploaded"
-        upload_bytes = data
-    else:
-        raw_text = text or ""
-        source_name = filename or "pasted_text.txt"
 
     if project_id:
         from db.models import Project as ProjectModel
@@ -446,54 +352,25 @@ async def extract_stream(
     effective_key, stored_model = resolve_user_byok(session, user.user_id, x_anthropic_key)
     effective_model = x_storyforge_model or stored_model
 
-    # M7.4: image-input vision pre-pass (mirrors /api/extract — see comment there).
-    if image_mime is not None and upload_bytes is not None:
-        if not effective_key:
-            raise HTTPException(
-                status_code=400,
-                detail="Image input requires a Claude API key — add one in Settings.",
+    # ----- ingest each file (M7.5) -----------------------------------------
+    upload_bytes: bytes | None = None
+    if files:
+        per_doc: list[tuple[str, str]] = []
+        for f in files:
+            text_chunk, name, data, _modality = await ingest_file(
+                f,
+                session=session, user=user,
+                effective_key=effective_key, effective_model=effective_model,
+                max_bytes=MAX_BYTES, supported_ext=SUPPORTED_EXT,
+                parse_text=_parse_file,
             )
-        log.info("triggering vision pre-pass (stream) for image: %s (%s)", source_name, image_mime)
-        raw_text, vision_usage = describe_image_via_claude(
-            upload_bytes,
-            image_mime,
-            api_key=effective_key,
-            model=resolve_model(effective_model),
-        )
-        record_usage(
-            session,
-            user_id=user.user_id,
-            org_id=user.org_id,
-            extraction_id=None,
-            action="vision",
-            model=resolve_model(effective_model),
-            live=True,
-            usage=vision_usage,
-        )
-
-    # M7.3: OCR fallback (mirrors /api/extract — see comment there).
-    if (
-        upload_bytes is not None
-        and file_ext == ".pdf"
-        and looks_like_empty(raw_text)
-        and effective_key
-    ):
-        log.info("triggering OCR fallback (stream) for scanned PDF: %s", source_name)
-        raw_text, ocr_usage = ocr_pdf_via_claude(
-            upload_bytes,
-            api_key=effective_key,
-            model=resolve_model(effective_model),
-        )
-        record_usage(
-            session,
-            user_id=user.user_id,
-            org_id=user.org_id,
-            extraction_id=None,
-            action="ocr",
-            model=resolve_model(effective_model),
-            live=True,
-            usage=ocr_usage,
-        )
+            per_doc.append((name, text_chunk))
+            if len(files) == 1:
+                upload_bytes = data
+        raw_text, source_name = combine_raw_texts(per_doc)
+    else:
+        raw_text = text or ""
+        source_name = filename or "pasted_text.txt"
 
     if not raw_text.strip():
         raise HTTPException(status_code=422, detail="No readable text in the input.")
