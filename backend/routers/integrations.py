@@ -216,6 +216,7 @@ def push_to_jira(
         extraction,
         project_key=payload.project_key,
         issue_type=payload.issue_type or "Story",
+        create_subtasks=bool(payload.create_subtasks),
     )
 
 

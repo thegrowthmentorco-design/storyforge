@@ -355,12 +355,18 @@ export async function listJiraProjectsApi() {
 }
 
 /** Push every story in the extraction as a Jira issue. Returns
- *  {pushed: [{story_id, issue_key, issue_url}], failed: [{story_id, error}]}. */
-export async function pushToJiraApi(extractionId, { project_key, issue_type = 'Story' }) {
+ *  {pushed: [{story_id, issue_key, issue_url}], failed: [{story_id, error}]}.
+ *
+ *  M6.2.b: pass `create_subtasks: true` to also create one sub-task per
+ *  acceptance criterion linked to each story's parent issue. */
+export async function pushToJiraApi(
+  extractionId,
+  { project_key, issue_type = 'Story', create_subtasks = false },
+) {
   const res = await apiFetch(`/api/extractions/${encodeURIComponent(extractionId)}/push/jira`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ project_key, issue_type }),
+    body: JSON.stringify({ project_key, issue_type, create_subtasks }),
   })
   return jsonOrThrow(res)
 }

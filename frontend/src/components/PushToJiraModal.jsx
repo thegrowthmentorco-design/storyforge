@@ -22,6 +22,7 @@ export default function PushToJiraModal({ extraction, onClose }) {
   const [loadError, setLoadError] = useState(null)   // {detail, status}
   const [selected, setSelected] = useState('')
   const [issueType, setIssueType] = useState('Story')
+  const [createSubtasks, setCreateSubtasks] = useState(false)   // M6.2.b
   const [pushing, setPushing] = useState(false)
   const [result, setResult] = useState(null)         // PushToJiraResult or null
 
@@ -49,13 +50,18 @@ export default function PushToJiraModal({ extraction, onClose }) {
   const doPush = async () => {
     if (!selected || pushing) return
     setPushing(true)
-    track('push_to_jira_started', { project_key: selected })
+    track('push_to_jira_started', { project_key: selected, create_subtasks: createSubtasks })
     try {
-      const r = await pushToJiraApi(extraction.id, { project_key: selected, issue_type: issueType })
+      const r = await pushToJiraApi(extraction.id, {
+        project_key: selected,
+        issue_type: issueType,
+        create_subtasks: createSubtasks,
+      })
       setResult(r)
       track('push_to_jira_finished', {
         pushed: r.pushed.length,
         failed: r.failed.length,
+        create_subtasks: createSubtasks,
       })
     } catch (err) {
       toast.error(err.message || 'Push failed')
@@ -185,12 +191,36 @@ export default function PushToJiraModal({ extraction, onClose }) {
               value={issueType}
               onChange={(e) => setIssueType(e.target.value)}
               disabled={pushing}
-              style={{ ...inputStyle, marginBottom: 14 }}
+              style={{ ...inputStyle, marginBottom: 10 }}
             >
               <option value="Story">Story</option>
               <option value="Task">Task</option>
               <option value="Bug">Bug</option>
             </select>
+            {/* M6.2.b — sub-tasks per criterion. Off by default (one issue
+                per story is the right granularity for most teams); on for
+                teams who want each criterion as a tickable Jira sub-task. */}
+            <label
+              style={{
+                display: 'flex', alignItems: 'flex-start', gap: 8,
+                fontSize: 12.5, color: 'var(--text)', marginBottom: 14,
+                cursor: pushing ? 'not-allowed' : 'pointer', userSelect: 'none',
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={createSubtasks}
+                onChange={(e) => setCreateSubtasks(e.target.checked)}
+                disabled={pushing}
+                style={{ marginTop: 2 }}
+              />
+              <span>
+                Create one sub-task per acceptance criterion
+                <div style={{ fontSize: 11.5, color: 'var(--text-soft)', marginTop: 2 }}>
+                  Each criterion lands as a tickable sub-task linked to its parent story.
+                </div>
+              </span>
+            </label>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
               <button type="button" onClick={onClose} disabled={pushing} style={ghostBtn}>Cancel</button>
               <button type="button" onClick={doPush} disabled={pushing || !selected} style={primaryBtn}>

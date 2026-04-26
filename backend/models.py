@@ -432,6 +432,11 @@ class PushToJiraRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     project_key: str
     issue_type: str = "Story"   # default; user can override
+    # M6.2.b — when true, each acceptance criterion becomes its own
+    # sub-task linked to the parent story issue. Project must have a
+    # sub-task issue type configured (most do); unsupported projects
+    # surface a single soft-fail in the result.
+    create_subtasks: bool = False
 
 
 class PushedIssue(BaseModel):

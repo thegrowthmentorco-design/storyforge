@@ -73,6 +73,7 @@ class JiraClient:
         issue_type: str,
         summary: str,
         description_md: str,
+        parent_key: str | None = None,
     ) -> dict[str, str]:
         """Create one issue. Returns {key, url}.
 
@@ -80,18 +81,24 @@ class JiraClient:
         Cloud no longer accepts plain markdown on v3. We build the simplest
         ADF wrapper (one paragraph node) and let the markdown render as
         plain text. Lossy but works without an MD→ADF conversion library;
-        criteria render as `* item` lines. M6.2.b can swap in a real
-        ADF builder if formatting matters more.
+        criteria render as `* item` lines.
+
+        M6.2.b: when `parent_key` is set, the issue is created as a sub-task
+        of that parent — Jira requires `fields.parent.key` for any issue
+        whose type is a sub-task variant. The caller is responsible for
+        passing the correct sub-task issue type name (`subtask_type_name`
+        from `subtask_type_for_project`).
         """
         url = f"{self.base_url}/rest/api/3/issue"
-        payload = {
-            "fields": {
-                "project": {"key": project_key},
-                "issuetype": {"name": issue_type},
-                "summary": summary[:255],   # Jira hard cap on summary
-                "description": _md_to_adf(description_md),
-            }
+        fields: dict = {
+            "project": {"key": project_key},
+            "issuetype": {"name": issue_type},
+            "summary": summary[:255],   # Jira hard cap on summary
+            "description": _md_to_adf(description_md),
         }
+        if parent_key:
+            fields["parent"] = {"key": parent_key}
+        payload = {"fields": fields}
         try:
             r = httpx.post(url, auth=self.auth, headers=self._headers(), json=payload, timeout=HTTP_TIMEOUT)
         except httpx.HTTPError as e:
@@ -111,6 +118,39 @@ class JiraClient:
         body = r.json()
         key = body["key"]
         return {"key": key, "url": f"{self.base_url}/browse/{key}"}
+
+    def subtask_type_for_project(self, project_key: str) -> str | None:
+        """Find the project's sub-task issue-type name (M6.2.b).
+
+        The conventional name is "Sub-task" but Jira admins can rename it
+        ("Subtask", "SubTask", "Sub Task" — every flavour exists). We list
+        the project's issue-types via `/rest/api/3/issue/createmeta` and
+        return the first one with `subtask=true`. Returns None when the
+        project doesn't have any sub-task type configured (some
+        company-managed projects strip them).
+        """
+        url = (
+            f"{self.base_url}/rest/api/3/issue/createmeta"
+            f"?projectKeys={project_key}&expand=projects.issuetypes"
+        )
+        try:
+            r = httpx.get(url, auth=self.auth, headers=self._headers(), timeout=HTTP_TIMEOUT)
+        except httpx.HTTPError as e:
+            log.warning("createmeta fetch failed for %s: %s", project_key, e)
+            return None
+        if not r.is_success:
+            log.warning("createmeta returned %s for %s", r.status_code, project_key)
+            return None
+        try:
+            projects = r.json().get("projects", []) or []
+            if not projects:
+                return None
+            for it in projects[0].get("issuetypes", []) or []:
+                if it.get("subtask"):
+                    return it.get("name")
+        except Exception as e:  # noqa: BLE001
+            log.warning("createmeta parse failed: %s", e)
+        return None
 
 
 def _md_to_adf(md: str) -> dict:
@@ -179,15 +219,37 @@ def push_extraction(
     *,
     project_key: str,
     issue_type: str = "Story",
+    create_subtasks: bool = False,
 ) -> PushToJiraResult:
     """Push every story in the extraction as a Jira issue. Per-story
     failures are recorded in `failed[]` rather than aborting the batch —
     if 7/10 stories land cleanly and 3 hit a missing custom-field error,
     the user gets the 7 plus a per-row failure list to fix the 3.
+
+    M6.2.b: when `create_subtasks=True`, each acceptance criterion becomes
+    its own sub-task linked to the parent story. Sub-task creation
+    failures are logged into `failed[]` with the parent's story_id +
+    a "[criterion N] " prefix on the error so the user can tell which
+    sub-task fell over without losing the parent it belongs to. Sub-task
+    type is discovered once per push via `subtask_type_for_project` —
+    None disables sub-tasks for that project (with a single failed[]
+    note explaining why).
     """
     pushed: list[PushedIssue] = []
     failed: list[dict] = []
     stories = extraction.stories or []
+
+    # M6.2.b — discover the project's sub-task type once. Skip the lookup
+    # when the caller didn't ask for sub-tasks.
+    subtask_type: str | None = None
+    if create_subtasks and stories:
+        subtask_type = client.subtask_type_for_project(project_key)
+        if subtask_type is None:
+            failed.append({
+                "story_id": "",
+                "error": "Sub-tasks were requested but the project has no sub-task issue type. Stories pushed without criterion sub-tasks.",
+            })
+
     for s in stories:
         try:
             summary = f"{s.get('id', '?')}: {s.get('want', '')[:200]}"
@@ -206,4 +268,28 @@ def push_extraction(
         except Exception as e:
             log.warning("jira push failed for story %s: %s", s.get("id"), e)
             failed.append({"story_id": s.get("id", ""), "error": str(e)})
+            continue   # skip sub-tasks if the parent failed
+
+        # M6.2.b — sub-task per criterion. The parent has to exist first
+        # (we just created it), and Jira won't accept a sub-task without
+        # `parent.key`, so this loop runs strictly after the parent push.
+        if subtask_type and s.get("criteria"):
+            for i, criterion in enumerate(s["criteria"], start=1):
+                if not (criterion or "").strip():
+                    continue
+                try:
+                    client.create_issue(
+                        project_key=project_key,
+                        issue_type=subtask_type,
+                        summary=criterion[:255],
+                        description_md=f"Acceptance criterion #{i} for {res['key']}.",
+                        parent_key=res["key"],
+                    )
+                except Exception as e:
+                    log.warning("jira subtask push failed for %s/criterion %d: %s", res["key"], i, e)
+                    failed.append({
+                        "story_id": s.get("id", ""),
+                        "error": f"[criterion {i}] {e}",
+                    })
+
     return PushToJiraResult(pushed=pushed, failed=failed)
