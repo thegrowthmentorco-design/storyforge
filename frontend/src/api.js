@@ -202,6 +202,43 @@ export async function regenSectionApi(id, section) {
   return jsonOrThrow(res)
 }
 
+// ---------- comments (M4.5) ----------
+
+/** All comments on an extraction. Oldest first. */
+export async function listCommentsApi(extractionId) {
+  const res = await apiFetch(`/api/extractions/${encodeURIComponent(extractionId)}/comments`)
+  return jsonOrThrow(res)
+}
+
+/** Create a comment on a specific artifact. target_kind: 'brief' | 'story'. */
+export async function createCommentApi(extractionId, { target_kind, target_key = '', body }) {
+  const res = await apiFetch(`/api/extractions/${encodeURIComponent(extractionId)}/comments`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ target_kind, target_key, body }),
+  })
+  return jsonOrThrow(res)
+}
+
+/** Edit own comment. Backend stamps edited_at. */
+export async function patchCommentApi(commentId, body) {
+  const res = await apiFetch(`/api/comments/${encodeURIComponent(commentId)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ body }),
+  })
+  return jsonOrThrow(res)
+}
+
+/** Delete own comment. */
+export async function deleteCommentApi(commentId) {
+  const res = await apiFetch(`/api/comments/${encodeURIComponent(commentId)}`, {
+    method: 'DELETE',
+  })
+  if (!res.ok) await jsonOrThrow(res)
+  return null
+}
+
 /** All versions in this extraction's chain. Oldest first, 1-indexed. */
 export async function listVersionsApi(id) {
   const res = await apiFetch(`/api/extractions/${encodeURIComponent(id)}/versions`)

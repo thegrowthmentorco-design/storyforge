@@ -89,6 +89,42 @@ class Extraction(SQLModel, table=True):
     gaps: list[dict[str, Any]] = Field(sa_column=Column(JSON, nullable=False))
 
 
+class Comment(SQLModel, table=True):
+    """User comment on one artifact within an extraction (M4.5).
+
+    `target_kind` + `target_key` together identify what the comment is on:
+      - ('brief', '')       → the brief block (singleton)
+      - ('story', 'US-03')  → that specific user story by stable id
+
+    NFRs and gaps are NOT supported yet — they lack stable ids, so anchoring
+    by array index would silently shift on delete/reorder. Add when those
+    artifacts get stable ids (post-M4).
+
+    Author is denormalized at write time (`author_name`, `author_email` from
+    a Clerk lookup) so the read path doesn't need a network hop per comment.
+    Edits update `author_name` only on the next write — keeps the UI honest
+    that names can drift over time.
+
+    Scope inherits from the parent extraction:
+      - `org_id` mirrors the extraction's org_id (NULL for personal)
+      - List endpoint filters via the same scope rules as extractions (M3.3)
+    """
+
+    __tablename__ = "comment"
+
+    id: str = Field(primary_key=True)  # `cmt_<base36-ts>_<rand6>`
+    extraction_id: str = Field(foreign_key="extraction.id", index=True)
+    target_kind: str = Field(index=True)  # 'brief' | 'story' (extensible)
+    target_key: str = Field(default="")    # '' for brief, story.id for story
+    author_user_id: str = Field(index=True)
+    author_name: str = Field(default="")
+    author_email: str = Field(default="")
+    body: str
+    org_id: str | None = Field(default=None, index=True)
+    created_at: datetime = Field(default_factory=_utcnow, index=True)
+    edited_at: datetime | None = Field(default=None)
+
+
 class GapState(SQLModel, table=True):
     """Per-gap user state (resolved / ignored / asked).
 

@@ -322,3 +322,39 @@ class ExtractionRegenRequest(BaseModel):
     # — only stories / nfrs / gaps are regenerable; brief + actors are short
     # enough to edit inline (M4.1).
     section: Literal["stories", "nfrs", "gaps"]
+
+
+# ----- Comments (M4.5) -----
+
+
+CommentTargetKind = Literal["brief", "story"]
+
+
+class CommentRead(BaseModel):
+    """One comment as returned by GET /api/extractions/{id}/comments."""
+    model_config = ConfigDict(extra="forbid")
+    id: str
+    extraction_id: str
+    target_kind: CommentTargetKind
+    target_key: str = ""
+    author_user_id: str
+    author_name: str = ""
+    author_email: str = ""
+    body: str
+    created_at: datetime
+    edited_at: datetime | None = None
+
+
+class CommentCreate(BaseModel):
+    """POST /api/extractions/{id}/comments body."""
+    model_config = ConfigDict(extra="forbid")
+    target_kind: CommentTargetKind
+    target_key: str = ""  # '' for brief, story.id for story
+    body: str
+
+
+class CommentPatch(BaseModel):
+    """PATCH /api/comments/{id} body — body-only edit. Authors can edit
+    their own comments; the response stamps `edited_at`."""
+    model_config = ConfigDict(extra="forbid")
+    body: str

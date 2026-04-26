@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import { SignedIn, SignedOut, useAuth, useOrganization } from '@clerk/clerk-react'
-import { extractStream, getMePlanApi, listProjectsApi, patchExtractionApi, regenSectionApi, rerunExtractionApi, setTokenGetter } from './api.js'
+import { extractStream, getMePlanApi, listCommentsApi, listProjectsApi, patchExtractionApi, regenSectionApi, rerunExtractionApi, setTokenGetter } from './api.js'
 import { getExtraction } from './lib/store.js'
 import { migrateLocalStorageOnce } from './lib/migrate.js'
 import { getSettings, setSettings } from './lib/settings.js'
@@ -385,6 +385,27 @@ function AuthedApp() {
   // section name in flight (or null) so each section can show its own
   // spinner without blocking edits elsewhere.
   const [regenBusy, setRegenBusy] = useState(null)
+
+  // M4.5 — comments on the open extraction. Fetched once when the
+  // extraction is opened; mutations (create/edit/delete) update this
+  // master list locally so all per-artifact popovers stay in sync without
+  // refetching. Per-artifact popovers receive the filtered slice they care
+  // about via props.
+  const [comments, setComments] = useState([])
+  useEffect(() => {
+    if (!extractionId) {
+      setComments([])
+      return
+    }
+    let cancelled = false
+    listCommentsApi(extractionId)
+      .then((rows) => { if (!cancelled) setComments(rows || []) })
+      .catch(() => { /* unauth → already toasted; transient → leave empty */ })
+    return () => { cancelled = true }
+  }, [extractionId])
+  const onCommentCreate = (c) => setComments((prev) => [...prev, c])
+  const onCommentPatch = (c) => setComments((prev) => prev.map((x) => (x.id === c.id ? c : x)))
+  const onCommentDelete = (id) => setComments((prev) => prev.filter((x) => x.id !== id))
   const handleRegenSection = async (section) => {
     if (!extractionId || regenBusy) return
     if (!window.confirm(`Replace your ${section} with a fresh draft from Claude?`)) return
@@ -510,6 +531,10 @@ function AuthedApp() {
                       onUpdate={updateExtraction}
                       onRegenSection={handleRegenSection}
                       regenBusy={regenBusy}
+                      comments={comments}
+                      onCommentCreate={onCommentCreate}
+                      onCommentPatch={onCommentPatch}
+                      onCommentDelete={onCommentDelete}
                     />
                   </div>
                 )}

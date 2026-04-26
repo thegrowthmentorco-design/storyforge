@@ -16,6 +16,7 @@ import { CSS } from '@dnd-kit/utilities'
 import { copyToClipboard } from '../lib/clipboard.js'
 import { useToast } from './Toast.jsx'
 import { Badge, Card, IconTile } from './primitives.jsx'
+import CommentThread from './Comments.jsx'
 import { EditableList, EditableText, EditableTextarea } from './Editable.jsx'
 import {
   Sparkles,
@@ -129,7 +130,19 @@ function SourceQuote({ text, compact = false, onPick }) {
   )
 }
 
-function StoryCard({ story, idx, onCopy, onPickQuote, onUpdate, onRemove, dragHandleProps, isDragging }) {
+function StoryCard({
+  story,
+  idx,
+  onCopy,
+  onPickQuote,
+  onUpdate,
+  onRemove,
+  dragHandleProps,
+  isDragging,
+  extractionId,
+  comments = [],
+  commentHandlers,
+}) {
   const editable = typeof onUpdate === 'function'
   const removable = typeof onRemove === 'function'
   const draggable = !!dragHandleProps
@@ -267,6 +280,15 @@ function StoryCard({ story, idx, onCopy, onPickQuote, onUpdate, onRemove, dragHa
               story.section
             )}
           </span>
+        )}
+        {extractionId && (
+          <CommentThread
+            extractionId={extractionId}
+            targetKind="story"
+            targetKey={story.id}
+            comments={comments}
+            {...(commentHandlers || {})}
+          />
         )}
       </div>
 
@@ -414,7 +436,7 @@ function StoryCard({ story, idx, onCopy, onPickQuote, onUpdate, onRemove, dragHa
  * DnD can reorder without React re-mounting the wrong element. We rely on
  * extracted/added stories carrying unique US-NN ids — collisions would
  * cause both visual flicker and a "duplicate id" warning. */
-function SortableStoryItem({ story, idx, onCopy, onPickQuote, updateStory, removeStory }) {
+function SortableStoryItem({ story, idx, onCopy, onPickQuote, updateStory, removeStory, extractionId, comments, commentHandlers }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: story.id,
   })
@@ -435,12 +457,15 @@ function SortableStoryItem({ story, idx, onCopy, onPickQuote, updateStory, remov
         onRemove={() => removeStory(idx)}
         dragHandleProps={listeners}
         isDragging={isDragging}
+        extractionId={extractionId}
+        comments={comments}
+        commentHandlers={commentHandlers}
       />
     </div>
   )
 }
 
-function SortableStoryList({ stories, onReorder, onCopy, onPickQuote, updateStory, removeStory }) {
+function SortableStoryList({ stories, onReorder, onCopy, onPickQuote, updateStory, removeStory, extractionId, commentsForStory, commentHandlers }) {
   // PointerSensor with a small distance threshold so a click on the grip
   // doesn't immediately start a drag (would conflict with the click-to-edit
   // primitives nested inside the card).
@@ -471,6 +496,9 @@ function SortableStoryList({ stories, onReorder, onCopy, onPickQuote, updateStor
               onPickQuote={onPickQuote}
               updateStory={updateStory}
               removeStory={removeStory}
+              extractionId={extractionId}
+              comments={commentsForStory(s.id)}
+              commentHandlers={commentHandlers}
             />
           ))}
         </div>
@@ -500,7 +528,38 @@ const SECTIONS = [
   { id: 'nfrs', label: 'NFRs' },
 ]
 
-export default function ArtifactsPane({ extraction, onPickQuote, onUpdate, onRegenSection, regenBusy }) {
+export default function ArtifactsPane({
+  extraction,
+  onPickQuote,
+  onUpdate,
+  onRegenSection,
+  regenBusy,
+  comments = [],
+  onCommentCreate,
+  onCommentPatch,
+  onCommentDelete,
+}) {
+  // Build a {target_kind:target_key → [comments]} index once per render so
+  // each artifact's CommentThread gets a stable filtered slice.
+  const commentsByTarget = React.useMemo(() => {
+    const m = new Map()
+    for (const c of comments) {
+      const k = `${c.target_kind}:${c.target_key}`
+      const arr = m.get(k) || []
+      arr.push(c)
+      m.set(k, arr)
+    }
+    return m
+  }, [comments])
+  const briefComments = commentsByTarget.get('brief:') || []
+  const commentsForStory = (storyId) => commentsByTarget.get(`story:${storyId}`) || []
+  // Spread the comment-mutation callbacks into a single object so we can pass
+  // them through cleanly without 3-prop noise at every call site.
+  const commentHandlers = {
+    onCreate: onCommentCreate,
+    onPatch: onCommentPatch,
+    onDelete: onCommentDelete,
+  }
   // Per-artifact callbacks: each takes the new piece + applies to the
   // corresponding array, then calls the parent's onUpdate({field: ...}).
   const editable = typeof onUpdate === 'function'
@@ -708,6 +767,16 @@ export default function ArtifactsPane({ extraction, onPickQuote, onUpdate, onReg
           icon={<Sparkles size={16} />}
           tone="accent"
           title="Business summary"
+          action={
+            extraction.id && (
+              <CommentThread
+                extractionId={extraction.id}
+                targetKind="brief"
+                comments={briefComments}
+                {...commentHandlers}
+              />
+            )
+          }
         />
         <Card padding={20} style={{ background: 'var(--accent-soft)', borderColor: 'transparent' }}>
           <div
@@ -840,6 +909,9 @@ export default function ArtifactsPane({ extraction, onPickQuote, onUpdate, onReg
               onPickQuote={onPickQuote}
               updateStory={updateStory}
               removeStory={removeStory}
+              extractionId={extraction.id}
+              commentsForStory={commentsForStory}
+              commentHandlers={commentHandlers}
             />
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -850,6 +922,9 @@ export default function ArtifactsPane({ extraction, onPickQuote, onUpdate, onReg
                   idx={i}
                   onCopy={onCopyStory}
                   onPickQuote={onPickQuote}
+                  extractionId={extraction.id}
+                  comments={commentsForStory(s.id)}
+                  commentHandlers={commentHandlers}
                 />
               ))}
             </div>
