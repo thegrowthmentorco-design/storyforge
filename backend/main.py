@@ -28,6 +28,7 @@ from routers import comments as comments_router
 from routers import extractions as extractions_router
 from routers import me as me_router
 from routers import projects as projects_router
+from routers import share as share_router
 from services.byok import resolve_user_byok
 from services.extractions import (
     call_claude,
@@ -88,6 +89,10 @@ app.include_router(extractions_router.router, dependencies=_protected_deps)
 app.include_router(projects_router.router, dependencies=_protected_deps)
 app.include_router(me_router.router, dependencies=_protected_deps)
 app.include_router(comments_router.router, dependencies=_protected_deps)
+# M4.6: share has split posture — owner endpoints are auth+ownership, the
+# public read uses token only. Mounted as two separate routers in share.py.
+app.include_router(share_router.owner_router, dependencies=_protected_deps)
+app.include_router(share_router.public_router)
 # Billing router has its own auth posture: /api/me/* routes require Clerk auth
 # AND the welcome_check, but /api/webhooks/lemonsqueezy is unauthed (signed
 # by LSQ via HMAC). Wired per-route inside the router rather than at this layer.

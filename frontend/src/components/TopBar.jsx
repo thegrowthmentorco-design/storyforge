@@ -10,6 +10,7 @@ import {
   FileText,
   Moon,
   RefreshCw,
+  Share2,
   Sparkles,
   Sun,
   Zap,
@@ -193,6 +194,7 @@ export default function TopBar({
   onReset,
   onRerun,
   onSwitchVersion,
+  onShare,
 }) {
   const [versions, setVersions] = useState([])
 
@@ -311,6 +313,17 @@ export default function TopBar({
           <Button variant="secondary" size="sm" icon={<RefreshCw size={13} />} onClick={onReset}>
             New
           </Button>
+          {typeof onShare === 'function' && (
+            <Button
+              variant="secondary"
+              size="sm"
+              icon={<Share2 size={13} />}
+              onClick={onShare}
+              title="Generate a public read-only URL for this document"
+            >
+              Share
+            </Button>
+          )}
           <Button variant="primary" size="sm" icon={<Download size={13} />} onClick={onExport}>
             Export .md
           </Button>

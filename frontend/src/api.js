@@ -202,6 +202,41 @@ export async function regenSectionApi(id, section) {
   return jsonOrThrow(res)
 }
 
+// ---------- share links (M4.6) ----------
+
+/** Get the active share token for an extraction, or null if none exists.
+ *  Owner-side; requires Clerk auth + ownership of the extraction. */
+export async function getShareApi(extractionId) {
+  const res = await apiFetch(`/api/extractions/${encodeURIComponent(extractionId)}/share`)
+  return jsonOrThrow(res)
+}
+
+/** Create or rotate the share token. Any existing active token is revoked
+ *  (single-active-token model). Returns the new {token, ...} record. */
+export async function createShareApi(extractionId) {
+  const res = await apiFetch(`/api/extractions/${encodeURIComponent(extractionId)}/share`, {
+    method: 'POST',
+  })
+  return jsonOrThrow(res)
+}
+
+/** Revoke all active tokens for this extraction. Idempotent. */
+export async function revokeShareApi(extractionId) {
+  const res = await apiFetch(`/api/extractions/${encodeURIComponent(extractionId)}/share`, {
+    method: 'DELETE',
+  })
+  if (!res.ok) await jsonOrThrow(res)
+  return null
+}
+
+/** Public read of a shared extraction by token. NO auth header.
+ *  We hit `fetch` directly (not apiFetch) so we don't accidentally send a
+ *  stale Clerk JWT and confuse the public route. */
+export async function fetchSharedExtraction(token) {
+  const res = await fetch(`/api/share/${encodeURIComponent(token)}`)
+  return jsonOrThrow(res)
+}
+
 // ---------- comments (M4.5) ----------
 
 /** All comments on an extraction. Oldest first. */

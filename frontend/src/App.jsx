@@ -7,10 +7,12 @@ import { migrateLocalStorageOnce } from './lib/migrate.js'
 import { getSettings, setSettings } from './lib/settings.js'
 import { AppProvider } from './lib/AppContext.jsx'
 import { useToast } from './components/Toast.jsx'
+import ShareModal from './components/ShareModal.jsx'
 import Account from './pages/Account.jsx'
 import Documents from './pages/Documents.jsx'
 import Project from './pages/Project.jsx'
 import Settings from './pages/Settings.jsx'
+import ShareView from './pages/ShareView.jsx'
 import SignInPage from './pages/SignInPage.jsx'
 import SignUpPage from './pages/SignUpPage.jsx'
 import PaywallModal from './components/PaywallModal.jsx'
@@ -406,6 +408,11 @@ function AuthedApp() {
   const onCommentCreate = (c) => setComments((prev) => [...prev, c])
   const onCommentPatch = (c) => setComments((prev) => prev.map((x) => (x.id === c.id ? c : x)))
   const onCommentDelete = (id) => setComments((prev) => prev.filter((x) => x.id !== id))
+
+  // M4.6 — share modal toggle. Owner-only since it's mounted in TopBar
+  // alongside other owner controls; the public viewer renders ShareView
+  // (a different page) and never sees this state.
+  const [shareOpen, setShareOpen] = useState(false)
   const handleRegenSection = async (section) => {
     if (!extractionId || regenBusy) return
     if (!window.confirm(`Replace your ${section} with a fresh draft from Claude?`)) return
@@ -512,6 +519,7 @@ function AuthedApp() {
           onReset={reset}
           onRerun={handleRerun}
           onSwitchVersion={switchVersion}
+          onShare={extractionId ? () => setShareOpen(true) : undefined}
         />
         <Routes>
           <Route
@@ -561,6 +569,9 @@ function AuthedApp() {
         />
       )}
       <PaywallModal paywall={paywall} onClose={() => setPaywall(null)} />
+      {shareOpen && extractionId && (
+        <ShareModal extractionId={extractionId} onClose={() => setShareOpen(false)} />
+      )}
     </div>
     </AppProvider>
   )
@@ -578,6 +589,9 @@ export default function App() {
     <Routes>
       <Route path="/sign-in/*" element={<SignInPage />} />
       <Route path="/sign-up/*" element={<SignUpPage />} />
+      {/* M4.6 — public share view; outside the SignedIn gate so visitors
+          without a Clerk account can read shared documents by URL. */}
+      <Route path="/share/:token" element={<ShareView />} />
       <Route
         path="*"
         element={

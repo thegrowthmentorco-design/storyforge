@@ -358,3 +358,21 @@ class CommentPatch(BaseModel):
     their own comments; the response stamps `edited_at`."""
     model_config = ConfigDict(extra="forbid")
     body: str
+
+
+# ----- Share links (M4.6) -----
+
+
+class ExtractionShareRead(BaseModel):
+    """Owner-side view of the active share for an extraction.
+
+    GET returns null when no active token exists (or the only one has been
+    revoked). POST returns the freshly-minted token. Token is the only
+    secret here — anyone with it can read the extraction.
+    """
+    model_config = ConfigDict(extra="forbid")
+    token: str
+    extraction_id: str
+    created_at: datetime
+    expires_at: datetime | None = None
+    revoked_at: datetime | None = None

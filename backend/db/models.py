@@ -89,6 +89,31 @@ class Extraction(SQLModel, table=True):
     gaps: list[dict[str, Any]] = Field(sa_column=Column(JSON, nullable=False))
 
 
+class ExtractionShare(SQLModel, table=True):
+    """Public read-only share token for an extraction (M4.6).
+
+    One active token per extraction at a time — POST /share rotates the
+    existing one (revokes old + creates new). Token IS the primary key
+    (opaque base64-urlsafe ~22 chars from secrets.token_urlsafe) so the
+    public lookup is one indexed-PK fetch.
+
+    Revocation: set `revoked_at`. We don't delete because a) audit value,
+    b) the same token shouldn't reappear after a rotation cycle (keeps
+    bookmarked URLs from accidentally resurrecting access). Expiry is
+    optional (`expires_at` nullable) — v1 ships with no UI for it but the
+    column is here for the future "share for 7 days" flow.
+    """
+
+    __tablename__ = "extraction_share"
+
+    token: str = Field(primary_key=True)
+    extraction_id: str = Field(foreign_key="extraction.id", index=True)
+    created_by_user_id: str = Field(index=True)
+    created_at: datetime = Field(default_factory=_utcnow)
+    expires_at: datetime | None = Field(default=None)
+    revoked_at: datetime | None = Field(default=None)
+
+
 class Comment(SQLModel, table=True):
     """User comment on one artifact within an extraction (M4.5).
 
