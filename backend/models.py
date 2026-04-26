@@ -430,3 +430,46 @@ class PushToJiraResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
     pushed: list[PushedIssue]
     failed: list[dict]   # [{story_id, error}] — non-fatal per-story failures
+
+
+# ----- Integrations (M6.3 — Linear) -----
+
+
+class LinearConnectionRead(BaseModel):
+    """Linear connection metadata. Token preview only — never the raw key."""
+    model_config = ConfigDict(extra="forbid")
+    api_key_preview: str       # ••••XYZK
+    default_team_id: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class LinearConnectionWrite(BaseModel):
+    """PUT body — full replacement. Token sent in clear; backend encrypts
+    before persisting (same path as the Jira token + Anthropic BYOK key)."""
+    model_config = ConfigDict(extra="forbid")
+    api_key: str       # https://linear.app/settings/api
+    default_team_id: str | None = None
+
+
+class LinearTeam(BaseModel):
+    """One Linear team. `key` is the short prefix Linear puts on issues
+    (e.g. ENG → ENG-123). Useful for the picker label."""
+    model_config = ConfigDict(extra="forbid")
+    id: str            # opaque GraphQL id
+    key: str           # short prefix (e.g. "ENG")
+    name: str
+
+
+class PushToLinearRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    team_id: str       # Linear team id (NOT the key — GraphQL id)
+
+
+class PushToLinearResult(BaseModel):
+    """Same shape as PushToJiraResult — the issue_key field carries
+    Linear's identifier (e.g. ENG-42) which matches the Jira issue_key
+    contract."""
+    model_config = ConfigDict(extra="forbid")
+    pushed: list[PushedIssue]
+    failed: list[dict]

@@ -9,6 +9,7 @@ import { AppProvider } from './lib/AppContext.jsx'
 import { useToast } from './components/Toast.jsx'
 import ShareModal from './components/ShareModal.jsx'
 import PushToJiraModal from './components/PushToJiraModal.jsx'
+import PushToLinearModal from './components/PushToLinearModal.jsx'
 import { setSentryUser } from './lib/sentry.js'
 import { identifyUser, track } from './lib/analytics.js'
 import Account from './pages/Account.jsx'
@@ -490,6 +491,8 @@ function AuthedApp() {
   const [shareOpen, setShareOpen] = useState(false)
   // M6.2 — push-to-Jira modal toggle. Same pattern as ShareModal.
   const [pushJiraOpen, setPushJiraOpen] = useState(false)
+  // M6.3 — push-to-Linear modal toggle. Parallel to Jira.
+  const [pushLinearOpen, setPushLinearOpen] = useState(false)
   const handleRegenSection = async (section) => {
     if (!extractionId || regenBusy) return
     if (!window.confirm(`Replace your ${section} with a fresh draft from Claude?`)) return
@@ -599,6 +602,7 @@ function AuthedApp() {
           onSwitchVersion={switchVersion}
           onShare={extractionId ? () => setShareOpen(true) : undefined}
           onPushToJira={extractionId ? () => setPushJiraOpen(true) : undefined}
+          onPushToLinear={extractionId ? () => setPushLinearOpen(true) : undefined}
         />
         <Routes>
           <Route
@@ -659,6 +663,9 @@ function AuthedApp() {
       )}
       {pushJiraOpen && extraction && (
         <PushToJiraModal extraction={extraction} onClose={() => setPushJiraOpen(false)} />
+      )}
+      {pushLinearOpen && extraction && (
+        <PushToLinearModal extraction={extraction} onClose={() => setPushLinearOpen(false)} />
       )}
     </div>
     </AppProvider>

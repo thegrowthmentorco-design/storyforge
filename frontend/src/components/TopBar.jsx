@@ -113,6 +113,74 @@ function ExportMenu({ extraction, busy }) {
   )
 }
 
+/* M6.3 — Push menu. Mirrors ExportMenu (same dropdown shape) so users
+ * recognize the pattern. Items only render when their callback exists,
+ * so a future single-tracker connection still gets a clean menu. */
+function PushMenu({ onPushToJira, onPushToLinear, busy }) {
+  const [open, setOpen] = useState(false)
+  const popRef = React.useRef(null)
+  const btnRef = React.useRef(null)
+
+  React.useEffect(() => {
+    if (!open) return
+    const onClick = (e) => {
+      if (popRef.current?.contains(e.target)) return
+      if (btnRef.current?.contains(e.target)) return
+      setOpen(false)
+    }
+    const onKey = (e) => { if (e.key === 'Escape') setOpen(false) }
+    window.addEventListener('mousedown', onClick)
+    window.addEventListener('keydown', onKey)
+    return () => {
+      window.removeEventListener('mousedown', onClick)
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [open])
+
+  const fire = (cb) => () => { setOpen(false); cb?.() }
+
+  return (
+    <span style={{ position: 'relative', display: 'inline-block' }}>
+      <span ref={btnRef} style={{ display: 'inline-block' }}>
+        <Button
+          variant="secondary"
+          size="sm"
+          icon={<Plug size={13} />}
+          onClick={() => setOpen((x) => !x)}
+          disabled={busy}
+        >
+          Push to…
+        </Button>
+      </span>
+      {open && (
+        <div
+          ref={popRef}
+          role="menu"
+          style={{
+            position: 'absolute',
+            top: 'calc(100% + 4px)',
+            right: 0,
+            minWidth: 200,
+            background: 'var(--bg-elevated)',
+            border: '1px solid var(--border)',
+            borderRadius: 'var(--radius)',
+            boxShadow: 'var(--shadow-lg)',
+            padding: 4,
+            zIndex: 50,
+          }}
+        >
+          {typeof onPushToJira === 'function' && (
+            <ExportMenuItem onClick={fire(onPushToJira)} title="Jira" hint="One issue per story" />
+          )}
+          {typeof onPushToLinear === 'function' && (
+            <ExportMenuItem onClick={fire(onPushToLinear)} title="Linear" hint="One issue per story" />
+          )}
+        </div>
+      )}
+    </span>
+  )
+}
+
 function ExportMenuItem({ onClick, title, hint }) {
   return (
     <button
@@ -287,6 +355,7 @@ export default function TopBar({
   onSwitchVersion,
   onShare,
   onPushToJira,
+  onPushToLinear,
 }) {
   const [versions, setVersions] = useState([])
 
@@ -404,16 +473,8 @@ export default function TopBar({
               Share
             </Button>
           )}
-          {typeof onPushToJira === 'function' && (
-            <Button
-              variant="secondary"
-              size="sm"
-              icon={<Plug size={13} />}
-              onClick={onPushToJira}
-              title="Push extracted stories to a Jira project"
-            >
-              Push to Jira
-            </Button>
+          {(typeof onPushToJira === 'function' || typeof onPushToLinear === 'function') && (
+            <PushMenu onPushToJira={onPushToJira} onPushToLinear={onPushToLinear} busy={loading || rerunning} />
           )}
           <ExportMenu extraction={extraction} busy={loading || rerunning} />
         </>

@@ -32,11 +32,17 @@ from models import (
     JiraConnectionRead,
     JiraConnectionWrite,
     JiraProject,
+    LinearConnectionRead,
+    LinearConnectionWrite,
+    LinearTeam,
     PushToJiraRequest,
     PushToJiraResult,
+    PushToLinearRequest,
+    PushToLinearResult,
 )
 from services.byok import decrypt_secret, encrypt_secret, key_preview
-from services.jira import JiraClient, push_extraction
+from services.jira import JiraClient, push_extraction as push_extraction_jira
+from services.linear import LinearClient, push_extraction as push_extraction_linear
 from services.scope import in_scope
 
 log = logging.getLogger("storyforge.integrations")
@@ -188,9 +194,123 @@ def push_to_jira(
     if not (extraction.stories or []):
         raise HTTPException(status_code=400, detail="No stories to push.")
 
-    return push_extraction(
+    return push_extraction_jira(
         client,
         extraction,
         project_key=payload.project_key,
         issue_type=payload.issue_type or "Story",
+    )
+
+
+# ---- Linear connection (M6.3) ---------------------------------------------
+
+
+def _decrypt_linear_config(row: IntegrationConnection) -> dict:
+    """Pull + decrypt the Linear API key. Same defensive pattern as the
+    Jira variant — raises 400 if the saved row is unreadable so the user
+    knows to reconnect."""
+    cfg = json.loads(row.config_json)
+    enc = cfg.get("api_key_encrypted")
+    key = decrypt_secret(enc) if enc else None
+    if not key:
+        raise HTTPException(
+            status_code=400,
+            detail="Saved Linear key is unreadable (master key may have rotated). Reconnect in Settings.",
+        )
+    cfg["api_key"] = key
+    cfg.pop("api_key_encrypted", None)
+    return cfg
+
+
+def _to_linear_read(row: IntegrationConnection) -> LinearConnectionRead:
+    cfg = json.loads(row.config_json)
+    enc = cfg.get("api_key_encrypted")
+    plain = decrypt_secret(enc) if enc else ""
+    return LinearConnectionRead(
+        api_key_preview=key_preview(plain or ""),
+        default_team_id=cfg.get("default_team_id"),
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+    )
+
+
+@router.get("/api/integrations/linear/connection", response_model=LinearConnectionRead | None)
+def get_linear_connection(session: SessionDep, user: UserDep):
+    row = _get_connection(session, user, "linear")
+    return _to_linear_read(row) if row else None
+
+
+@router.put("/api/integrations/linear/connection", response_model=LinearConnectionRead)
+def put_linear_connection(payload: LinearConnectionWrite, session: SessionDep, user: UserDep):
+    """Upsert. Only one field really matters here — Linear API keys carry
+    their own scope/workspace context, no URL or email needed (unlike Jira)."""
+    cfg = {
+        "api_key_encrypted": encrypt_secret((payload.api_key or "").strip()),
+        "default_team_id": (payload.default_team_id or None),
+    }
+    now = datetime.now(timezone.utc)
+
+    row = _get_connection(session, user, "linear")
+    if row is None:
+        row = IntegrationConnection(
+            scope="user",
+            scope_id=user.user_id,
+            kind="linear",
+            config_json=json.dumps(cfg),
+            created_at=now,
+            updated_at=now,
+        )
+    else:
+        row.config_json = json.dumps(cfg)
+        row.updated_at = now
+    session.add(row)
+    session.commit()
+    session.refresh(row)
+    return _to_linear_read(row)
+
+
+@router.delete("/api/integrations/linear/connection", status_code=204)
+def delete_linear_connection(session: SessionDep, user: UserDep) -> None:
+    row = _get_connection(session, user, "linear")
+    if row is None:
+        return
+    session.delete(row)
+    session.commit()
+
+
+@router.get("/api/integrations/linear/teams", response_model=list[LinearTeam])
+def list_linear_teams(session: SessionDep, user: UserDep):
+    """Live fetch — doubles as a "test connection" probe. 401 → key bad."""
+    row = _get_connection(session, user, "linear")
+    if row is None:
+        raise HTTPException(status_code=400, detail="No Linear connection saved. Connect in Settings.")
+    cfg = _decrypt_linear_config(row)
+    client = LinearClient(api_key=cfg["api_key"])
+    return client.list_teams()
+
+
+@router.post("/api/extractions/{extraction_id}/push/linear", response_model=PushToLinearResult)
+def push_to_linear(
+    extraction_id: str,
+    payload: PushToLinearRequest,
+    session: SessionDep,
+    user: UserDep,
+) -> PushToLinearResult:
+    extraction = session.get(Extraction, extraction_id)
+    if not in_scope(extraction, user):
+        raise HTTPException(status_code=404, detail="Extraction not found")
+
+    row = _get_connection(session, user, "linear")
+    if row is None:
+        raise HTTPException(status_code=400, detail="No Linear connection saved. Connect in Settings.")
+    cfg = _decrypt_linear_config(row)
+    client = LinearClient(api_key=cfg["api_key"])
+
+    if not (extraction.stories or []):
+        raise HTTPException(status_code=400, detail="No stories to push.")
+
+    return push_extraction_linear(
+        client,
+        extraction,
+        team_id=payload.team_id,
     )

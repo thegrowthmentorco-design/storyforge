@@ -322,6 +322,47 @@ export async function pushToJiraApi(extractionId, { project_key, issue_type = 'S
   return jsonOrThrow(res)
 }
 
+// ---------- integrations: Linear (M6.3) ----------
+
+/** Get the saved Linear connection (preview only — never the raw key). */
+export async function getLinearConnectionApi() {
+  const res = await apiFetch('/api/integrations/linear/connection')
+  return jsonOrThrow(res)
+}
+
+/** Save / replace. Body: {api_key, default_team_id?}. */
+export async function putLinearConnectionApi(body) {
+  const res = await apiFetch('/api/integrations/linear/connection', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  return jsonOrThrow(res)
+}
+
+export async function deleteLinearConnectionApi() {
+  const res = await apiFetch('/api/integrations/linear/connection', { method: 'DELETE' })
+  if (!res.ok) await jsonOrThrow(res)
+  return null
+}
+
+/** List teams (live fetch — doubles as test connection probe). */
+export async function listLinearTeamsApi() {
+  const res = await apiFetch('/api/integrations/linear/teams')
+  return jsonOrThrow(res)
+}
+
+/** Push every story as a Linear issue. Same return shape as pushToJiraApi
+ *  — issue_key carries Linear's identifier (e.g. ENG-42). */
+export async function pushToLinearApi(extractionId, { team_id }) {
+  const res = await apiFetch(`/api/extractions/${encodeURIComponent(extractionId)}/push/linear`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ team_id }),
+  })
+  return jsonOrThrow(res)
+}
+
 // ---------- comments (M4.5) ----------
 
 /** All comments on an extraction. Oldest first. */

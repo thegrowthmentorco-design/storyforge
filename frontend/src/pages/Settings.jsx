@@ -1,10 +1,14 @@
 import React, { useEffect, useState } from 'react'
 import {
   deleteJiraConnectionApi,
+  deleteLinearConnectionApi,
   getJiraConnectionApi,
+  getLinearConnectionApi,
   getMeSettingsApi,
   listJiraProjectsApi,
+  listLinearTeamsApi,
   putJiraConnectionApi,
+  putLinearConnectionApi,
   putMeSettingsApi,
   testApiKey,
 } from '../api.js'
@@ -656,6 +660,136 @@ function JiraConnectionForm() {
   )
 }
 
+/* M6.3 — Linear connection form. Mirrors JiraConnectionForm but with
+ * a single API-key input (Linear's auth is a personal API key — workspace
+ * is implied, no URL or email needed). */
+function LinearConnectionForm() {
+  const { toast } = useToast()
+  const [conn, setConn] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [editing, setEditing] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [token, setToken] = useState('')
+
+  useEffect(() => {
+    let alive = true
+    setLoading(true)
+    getLinearConnectionApi()
+      .then((c) => { if (alive) setConn(c) })
+      .catch((e) => { if (alive) toast.error(e.message || 'Could not load Linear connection') })
+      .finally(() => { if (alive) setLoading(false) })
+    return () => { alive = false }
+  }, [])
+
+  const startEdit = () => { setToken(''); setEditing(true) }
+  const cancelEdit = () => { setEditing(false); setToken('') }
+
+  const save = async () => {
+    if (!token.trim()) {
+      toast.error('API key required')
+      return
+    }
+    setBusy(true)
+    try {
+      const c = await putLinearConnectionApi({ api_key: token.trim() })
+      setConn(c)
+      setEditing(false)
+      setToken('')
+      toast.success('Linear connection saved')
+    } catch (e) {
+      toast.error(e.message || 'Could not save Linear connection')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const test = async () => {
+    setBusy(true)
+    try {
+      const teams = await listLinearTeamsApi()
+      toast.success(`Connection OK — ${teams.length} team${teams.length === 1 ? '' : 's'} visible`)
+    } catch (e) {
+      toast.error(e.message || 'Connection test failed')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const disconnect = async () => {
+    if (!window.confirm('Disconnect Linear? You can reconnect any time.')) return
+    setBusy(true)
+    try {
+      await deleteLinearConnectionApi()
+      setConn(null)
+      toast.success('Linear disconnected')
+    } catch (e) {
+      toast.error(e.message || 'Could not disconnect')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-muted)', fontSize: 13 }}>
+        <Spinner size={14} /> Loading Linear connection…
+      </div>
+    )
+  }
+
+  if (conn && !editing) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '90px 1fr', gap: '4px 12px', fontSize: 13 }}>
+          <div style={{ color: 'var(--text-soft)' }}>API key</div>
+          <div style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>{conn.api_key_preview}</div>
+        </div>
+        <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+          <Button variant="secondary" size="sm" onClick={test} disabled={busy}>
+            {busy ? 'Testing…' : 'Test'}
+          </Button>
+          <Button variant="secondary" size="sm" onClick={startEdit} disabled={busy}>Edit</Button>
+          <Button variant="ghost" size="sm" onClick={disconnect} disabled={busy}>Disconnect</Button>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxWidth: 480 }}>
+      <p style={{ fontSize: 12.5, color: 'var(--text-muted)', margin: 0, lineHeight: 1.55 }}>
+        Generate a personal API key at{' '}
+        <a
+          href="https://linear.app/settings/api"
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{ color: 'var(--accent-strong)' }}
+        >
+          linear.app → Settings → API
+        </a>
+        . The key is encrypted before storage.
+      </p>
+      <FieldLabel>API key</FieldLabel>
+      <input
+        type="password"
+        placeholder="lin_api_…"
+        value={token}
+        onChange={(e) => setToken(e.target.value)}
+        disabled={busy}
+        style={inputStyle}
+      />
+      <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+        <Button variant="primary" size="sm" onClick={save} disabled={busy}>
+          {busy ? 'Saving…' : conn ? 'Save changes' : 'Connect'}
+        </Button>
+        {(conn || editing) && (
+          <Button variant="secondary" size="sm" onClick={cancelEdit} disabled={busy}>Cancel</Button>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function FieldLabel({ children }) {
   return (
     <label style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, color: 'var(--text-soft)' }}>
@@ -781,6 +915,14 @@ export default function Settings() {
           description="Push extracted user stories straight into a Jira project. One issue per story; criteria included as bullet points in the description."
         >
           <JiraConnectionForm />
+        </Section>
+        <Section
+          icon={<Plug size={16} />}
+          tone="purple"
+          title="Integrations · Linear"
+          description="Push extracted user stories into a Linear team. One issue per story; criteria as a markdown checklist in the description."
+        >
+          <LinearConnectionForm />
         </Section>
       </div>
     </div>
