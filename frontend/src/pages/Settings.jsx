@@ -1946,6 +1946,21 @@ function ApiTokensSection() {
   -H "Authorization: Bearer sk_live_…" \\
   -F "text=Your source document content" \\
   -F "filename=spec.txt"`}</pre>
+        {/* M6.7.d — link to the interactive API docs. Opens in a new tab
+            so the user keeps their place in Settings. */}
+        <div style={{ marginTop: 10, fontSize: 12, color: 'var(--text-muted)' }}>
+          Full reference + "Try it out" at{' '}
+          <a
+            href="/api-docs"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ color: 'var(--accent-strong)' }}
+          >
+            /api-docs
+          </a>
+          . Click <strong>Authorize</strong> there and paste a token to test endpoints
+          without leaving the browser.
+        </div>
       </div>
     </div>
   )

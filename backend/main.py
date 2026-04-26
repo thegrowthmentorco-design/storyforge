@@ -75,7 +75,26 @@ async def lifespan(_app: FastAPI):
     yield
 
 
-app = FastAPI(title="StoryForge backend", version="0.3.0", lifespan=lifespan)
+# M6.7.d — interactive OpenAPI docs at /api-docs (Swagger UI). The raw
+# spec stays at /openapi.json so client codegen tools find it via the
+# FastAPI convention. Redoc is disabled — Swagger UI's "Try it out" + the
+# Authorize button are what we want for users testing API tokens. The
+# docs page is unauthenticated (the spec describes the public API; secrets
+# only flow when the user pastes a Bearer token via Authorize).
+app = FastAPI(
+    title="StoryForge API",
+    version="0.3.0",
+    description=(
+        "Programmatic access to StoryForge extractions, projects, and gap state. "
+        "Authenticate with an API token (Settings → API tokens → Create) by clicking "
+        "**Authorize** above and pasting `Bearer sk_live_…`. "
+        "Read-only tokens (M6.7.b) can call GET endpoints only. Per-token rate limit "
+        "is 60 requests/min by default (M6.7.c)."
+    ),
+    docs_url="/api-docs",
+    redoc_url=None,
+    lifespan=lifespan,
+)
 
 # Request id + access logging. Installed BEFORE CORS so the id is bound for
 # the preflight OPTIONS too — useful when debugging cross-origin failures.
@@ -493,6 +512,44 @@ async def extract_stream(
         # Render's load balancer respects this; nginx/Cloudflare also honour it.
         headers={"X-Accel-Buffering": "no", "Cache-Control": "no-cache"},
     )
+
+
+# M6.7.d — custom OpenAPI generator that declares a `BearerAuth` security
+# scheme so Swagger UI's Authorize button works against our API-token /
+# Clerk-JWT auth posture. We don't decorate every route with `Security(...)`
+# because the protection is dependency-driven (`_protected_deps`); instead
+# we attach the security requirement to every path under /api/ except a
+# small public-by-design allowlist (health, share read, billing webhook).
+def _custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+    from fastapi.openapi.utils import get_openapi
+    schema = get_openapi(
+        title=app.title, version=app.version, description=app.description, routes=app.routes,
+    )
+    schema.setdefault("components", {}).setdefault("securitySchemes", {})["BearerAuth"] = {
+        "type": "http",
+        "scheme": "bearer",
+        "description": (
+            "Paste `sk_live_…` (StoryForge API token from Settings → API tokens) or a "
+            "Clerk session JWT. Read-only tokens can only call GET endpoints; per-token "
+            "rate limit is 60 req/min."
+        ),
+    }
+    # Public routes — don't decorate them with the security requirement so
+    # Swagger doesn't show the (deceptive) lock icon next to them.
+    PUBLIC_PATHS = {"/api/health", "/api/share/{token}", "/api/webhooks/lemonsqueezy"}
+    for path, methods in (schema.get("paths") or {}).items():
+        if path in PUBLIC_PATHS or not path.startswith("/api/"):
+            continue
+        for op in methods.values():
+            if isinstance(op, dict):
+                op.setdefault("security", []).append({"BearerAuth": []})
+    app.openapi_schema = schema
+    return schema
+
+
+app.openapi = _custom_openapi
 
 
 # Mount built frontend last so /api/* routes take precedence. Only mounts when
