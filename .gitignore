@@ -13,12 +13,22 @@ backend/.venv/
 **/.ruff_cache/
 **/htmlcov/
 **/.coverage
+**/.coverage.*
+**/coverage.xml
+**/*.egg-info/
+**/build/
 
-# --- Node / Vite ---
+# --- Node / Vite / Vitest / Playwright ---
 frontend/node_modules/
 frontend/dist/
 frontend/.vite/
+frontend/coverage/
+frontend/.eslintcache
 **/npm-debug.log*
+# Playwright (M0.1.3 — when added)
+frontend/test-results/
+frontend/playwright-report/
+frontend/playwright/.cache/
 
 # --- Backend runtime data (out of repo) ---
 backend/uploads/

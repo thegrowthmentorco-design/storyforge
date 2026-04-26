@@ -74,30 +74,84 @@ single FastAPI process.
 
 ## Architecture
 
-```
-┌────────────┐     5173      ┌─────────────┐     8001 / 8000      ┌──────────────┐
-│  Browser   │ ◀──────────▶  │  Vite SPA   │  ──────────────────▶ │   FastAPI    │
-│            │               │             │   /api/extract       │              │
-│ localStor. │               │             │   /api/test-key      │ extract.py ──┼──▶ Anthropic
-└────────────┘               └─────────────┘   /api/health        │              │       Claude
-                                                                  │  pypdf       │
-                                                                  │  python-docx │
-                                                                  │  SQLite (M2) │
-                                                                  └──────────────┘
+Single-container deploy on Render: Vite SPA + FastAPI behind one URL.
+Clerk handles auth, Supabase Postgres holds the data, R2 stores upload
+sources, Anthropic does the extraction, Lemon Squeezy + Resend do
+billing + onboarding email. Sentry catches errors on both ends.
+
+```mermaid
+flowchart TB
+  user(["👤 User<br/>(browser)"])
+
+  subgraph render["🌐 Render — single container"]
+    spa["Vite SPA<br/>React 18 + react-router-dom"]
+    api["FastAPI<br/>Python 3.13<br/>uvicorn"]
+    spa -.same origin.-> api
+  end
+
+  subgraph data["📦 Data plane"]
+    pg[("Supabase Postgres<br/>extractions, projects,<br/>comments, shares,<br/>usage_log, settings")]
+    r2[("Cloudflare R2<br/>upload source files<br/>(presigned URLs)")]
+  end
+
+  subgraph external["☁️ External APIs"]
+    clerk["Clerk<br/>auth + orgs"]
+    anthropic["Anthropic<br/>Claude<br/>messages.parse / stream"]
+    lsq["Lemon Squeezy<br/>billing + webhooks"]
+    resend["Resend<br/>welcome email"]
+    sentry["Sentry<br/>error tracking"]
+  end
+
+  user --> spa
+  user -.JWT.-> clerk
+  spa <==> api
+  api <--> pg
+  api <--> r2
+  api <--> anthropic
+  api <--> lsq
+  api --> resend
+  api -.errors.-> sentry
+  spa -.errors.-> sentry
+
+  classDef ext fill:#fef3c7,stroke:#f59e0b,color:#78350f
+  class clerk,anthropic,lsq,resend,sentry ext
+  classDef store fill:#dbeafe,stroke:#3b82f6,color:#1e40af
+  class pg,r2 store
 ```
 
-- **Frontend** — React 18 + Vite + react-router-dom 7. Sketch-inspired but
-  professional design system: Inter + Fraunces typography, indigo accent,
-  pastel-tinted icon tiles, hover-lift cards, dark mode. No CSS framework — all
-  inline styles + a small `styles.css` for tokens, table, hover-reveal classes.
-  ~25 inline-SVG icons (no Lucide dep).
-- **Backend** — FastAPI on Python 3.13. Anthropic SDK with `messages.parse()`
-  and a Pydantic-typed extraction payload. Per-request BYOK + model overrides
-  via `X-Anthropic-Key` and `X-Storyforge-Model` headers. Typed error mapping
-  (auth → 401, rate limit → 429 with retry-after, etc).
-- **Persistence (today)** — `localStorage`. Extractions, gap states, and
-  settings all live in the browser. 5MB cap; single-device. Replaced by SQLite
-  in M2 and Postgres in M3.
+**Key request flows:**
+
+- **Extract** — SPA POSTs `multipart/form-data` to `/api/extract/stream`
+  with Clerk JWT. Backend pre-flight (paywall, quota, file size, project
+  ownership) → uploads source bytes to R2 → opens Anthropic stream with
+  tool-use → streams `usage` SSE frames as tokens arrive → persists to
+  Postgres → emits final `complete` frame with the canonical record.
+- **Edit / regen / share** — All artifact mutations go through
+  `PATCH /api/extractions/{id}` (full-array replacement) or
+  `POST /api/extractions/{id}/regen` (Claude redrafts one section using
+  user's other sections as stable context). Share links bypass auth via
+  opaque tokens at `/api/share/{token}`.
+- **Billing** — Lemon Squeezy webhook → `/api/webhooks/lemonsqueezy`
+  (HMAC-SHA256 verified) → updates `user_settings.plan` + customer/sub
+  ids. Plan gates fire pre-flight on every Claude call.
+
+**Stack details:**
+
+- **Frontend** — React 18 + Vite 5 + react-router-dom 7. Inline styles
+  + `styles.css` for tokens (no CSS framework). ~25 inline-SVG icons.
+  `@dnd-kit` for drag-reorder, `@sentry/react` for errors. Vitest + RTL
+  for tests.
+- **Backend** — FastAPI on Python 3.13. SQLModel sessions over Supabase
+  (`postgresql+psycopg`); SQLite fallback when `DATABASE_URL` unset.
+  Anthropic SDK with `messages.parse()` for non-streaming + `messages.stream()`
+  with tool-use for streaming. boto3 for R2 (S3-compatible). httpx for
+  Lemon Squeezy + Resend (no SDKs — simpler mocks). pytest + pytest-cov
+  for tests, sentry-sdk + JSON-formatted logs for observability.
+- **Auth** — Clerk JWT verified server-side via PyJWT + JWKS (cached
+  1h). `current_user` FastAPI dep returns `(user_id, org_id, org_role)`.
+  Org switching re-issues the JWT with the new claim; `services/scope.py`
+  rewrites every list query to filter by `(user_id, org_id IS NULL)` or
+  `org_id = :oid`.
 
 ---
 

@@ -66,9 +66,9 @@ Effort tags: `S` (≤2h), `M` (half-day), `L` (1–2 days), `XL` (3+ days)
 ## M0.4 Documentation
 
 - [x] **M0.4.1** `README.md` at root — quickstart, dev loop, env vars — — S
-- [ ] **M0.4.2** `CONTRIBUTING.md` — branch model, commit style, PR template — — S
-- [ ] **M0.4.3** `.gitignore` — `node_modules`, `.venv`, `.env`, `dist`, etc. — — S
-- [ ] **M0.4.4** Architecture diagram (Mermaid in README) — — S
+- [x] **M0.4.2** `CONTRIBUTING.md` — branch model, commit style, PR template, where-to-make-changes table — — S
+- [x] **M0.4.3** `.gitignore` audit — added coverage outputs, Playwright caches, `*.egg-info`, `frontend/coverage/`, `.eslintcache` — — S
+- [x] **M0.4.4** Mermaid architecture diagram in README, replaces stale ASCII art; updated stack details to reflect M3+M4+M5 reality (Postgres / R2 / LSQ / Resend / Sentry / Vitest / dnd-kit) — — S
 
 ---
 
