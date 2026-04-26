@@ -44,12 +44,19 @@ from extract import resolve_model
 from services.limits import enforce_limits
 from services.ocr import looks_like_empty, ocr_pdf_via_claude
 from services.prompts import resolve_prompt_suffix
+from services.vision import describe_image_via_claude, mime_for_ext
 from services.obs import install_json_logging, install_request_id, install_sentry
 from services.onboarding import welcome_check
 from services.streaming import stream_extraction
 
 MAX_BYTES = 10 * 1024 * 1024  # 10 MB
-SUPPORTED_EXT = {".pdf", ".docx", ".txt", ".md", ".markdown", ".rst"}
+SUPPORTED_EXT = {
+    # Text-extractable formats — pypdf / python-docx / utf-8 decode
+    ".pdf", ".docx", ".txt", ".md", ".markdown", ".rst",
+    # M7.4 — image inputs go through Claude vision (services/vision.py).
+    # MIME mapping handled in vision.mime_for_ext.
+    ".png", ".jpg", ".jpeg", ".gif", ".webp",
+}
 
 # Install JSON logging + Sentry BEFORE FastAPI app construction so any
 # import-time log lines from routers/services land in the structured pipeline
@@ -193,6 +200,7 @@ async def extract(
 
     upload_bytes: bytes | None = None
     file_ext = ""
+    image_mime: str | None = None     # M7.4 — set when the upload is an image
     if file is not None:
         data = await file.read()
         if len(data) > MAX_BYTES:
@@ -206,11 +214,18 @@ async def extract(
                 status_code=415,
                 detail=f"Unsupported file type {file_ext}. Supported: {', '.join(sorted(SUPPORTED_EXT))}",
             )
-        try:
-            raw_text = _parse_file(file.filename or "uploaded", data)
-        except Exception as e:
-            log.exception("file parse failed")
-            raise HTTPException(status_code=422, detail=f"Could not parse file: {e}")
+        image_mime = mime_for_ext(file_ext)
+        if image_mime is None:
+            # Text-extractable file (pdf / docx / txt / md / rst).
+            try:
+                raw_text = _parse_file(file.filename or "uploaded", data)
+            except Exception as e:
+                log.exception("file parse failed")
+                raise HTTPException(status_code=422, detail=f"Could not parse file: {e}")
+        else:
+            # Image — vision branch fills raw_text below. _parse_file would
+            # try to UTF-8 decode the bytes and produce mojibake.
+            raw_text = ""
         source_name = file.filename or "uploaded"
         upload_bytes = data
     else:
@@ -230,6 +245,35 @@ async def extract(
     # supply them via header. Header still wins (lets users test a new key).
     effective_key, stored_model = resolve_user_byok(session, user.user_id, x_anthropic_key)
     effective_model = x_storyforge_model or stored_model
+
+    # M7.4: image-input pre-pass. Hands the image to Claude vision to produce
+    # a prose description; that description becomes the raw_text fed into
+    # the normal extraction pipeline. Same two-call design as M7.3 OCR —
+    # downstream stays oblivious to input modality. Records a separate
+    # `usage_log.action="vision"` row so cost shows up in /api/me/usage.
+    if image_mime is not None and upload_bytes is not None:
+        if not effective_key:
+            raise HTTPException(
+                status_code=400,
+                detail="Image input requires a Claude API key — add one in Settings.",
+            )
+        log.info("triggering vision pre-pass for image: %s (%s)", source_name, image_mime)
+        raw_text, vision_usage = describe_image_via_claude(
+            upload_bytes,
+            image_mime,
+            api_key=effective_key,
+            model=resolve_model(effective_model),
+        )
+        record_usage(
+            session,
+            user_id=user.user_id,
+            org_id=user.org_id,
+            extraction_id=None,
+            action="vision",
+            model=resolve_model(effective_model),
+            live=True,
+            usage=vision_usage,
+        )
 
     # M7.3: OCR fallback for scanned PDFs. pypdf returns near-empty text on
     # image-only PDFs; if we have a Claude key, hand the raw bytes to vision
@@ -363,6 +407,7 @@ async def extract_stream(
 
     upload_bytes: bytes | None = None
     file_ext = ""
+    image_mime: str | None = None     # M7.4 — same as /api/extract
     if file is not None:
         data = await file.read()
         if len(data) > MAX_BYTES:
@@ -376,11 +421,15 @@ async def extract_stream(
                 status_code=415,
                 detail=f"Unsupported file type {file_ext}. Supported: {', '.join(sorted(SUPPORTED_EXT))}",
             )
-        try:
-            raw_text = _parse_file(file.filename or "uploaded", data)
-        except Exception as e:
-            log.exception("file parse failed")
-            raise HTTPException(status_code=422, detail=f"Could not parse file: {e}")
+        image_mime = mime_for_ext(file_ext)
+        if image_mime is None:
+            try:
+                raw_text = _parse_file(file.filename or "uploaded", data)
+            except Exception as e:
+                log.exception("file parse failed")
+                raise HTTPException(status_code=422, detail=f"Could not parse file: {e}")
+        else:
+            raw_text = ""
         source_name = file.filename or "uploaded"
         upload_bytes = data
     else:
@@ -396,6 +445,31 @@ async def extract_stream(
 
     effective_key, stored_model = resolve_user_byok(session, user.user_id, x_anthropic_key)
     effective_model = x_storyforge_model or stored_model
+
+    # M7.4: image-input vision pre-pass (mirrors /api/extract — see comment there).
+    if image_mime is not None and upload_bytes is not None:
+        if not effective_key:
+            raise HTTPException(
+                status_code=400,
+                detail="Image input requires a Claude API key — add one in Settings.",
+            )
+        log.info("triggering vision pre-pass (stream) for image: %s (%s)", source_name, image_mime)
+        raw_text, vision_usage = describe_image_via_claude(
+            upload_bytes,
+            image_mime,
+            api_key=effective_key,
+            model=resolve_model(effective_model),
+        )
+        record_usage(
+            session,
+            user_id=user.user_id,
+            org_id=user.org_id,
+            extraction_id=None,
+            action="vision",
+            model=resolve_model(effective_model),
+            live=True,
+            usage=vision_usage,
+        )
 
     # M7.3: OCR fallback (mirrors /api/extract — see comment there).
     if (

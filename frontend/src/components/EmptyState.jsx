@@ -136,7 +136,7 @@ export default function EmptyState({ onSubmit, loading }) {
                 <div style={{ fontSize: 12.5, color: 'var(--text-muted)' }}>
                   or{' '}
                   <span style={{ color: 'var(--accent-strong)', fontWeight: 500 }}>browse files</span> ·
-                  PDF, .docx, .txt, .md up to 10 MB
+                  PDF, .docx, .txt, .md, or images (PNG / JPG) up to 10 MB
                 </div>
               </>
             ) : (
@@ -200,7 +200,9 @@ export default function EmptyState({ onSubmit, loading }) {
             <input
               ref={fileRef}
               type="file"
-              accept=".pdf,.docx,.txt,.md,.markdown,.rst"
+              // M7.3 / M7.4 — image extensions go through Claude vision on
+              // the backend; PDFs that pypdf can't read fall back to OCR.
+              accept=".pdf,.docx,.txt,.md,.markdown,.rst,.png,.jpg,.jpeg,.gif,.webp"
               onChange={onFileChange}
               style={{ display: 'none' }}
             />
