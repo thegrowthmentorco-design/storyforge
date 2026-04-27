@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react'
+import { NavLink, Outlet, useOutletContext } from 'react-router-dom'
 import {
   addSlackWebhookApi,
   createApiTokenApi,
@@ -39,11 +40,10 @@ import {
   testApiKey,
 } from '../api.js'
 import { copyToClipboard } from '../lib/clipboard.js'
-import { useApp } from '../lib/AppContext.jsx'
 import { useOrganization } from '@clerk/clerk-react'
 import { useToast } from '../components/Toast.jsx'
 import { Badge, Button, Card, IconTile, Spinner } from '../components/primitives.jsx'
-import { Eye, FileText, Key, Monitor, Moon, Plug, Shield, Sparkles, Sun } from '../components/icons.jsx'
+import { Eye, FileText, HelpCircle, Key, Plug, Shield, Sparkles } from '../components/icons.jsx'
 
 function Section({ icon, tone, title, description, comingIn, children }) {
   return (
@@ -241,91 +241,9 @@ function ModelPicker({ selected, onChange }) {
   )
 }
 
-const THEME_OPTIONS = [
-  { id: 'light', name: 'Light', description: 'Warm off-white background.', icon: <Sun size={16} /> },
-  { id: 'dark', name: 'Dark', description: 'Easier on the eyes after sundown.', icon: <Moon size={16} /> },
-  {
-    id: 'system',
-    name: 'System',
-    description: 'Match your operating-system preference; updates as it changes.',
-    icon: <Monitor size={16} />,
-  },
-]
-
-function ThemePicker() {
-  const { theme, setTheme } = useApp()
-  const { toast } = useToast()
-
-  const onSelect = (id) => {
-    if (id === theme) return
-    setTheme(id)
-    const opt = THEME_OPTIONS.find((o) => o.id === id)
-    toast.success(`Theme set to ${opt.name}`)
-  }
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-      {THEME_OPTIONS.map((opt) => {
-        const isSelected = theme === opt.id
-        return (
-          <button
-            key={opt.id}
-            type="button"
-            onClick={() => onSelect(opt.id)}
-            style={{
-              display: 'flex',
-              alignItems: 'flex-start',
-              gap: 12,
-              padding: 14,
-              border: `1px solid ${isSelected ? 'var(--accent)' : 'var(--border)'}`,
-              borderRadius: 'var(--radius)',
-              background: isSelected ? 'var(--accent-soft)' : 'var(--bg-elevated)',
-              cursor: 'pointer',
-              textAlign: 'left',
-              transition: 'border-color .12s, background .12s, box-shadow .12s',
-              boxShadow: isSelected
-                ? '0 0 0 1px var(--accent), var(--shadow-xs)'
-                : 'var(--shadow-xs)',
-              fontFamily: 'inherit',
-              color: 'inherit',
-            }}
-          >
-            <span
-              aria-hidden
-              style={{
-                width: 18,
-                height: 18,
-                borderRadius: 999,
-                border: `1.5px solid ${isSelected ? 'var(--accent)' : 'var(--border-strong)'}`,
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                flexShrink: 0,
-                marginTop: 1,
-                background: 'var(--bg-elevated)',
-              }}
-            >
-              {isSelected && (
-                <span style={{ width: 9, height: 9, borderRadius: 999, background: 'var(--accent)' }} />
-              )}
-            </span>
-            <IconTile tone={isSelected ? 'accent' : 'neutral'} size={32}>
-              {opt.icon}
-            </IconTile>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text-strong)', marginBottom: 3 }}>
-                {opt.name}
-              </div>
-              <div style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5 }}>
-                {opt.description}
-              </div>
-            </div>
-          </button>
-        )
-      })}
-    </div>
-  )
-}
+// M9.1 — ThemePicker + THEME_OPTIONS removed. The theme cycle now lives
+// in the TopBar overflow menu (M8.3); two surfaces for the same control
+// is muddle.
 
 function ApiKeyForm({ keySet, keyPreview, onSaved }) {
   const { toast } = useToast()
@@ -2324,17 +2242,42 @@ const inputStyle = {
   outline: 'none',
 }
 
+/* M9.1 — Settings page reorganization.
+ *
+ * The single 11-section scroll became four route-driven tabs:
+ *   /settings/models       — Anthropic key + Model picker
+ *   /settings/tools        — Prompt templates + Few-shot examples + API tokens
+ *   /settings/integrations — Jira / Linear / GitHub / Slack / Notion (stacked)
+ *   /settings/support      — /api-docs link + feedback link + "what's new"
+ *
+ * Default export is the layout shell — heading, tab strip, <Outlet />.
+ * Each tab is a small component that renders the relevant Section blocks.
+ *
+ * Shared `serverSettings` fetch lives in the shell so SettingsModels (the
+ * only tab that needs it) doesn't refetch on each tab switch. Provided
+ * downstream via React Router's `useOutletContext()`. Tabs that don't
+ * need it just don't call the hook.
+ *
+ * Appearance section dropped — TopBar's overflow `…` menu (M8.3) hosts
+ * the theme cycle now.
+ */
+
+const SETTINGS_TABS = [
+  { to: 'models',       label: 'Models' },
+  { to: 'tools',        label: 'Tools' },
+  { to: 'integrations', label: 'Integrations' },
+  { to: 'support',      label: 'Support' },
+]
+
 export default function Settings() {
-  const { toast } = useToast()
-  const { organization } = useOrganization()
-  const orgId = organization?.id || null   // M7.1.c — passed to template/example forms for org-share
   const [serverSettings, setServerSettings] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
-  // One fetch for both ApiKeyForm + ModelPicker (they live on the same page).
-  // Updates flow back via the `onSaved` / `onChange` props, so we don't need
-  // to refetch after each PUT — the response shape matches GET.
+  // One fetch shared with SettingsModels — keeps tab switches free of
+  // refetches since the shell stays mounted as the user navigates.
+  // Updates flow back via the `onSaved` / `onChange` callbacks the
+  // children pass into the model + key forms.
   useEffect(() => {
     let alive = true
     setLoading(true)
@@ -2371,126 +2314,273 @@ export default function Settings() {
         style={{
           fontSize: 13.5,
           color: 'var(--text-muted)',
-          margin: '0 0 22px',
+          margin: '0 0 18px',
           maxWidth: 640,
         }}
       >
-        Configure how StoryForge talks to Claude, which model runs your extractions, and how
-        the app looks.
+        Configure how StoryForge talks to Claude, manage extractions tools,
+        wire integrations, and find help.
       </p>
 
+      {/* Tab strip — same accent-underline pattern as ArtifactsPane and
+          NarrowPaneTabs so the visual vocabulary stays consistent. */}
+      <div
+        role="tablist"
+        aria-label="Settings sections"
+        style={{
+          display: 'flex',
+          gap: 0,
+          borderBottom: '1px solid var(--border)',
+          marginBottom: 22,
+          maxWidth: 720,
+        }}
+      >
+        {SETTINGS_TABS.map((t) => (
+          <NavLink
+            key={t.to}
+            to={t.to}
+            role="tab"
+            style={({ isActive }) => ({
+              padding: '10px 16px',
+              fontSize: 13,
+              fontWeight: isActive ? 600 : 500,
+              color: isActive ? 'var(--accent-strong)' : 'var(--text-muted)',
+              textDecoration: 'none',
+              borderBottom: `2px solid ${isActive ? 'var(--accent)' : 'transparent'}`,
+              marginBottom: -1,
+              transition: 'color .12s, border-color .12s',
+            })}
+          >
+            {t.label}
+          </NavLink>
+        ))}
+      </div>
+
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14, maxWidth: 720 }}>
-        <Section
-          icon={<Shield size={16} />}
-          tone="info"
-          title="API"
-          description="Bring your own Anthropic API key. Encrypted server-side and only decrypted at extract time."
-        >
-          {loading ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-muted)', fontSize: 13 }}>
-              <Spinner size={14} /> Loading settings…
-            </div>
-          ) : error ? (
-            <div style={{ fontSize: 13, color: 'var(--danger-ink)' }}>{error}</div>
-          ) : (
-            <ApiKeyForm
-              keySet={!!serverSettings?.anthropic_key_set}
-              keyPreview={serverSettings?.anthropic_key_preview || null}
-              onSaved={(s) => setServerSettings(s)}
-            />
-          )}
-        </Section>
-        <Section
-          icon={<Sparkles size={16} />}
-          tone="purple"
-          title="Model"
-          description="Choose which Claude model runs your extractions. Pricing is shown per million tokens of input / output."
-        >
-          {loading ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-muted)', fontSize: 13 }}>
-              <Spinner size={14} /> Loading…
-            </div>
-          ) : (
-            <ModelPicker
-              selected={serverSettings?.model_default || ''}
-              onChange={(model) => setServerSettings((s) => ({ ...(s || {}), model_default: model || null }))}
-            />
-          )}
-        </Section>
-        <Section
-          icon={<FileText size={16} />}
-          tone="purple"
-          title="Prompt templates"
-          description="Save multiple named templates; activate one at a time. Append your own instructions to the system prompt — house style for stories, naming conventions, severity rules."
-        >
-          <PromptTemplatesSection orgId={orgId} />
-        </Section>
-        <Section
-          icon={<Sparkles size={16} />}
-          tone="info"
-          title="Few-shot examples"
-          description="Saved input → expected-output pairs Claude sees on every extraction. Strong way to teach a custom story format or naming convention by example, not by description."
-        >
-          <FewShotExamplesSection />
-        </Section>
-        <Section
-          icon={<Sun size={16} />}
-          tone="warn"
-          title="Appearance"
-          description="Light, dark, or follow your system preference. Persists across sessions."
-        >
-          <ThemePicker />
-        </Section>
-        <Section
-          icon={<Plug size={16} />}
-          tone="success"
-          title="Integrations · Jira"
-          description="Push extracted user stories straight into a Jira project. One issue per story; criteria included as bullet points in the description."
-        >
-          <JiraConnectionForm />
-        </Section>
-        <Section
-          icon={<Plug size={16} />}
-          tone="purple"
-          title="Integrations · Linear"
-          description="Push extracted user stories into a Linear team. One issue per story; criteria as a markdown checklist in the description."
-        >
-          <LinearConnectionForm />
-        </Section>
-        <Section
-          icon={<Plug size={16} />}
-          tone="info"
-          title="Integrations · GitHub Issues"
-          description="Push extracted user stories into a GitHub repo as issues. Criteria render as a clickable task list in each issue body."
-        >
-          <GitHubConnectionForm />
-        </Section>
-        <Section
-          icon={<Plug size={16} />}
-          tone="warn"
-          title="Integrations · Slack"
-          description="Send unresolved gaps to a Slack channel as a Block Kit message. Webhook is bound to one channel — connect different webhooks for different channels."
-        >
-          <SlackConnectionForm />
-          <SlackAdditionalDestinations />
-        </Section>
-        <Section
-          icon={<Plug size={16} />}
-          tone="accent"
-          title="Integrations · Notion"
-          description="Push extracted user stories into a Notion database. Title goes in the database's title column; the rest of the story (As-a / I want / so that, criteria, source quote) renders as page body blocks."
-        >
-          <NotionConnectionForm />
-        </Section>
-        <Section
-          icon={<Key size={16} />}
-          tone="info"
-          title="API tokens"
-          description="Programmatic access via Bearer tokens — for curl, Zapier, Make, custom scripts. Same scope as your account; tokens never expire but can be revoked any time."
-        >
-          <ApiTokensSection />
-        </Section>
+        <Outlet context={{ serverSettings, setServerSettings, loading, error }} />
       </div>
     </div>
+  )
+}
+
+/* ---- Models tab ---------------------------------------------------- */
+
+export function SettingsModels() {
+  const { serverSettings, setServerSettings, loading, error } = useOutletContext()
+  return (
+    <>
+      <Section
+        icon={<Shield size={16} />}
+        tone="info"
+        title="API"
+        description="Bring your own Anthropic API key. Encrypted server-side and only decrypted at extract time."
+      >
+        {loading ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-muted)', fontSize: 13 }}>
+            <Spinner size={14} /> Loading settings…
+          </div>
+        ) : error ? (
+          <div style={{ fontSize: 13, color: 'var(--danger-ink)' }}>{error}</div>
+        ) : (
+          <ApiKeyForm
+            keySet={!!serverSettings?.anthropic_key_set}
+            keyPreview={serverSettings?.anthropic_key_preview || null}
+            onSaved={(s) => setServerSettings(s)}
+          />
+        )}
+      </Section>
+      <Section
+        icon={<Sparkles size={16} />}
+        tone="purple"
+        title="Model"
+        description="Choose which Claude model runs your extractions. Pricing is shown per million tokens of input / output."
+      >
+        {loading ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-muted)', fontSize: 13 }}>
+            <Spinner size={14} /> Loading…
+          </div>
+        ) : (
+          <ModelPicker
+            selected={serverSettings?.model_default || ''}
+            onChange={(model) => setServerSettings((s) => ({ ...(s || {}), model_default: model || null }))}
+          />
+        )}
+      </Section>
+    </>
+  )
+}
+
+/* ---- Tools tab ----------------------------------------------------- */
+
+export function SettingsTools() {
+  const { organization } = useOrganization()
+  const orgId = organization?.id || null
+  return (
+    <>
+      <Section
+        icon={<FileText size={16} />}
+        tone="purple"
+        title="Prompt templates"
+        description="Save multiple named templates; activate one at a time. Append your own instructions to the system prompt — house style for stories, naming conventions, severity rules."
+      >
+        <PromptTemplatesSection orgId={orgId} />
+      </Section>
+      <Section
+        icon={<Sparkles size={16} />}
+        tone="info"
+        title="Few-shot examples"
+        description="Saved input → expected-output pairs Claude sees on every extraction. Strong way to teach a custom story format or naming convention by example, not by description."
+      >
+        <FewShotExamplesSection />
+      </Section>
+      <Section
+        icon={<Key size={16} />}
+        tone="info"
+        title="API tokens"
+        description="Programmatic access via Bearer tokens — for curl, Zapier, Make, custom scripts. Same scope as your account; tokens never expire but can be revoked any time."
+      >
+        <ApiTokensSection />
+      </Section>
+    </>
+  )
+}
+
+/* ---- Integrations tab --------------------------------------------- */
+
+export function SettingsIntegrations() {
+  return (
+    <>
+      <Section
+        icon={<Plug size={16} />}
+        tone="success"
+        title="Jira"
+        description="Push extracted user stories straight into a Jira project. One issue per story; criteria included as bullet points in the description."
+      >
+        <JiraConnectionForm />
+      </Section>
+      <Section
+        icon={<Plug size={16} />}
+        tone="purple"
+        title="Linear"
+        description="Push extracted user stories into a Linear team. One issue per story; criteria as a markdown checklist in the description."
+      >
+        <LinearConnectionForm />
+      </Section>
+      <Section
+        icon={<Plug size={16} />}
+        tone="info"
+        title="GitHub Issues"
+        description="Push extracted user stories into a GitHub repo as issues. Criteria render as a clickable task list in each issue body."
+      >
+        <GitHubConnectionForm />
+      </Section>
+      <Section
+        icon={<Plug size={16} />}
+        tone="warn"
+        title="Slack"
+        description="Send unresolved gaps to a Slack channel as a Block Kit message. Webhook is bound to one channel — connect different webhooks for different channels."
+      >
+        <SlackConnectionForm />
+        <SlackAdditionalDestinations />
+      </Section>
+      <Section
+        icon={<Plug size={16} />}
+        tone="accent"
+        title="Notion"
+        description="Push extracted user stories into a Notion database. Title goes in the database's title column; the rest of the story renders as page body blocks."
+      >
+        <NotionConnectionForm />
+      </Section>
+    </>
+  )
+}
+
+/* ---- Support tab --------------------------------------------------- */
+
+export function SettingsSupport() {
+  const linkRowStyle = {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: '12px 14px',
+    border: '1px solid var(--border)',
+    borderRadius: 'var(--radius)',
+    background: 'var(--bg-elevated)',
+    textDecoration: 'none',
+    color: 'inherit',
+    transition: 'background .12s',
+  }
+  return (
+    <>
+      <Section
+        icon={<HelpCircle size={16} />}
+        tone="info"
+        title="Resources"
+        description="API reference + the fastest ways to get help."
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <a
+            href="/api-docs"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={linkRowStyle}
+            onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-hover)')}
+            onMouseLeave={(e) => (e.currentTarget.style.background = 'var(--bg-elevated)')}
+          >
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text-strong)' }}>
+                API reference
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
+                Interactive Swagger UI for every endpoint. Click <strong>Authorize</strong> and paste a token to try requests in the browser.
+              </div>
+            </div>
+            <span style={{ fontSize: 12, color: 'var(--accent-strong)', fontWeight: 500, marginLeft: 12 }}>
+              Open ↗
+            </span>
+          </a>
+          <a
+            href="mailto:bragadeeshs@gmail.com?subject=StoryForge%20feedback"
+            style={linkRowStyle}
+            onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-hover)')}
+            onMouseLeave={(e) => (e.currentTarget.style.background = 'var(--bg-elevated)')}
+          >
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text-strong)' }}>
+                Send feedback
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
+                Bug reports, feature requests, anything weird you saw — straight to the team.
+              </div>
+            </div>
+            <span style={{ fontSize: 12, color: 'var(--accent-strong)', fontWeight: 500, marginLeft: 12 }}>
+              Email ↗
+            </span>
+          </a>
+        </div>
+      </Section>
+      <Section
+        icon={<Sparkles size={16} />}
+        tone="purple"
+        title="What's new"
+        description="Release notes will live here. Until then, the build plan in the repo is the canonical changelog."
+      >
+        <div
+          style={{
+            fontSize: 12.5,
+            color: 'var(--text-soft)',
+            fontStyle: 'italic',
+            padding: '14px 16px',
+            background: 'var(--bg-subtle)',
+            border: '1px dashed var(--border)',
+            borderRadius: 'var(--radius)',
+            textAlign: 'center',
+          }}
+        >
+          A release-notes feed is in the backlog. Until then, ask the team about
+          recent changes.
+        </div>
+      </Section>
+    </>
   )
 }
