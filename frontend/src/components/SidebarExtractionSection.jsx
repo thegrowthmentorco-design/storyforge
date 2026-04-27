@@ -80,6 +80,11 @@ export default function SidebarExtractionSection({
   showGaps,
   onSwitchVersion,
   onToggleGaps,
+  // M4.5.3 — unread comment count vs. last-seen (localStorage). When
+  // > 0, the badge swaps to an accent "N new" pill that's clickable
+  // to advance last-seen via onMarkSeen.
+  unread = 0,
+  onMarkSeen,
 }) {
   const [versionsOpen, setVersionsOpen] = useState(false)
   const [sourcesOpen, setSourcesOpen] = useState(false)
@@ -211,9 +216,37 @@ export default function SidebarExtractionSection({
           </button>
         )}
         {commentCount > 0 && (
-          <Badge tone="neutral" size="sm" icon={<MessageSquare size={10} />}>
-            {commentCount}
-          </Badge>
+          unread > 0 ? (
+            // M4.5.3 — clickable "N new" pill. Click marks all comments on
+            // this extraction as seen. Distinct accent color so it reads
+            // as a notification, not a static count.
+            <button
+              type="button"
+              onClick={onMarkSeen}
+              title="Mark all as read"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 4,
+                padding: '3px 8px',
+                borderRadius: 'var(--radius-pill)',
+                border: 'none',
+                cursor: 'pointer',
+                fontSize: 11,
+                fontWeight: 600,
+                fontFamily: 'inherit',
+                background: 'var(--accent)',
+                color: '#fff',
+              }}
+            >
+              <MessageSquare size={10} />
+              {unread} new
+            </button>
+          ) : (
+            <Badge tone="neutral" size="sm" icon={<MessageSquare size={10} />}>
+              {commentCount}
+            </Badge>
+          )
         )}
       </div>
     </div>

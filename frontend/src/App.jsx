@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import { SignedIn, SignedOut, useAuth, useOrganization, useUser } from '@clerk/clerk-react'
 import { extractStream, getMePlanApi, listCommentsApi, listProjectsApi, listVersionsApi, patchExtractionApi, regenSectionApi, rerunExtractionApi, setTokenGetter } from './api.js'
+import { markSeen, unreadCount } from './lib/extraction_seen.js'
 import { getExtraction } from './lib/store.js'
 import { migrateLocalStorageOnce } from './lib/migrate.js'
 import { getSettings, setSettings } from './lib/settings.js'
@@ -602,6 +603,20 @@ function AuthedApp() {
   const onCommentPatch = (c) => setComments((prev) => prev.map((x) => (x.id === c.id ? c : x)))
   const onCommentDelete = (id) => setComments((prev) => prev.filter((x) => x.id !== id))
 
+  // M4.5.3 — unread comment count vs the user's last-seen timestamp for
+  // this extraction. Stored in localStorage (multi-device unread is M4.5.3.b
+  // — needs a backend table). The badge in Sidebar's "This document" section
+  // is the click target that advances last-seen → 0 unread.
+  const [unread, setUnread] = useState(0)
+  useEffect(() => {
+    setUnread(unreadCount(extractionId, comments))
+  }, [extractionId, comments])
+  const markExtractionSeen = useCallback(() => {
+    if (!extractionId) return
+    markSeen(extractionId)
+    setUnread(0)
+  }, [extractionId])
+
   // M8.1 — version chain lifted from TopBar to App-level so the Sidebar's
   // "This document" section + the (now-stripped) TopBar version picker share
   // one source of truth. Re-fetched whenever the open extraction changes;
@@ -734,6 +749,8 @@ function AuthedApp() {
           showGaps,
           onSwitchVersion: switchVersion,
           onToggleGaps: () => setShowGaps((x) => !x),
+          unread,
+          onMarkSeen: markExtractionSeen,
         } : null}
       />
       <main className="main">
