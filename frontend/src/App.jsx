@@ -20,10 +20,10 @@ import Account from './pages/Account.jsx'
 import Documents from './pages/Documents.jsx'
 import Project from './pages/Project.jsx'
 import Settings, {
-  SettingsModels,
-  SettingsTools,
-  SettingsIntegrations,
-  SettingsSupport,
+  ModelsPage,
+  ToolsPage,
+  IntegrationsPage,
+  SupportPage,
 } from './pages/Settings.jsx'
 import ShareView from './pages/ShareView.jsx'
 import CompareView from './pages/CompareView.jsx'
@@ -857,15 +857,14 @@ function AuthedApp() {
           {/* Account uses hash routing inside Clerk's UserProfile, so the
               react-router path matches both /account and /account/* */}
           <Route path="/account/*" element={<Account />} />
-          {/* M9.1 — Settings is now a layout shell with 4 nested tabs.
-              The bare /settings path defaults to /settings/models. */}
-          <Route path="/settings" element={<Settings />}>
-            <Route index element={<Navigate to="models" replace />} />
-            <Route path="models" element={<SettingsModels />} />
-            <Route path="tools" element={<SettingsTools />} />
-            <Route path="integrations" element={<SettingsIntegrations />} />
-            <Route path="support" element={<SettingsSupport />} />
-          </Route>
+          {/* M9.2 — Settings hosts data export + theme. Models/Tools/
+              Integrations/Support are first-class top-level routes
+              reachable from the Sidebar nav. */}
+          <Route path="/settings" element={<Settings />} />
+          <Route path="/models" element={<ModelsPage />} />
+          <Route path="/tools" element={<ToolsPage />} />
+          <Route path="/integrations" element={<IntegrationsPage />} />
+          <Route path="/support" element={<SupportPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>

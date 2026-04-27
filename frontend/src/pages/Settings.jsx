@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from 'react'
-import { NavLink, Outlet, useOutletContext } from 'react-router-dom'
 import {
   addSlackWebhookApi,
   createApiTokenApi,
@@ -12,6 +11,7 @@ import {
   deletePromptTemplateApi,
   deleteSlackConnectionApi,
   deleteSlackWebhookApi,
+  downloadMeExport,
   getGitHubConnectionApi,
   getJiraConnectionApi,
   getJiraOAuthStatusApi,
@@ -40,10 +40,11 @@ import {
   testApiKey,
 } from '../api.js'
 import { copyToClipboard } from '../lib/clipboard.js'
+import { useApp } from '../lib/AppContext.jsx'
 import { useOrganization } from '@clerk/clerk-react'
 import { useToast } from '../components/Toast.jsx'
 import { Badge, Button, Card, IconTile, Spinner } from '../components/primitives.jsx'
-import { Eye, FileText, HelpCircle, Key, Plug, Shield, Sparkles } from '../components/icons.jsx'
+import { Download, Eye, FileText, HelpCircle, Key, Monitor, Moon, Plug, Shield, Sparkles, Sun } from '../components/icons.jsx'
 
 function Section({ icon, tone, title, description, comingIn, children }) {
   return (
@@ -241,9 +242,117 @@ function ModelPicker({ selected, onChange }) {
   )
 }
 
-// M9.1 — ThemePicker + THEME_OPTIONS removed. The theme cycle now lives
-// in the TopBar overflow menu (M8.3); two surfaces for the same control
-// is muddle.
+/* M9.2 — ThemePicker restored. The user wants the formal theme picker
+ * back in Settings (where it can carry descriptions for each option);
+ * the TopBar overflow menu (M8.3) keeps its quick-cycle shortcut. Both
+ * surfaces drive the same `theme` state in AppContext. */
+const THEME_OPTIONS = [
+  { id: 'light', name: 'Light', description: 'Warm off-white background.', icon: <Sun size={16} /> },
+  { id: 'dark', name: 'Dark', description: 'Easier on the eyes after sundown.', icon: <Moon size={16} /> },
+  {
+    id: 'system',
+    name: 'System',
+    description: 'Match your operating-system preference; updates as it changes.',
+    icon: <Monitor size={16} />,
+  },
+]
+
+function ThemePicker() {
+  const { theme, setTheme } = useApp()
+  const { toast } = useToast()
+
+  const onSelect = (id) => {
+    if (id === theme) return
+    setTheme(id)
+    const opt = THEME_OPTIONS.find((o) => o.id === id)
+    toast.success(`Theme set to ${opt.name}`)
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      {THEME_OPTIONS.map((opt) => {
+        const isSelected = theme === opt.id
+        return (
+          <button
+            key={opt.id}
+            type="button"
+            onClick={() => onSelect(opt.id)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 12,
+              padding: 12,
+              border: `1px solid ${isSelected ? 'var(--accent)' : 'var(--border)'}`,
+              borderRadius: 'var(--radius)',
+              background: isSelected ? 'var(--accent-soft)' : 'var(--bg-elevated)',
+              cursor: 'pointer',
+              textAlign: 'left',
+              fontFamily: 'inherit',
+              color: 'inherit',
+              boxShadow: isSelected ? '0 0 0 1px var(--accent)' : 'none',
+            }}
+          >
+            <IconTile tone={isSelected ? 'accent' : 'neutral'} size={28}>
+              {opt.icon}
+            </IconTile>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-strong)' }}>
+                {opt.name}
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5, marginTop: 2 }}>
+                {opt.description}
+              </div>
+            </div>
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+/* M9.2 — shared page wrapper used by every left-nav top-level page
+ * (Settings, Models, Tools, Integrations, Support). Single place to
+ * tune the heading + body padding so the pages don't drift apart. */
+function PageShell({ title, description, children }) {
+  return (
+    <div
+      style={{
+        flex: 1,
+        overflow: 'auto',
+        padding: '24px 28px 40px',
+        background: 'var(--bg)',
+      }}
+    >
+      <h1
+        style={{
+          fontFamily: 'var(--font-display)',
+          fontSize: 24,
+          fontWeight: 600,
+          color: 'var(--text-strong)',
+          margin: '0 0 6px',
+          letterSpacing: -0.3,
+        }}
+      >
+        {title}
+      </h1>
+      {description && (
+        <p
+          style={{
+            fontSize: 13.5,
+            color: 'var(--text-muted)',
+            margin: '0 0 22px',
+            maxWidth: 640,
+          }}
+        >
+          {description}
+        </p>
+      )}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14, maxWidth: 720 }}>
+        {children}
+      </div>
+    </div>
+  )
+}
 
 function ApiKeyForm({ keySet, keyPreview, onSaved }) {
   const { toast } = useToast()
@@ -2242,42 +2351,80 @@ const inputStyle = {
   outline: 'none',
 }
 
-/* M9.1 — Settings page reorganization.
+/* M9.2 — top-level page promotion.
  *
- * The single 11-section scroll became four route-driven tabs:
- *   /settings/models       — Anthropic key + Model picker
- *   /settings/tools        — Prompt templates + Few-shot examples + API tokens
- *   /settings/integrations — Jira / Linear / GitHub / Slack / Notion (stacked)
- *   /settings/support      — /api-docs link + feedback link + "what's new"
+ * Models / Tools / Integrations / Support are no longer nested tabs under
+ * /settings; they're first-class top-level routes (`/models`, `/tools`,
+ * `/integrations`, `/support`) reachable from the Sidebar nav. Each
+ * exports a self-contained page component (heading + sections) wrapped
+ * with `<PageShell>` for consistent layout.
  *
- * Default export is the layout shell — heading, tab strip, <Outlet />.
- * Each tab is a small component that renders the relevant Section blocks.
+ * `Settings` (the default export) is now a small page with the things
+ * that don't fit the other four categories: data export + appearance.
  *
- * Shared `serverSettings` fetch lives in the shell so SettingsModels (the
- * only tab that needs it) doesn't refetch on each tab switch. Provided
- * downstream via React Router's `useOutletContext()`. Tabs that don't
- * need it just don't call the hook.
- *
- * Appearance section dropped — TopBar's overflow `…` menu (M8.3) hosts
- * the theme cycle now.
+ * Trade-off: each page does its own getMeSettingsApi fetch when needed
+ * (only ModelsPage does, today), since we no longer have a shared layout
+ * shell to hold the result. Acceptable — the request is one round-trip
+ * to a dependency-free endpoint.
  */
 
-const SETTINGS_TABS = [
-  { to: 'models',       label: 'Models' },
-  { to: 'tools',        label: 'Tools' },
-  { to: 'integrations', label: 'Integrations' },
-  { to: 'support',      label: 'Support' },
-]
-
 export default function Settings() {
+  const { toast } = useToast()
+  const [exporting, setExporting] = useState(false)
+
+  const doExport = async () => {
+    if (exporting) return
+    setExporting(true)
+    try {
+      await downloadMeExport()
+      toast.success('Data export downloaded')
+    } catch (e) {
+      toast.error(e.message || 'Could not export your data')
+    } finally {
+      setExporting(false)
+    }
+  }
+
+  return (
+    <PageShell
+      title="Settings"
+      description="App preferences and your data. Models, Tools, Integrations, and Support each have their own page in the left nav."
+    >
+      <Section
+        icon={<Sun size={16} />}
+        tone="warn"
+        title="Appearance"
+        description="Light, dark, or follow your system preference. Persists across sessions; the same control sits in the studio top-bar overflow menu for quick switches."
+      >
+        <ThemePicker />
+      </Section>
+      <Section
+        icon={<Download size={16} />}
+        tone="info"
+        title="Data export"
+        description="Download a ZIP of everything we hold for you — extractions JSON, projects, gap-state marks, usage log, and the original uploaded source files. Streams direct from the server, never staged anywhere."
+      >
+        <Button
+          variant="primary"
+          size="sm"
+          icon={<Download size={13} />}
+          onClick={doExport}
+          disabled={exporting}
+        >
+          {exporting ? 'Preparing…' : 'Download my data'}
+        </Button>
+      </Section>
+    </PageShell>
+  )
+}
+
+/* ---- /models ------------------------------------------------------- */
+
+export function ModelsPage() {
   const [serverSettings, setServerSettings] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
-  // One fetch shared with SettingsModels — keeps tab switches free of
-  // refetches since the shell stays mounted as the user navigates.
-  // Updates flow back via the `onSaved` / `onChange` callbacks the
-  // children pass into the model + key forms.
   useEffect(() => {
     let alive = true
     setLoading(true)
@@ -2290,85 +2437,10 @@ export default function Settings() {
   }, [])
 
   return (
-    <div
-      style={{
-        flex: 1,
-        overflow: 'auto',
-        padding: '24px 28px 40px',
-        background: 'var(--bg)',
-      }}
+    <PageShell
+      title="Models"
+      description="Bring your own Anthropic API key and pick which Claude model runs your extractions."
     >
-      <h1
-        style={{
-          fontFamily: 'var(--font-display)',
-          fontSize: 24,
-          fontWeight: 600,
-          color: 'var(--text-strong)',
-          margin: '0 0 6px',
-          letterSpacing: -0.3,
-        }}
-      >
-        Settings
-      </h1>
-      <p
-        style={{
-          fontSize: 13.5,
-          color: 'var(--text-muted)',
-          margin: '0 0 18px',
-          maxWidth: 640,
-        }}
-      >
-        Configure how StoryForge talks to Claude, manage extractions tools,
-        wire integrations, and find help.
-      </p>
-
-      {/* Tab strip — same accent-underline pattern as ArtifactsPane and
-          NarrowPaneTabs so the visual vocabulary stays consistent. */}
-      <div
-        role="tablist"
-        aria-label="Settings sections"
-        style={{
-          display: 'flex',
-          gap: 0,
-          borderBottom: '1px solid var(--border)',
-          marginBottom: 22,
-          maxWidth: 720,
-        }}
-      >
-        {SETTINGS_TABS.map((t) => (
-          <NavLink
-            key={t.to}
-            to={t.to}
-            role="tab"
-            style={({ isActive }) => ({
-              padding: '10px 16px',
-              fontSize: 13,
-              fontWeight: isActive ? 600 : 500,
-              color: isActive ? 'var(--accent-strong)' : 'var(--text-muted)',
-              textDecoration: 'none',
-              borderBottom: `2px solid ${isActive ? 'var(--accent)' : 'transparent'}`,
-              marginBottom: -1,
-              transition: 'color .12s, border-color .12s',
-            })}
-          >
-            {t.label}
-          </NavLink>
-        ))}
-      </div>
-
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 14, maxWidth: 720 }}>
-        <Outlet context={{ serverSettings, setServerSettings, loading, error }} />
-      </div>
-    </div>
-  )
-}
-
-/* ---- Models tab ---------------------------------------------------- */
-
-export function SettingsModels() {
-  const { serverSettings, setServerSettings, loading, error } = useOutletContext()
-  return (
-    <>
       <Section
         icon={<Shield size={16} />}
         tone="info"
@@ -2406,17 +2478,20 @@ export function SettingsModels() {
           />
         )}
       </Section>
-    </>
+    </PageShell>
   )
 }
 
-/* ---- Tools tab ----------------------------------------------------- */
+/* ---- /tools -------------------------------------------------------- */
 
-export function SettingsTools() {
+export function ToolsPage() {
   const { organization } = useOrganization()
   const orgId = organization?.id || null
   return (
-    <>
+    <PageShell
+      title="Tools"
+      description="Power-user knobs that shape how Claude extracts and how external code can call StoryForge."
+    >
       <Section
         icon={<FileText size={16} />}
         tone="purple"
@@ -2441,15 +2516,18 @@ export function SettingsTools() {
       >
         <ApiTokensSection />
       </Section>
-    </>
+    </PageShell>
   )
 }
 
-/* ---- Integrations tab --------------------------------------------- */
+/* ---- /integrations ------------------------------------------------- */
 
-export function SettingsIntegrations() {
+export function IntegrationsPage() {
   return (
-    <>
+    <PageShell
+      title="Integrations"
+      description="Push extracted artifacts into the tools your team already uses."
+    >
       <Section
         icon={<Plug size={16} />}
         tone="success"
@@ -2491,13 +2569,13 @@ export function SettingsIntegrations() {
       >
         <NotionConnectionForm />
       </Section>
-    </>
+    </PageShell>
   )
 }
 
-/* ---- Support tab --------------------------------------------------- */
+/* ---- /support ------------------------------------------------------ */
 
-export function SettingsSupport() {
+export function SupportPage() {
   const linkRowStyle = {
     display: 'flex',
     alignItems: 'center',
@@ -2511,12 +2589,15 @@ export function SettingsSupport() {
     transition: 'background .12s',
   }
   return (
-    <>
+    <PageShell
+      title="Support"
+      description="API reference + the fastest ways to get help."
+    >
       <Section
         icon={<HelpCircle size={16} />}
         tone="info"
         title="Resources"
-        description="API reference + the fastest ways to get help."
+        description="The two things you'll need most often."
       >
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <a
@@ -2581,6 +2662,6 @@ export function SettingsSupport() {
           recent changes.
         </div>
       </Section>
-    </>
+    </PageShell>
   )
 }

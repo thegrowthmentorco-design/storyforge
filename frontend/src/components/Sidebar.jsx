@@ -10,10 +10,14 @@ import {
   Edit,
   FileText,
   FolderClosed,
+  HelpCircle,
+  LayoutTemplate,
   Logo,
+  Plug,
   Plus,
   Search,
   Settings,
+  Sparkles,
   User,
   X,
   Zap,
@@ -239,6 +243,13 @@ export default function Sidebar({ onNew, extractionContext }) {
         <div style={{ marginTop: 12 }}>
           <NavItem icon={<User size={16} />} label="Account" to="/account" />
           <NavItem icon={<Settings size={16} />} label="Settings" to="/settings" />
+          {/* M9.2 — top-level pages promoted out of Settings. Each has
+              its own route; clicking any nav item lands on a focused
+              page rather than scrolling a single mega-page. */}
+          <NavItem icon={<Sparkles size={16} />} label="Models" to="/models" />
+          <NavItem icon={<LayoutTemplate size={16} />} label="Tools" to="/tools" />
+          <NavItem icon={<Plug size={16} />} label="Integrations" to="/integrations" />
+          <NavItem icon={<HelpCircle size={16} />} label="Support" to="/support" />
         </div>
         {/* M8.1 — Studio context. Renders only when an extraction is open
             (App.jsx passes null otherwise). */}
