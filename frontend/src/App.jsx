@@ -816,6 +816,8 @@ function AuthedApp() {
                           regenBusy={regenBusy === 'gaps'}
                           rawText={extraction.raw_text}
                           width="100%"
+                          comments={comments}
+                          commentHandlers={{ onCreate: onCommentCreate, onPatch: onCommentPatch, onDelete: onCommentDelete }}
                         />
                       )}
                     </div>
@@ -880,6 +882,8 @@ function AuthedApp() {
           onRegen={() => handleRegenSection('gaps')}
           regenBusy={regenBusy === 'gaps'}
           rawText={extraction.raw_text}
+          comments={comments}
+          commentHandlers={{ onCreate: onCommentCreate, onPatch: onCommentPatch, onDelete: onCommentDelete }}
         />
       )}
       <PaywallModal paywall={paywall} onClose={() => setPaywall(null)} />

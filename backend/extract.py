@@ -32,8 +32,14 @@ Produce, strictly grounded in the source:
   - section: best-guess source location as "section N.M" or "§N.M" if inferable, else ""
   - criteria: 2-5 short declarative acceptance criteria
   - source_quote: the verbatim snippet from the source that most directly supports this story (1-2 sentences max, exact text — do not paraphrase). Empty string when no single passage supports it (synthesized from multiple places, or implied).
-- nfrs: non-functional requirements as {category, value, source_quote} triples. Examples: Performance/"p95 < 2s", Accessibility/"WCAG 2.1 AA", PCI-DSS/"SAQ-A". source_quote follows the same verbatim rule as stories.
-- gaps: ambiguities, missing information, or contradictions. severity is one of high|med|low. Include a short context quoting or paraphrasing the relevant source passage. source_quote: the verbatim passage that makes the gap evident (e.g. the vague phrase, the contradiction). Empty string for "absence of info" gaps where there is no specific passage to point at.
+- nfrs: non-functional requirements with {id, category, value, source_quote}. Examples: Performance/"p95 < 2s", Accessibility/"WCAG 2.1 AA", PCI-DSS/"SAQ-A".
+  - id: sequential "NF-01", "NF-02", ... (M4.5.2 — stable IDs so comments survive reorder/delete)
+  - source_quote follows the same verbatim rule as stories.
+- gaps: ambiguities, missing information, or contradictions with {id, severity, question, section, context, source_quote}.
+  - id: sequential "GAP-01", "GAP-02", ... (M4.5.2 — stable IDs)
+  - severity is one of high|med|low.
+  - context: a short quoting or paraphrasing of the relevant source passage.
+  - source_quote: the verbatim passage that makes the gap evident (e.g. the vague phrase, the contradiction). Empty string for "absence of info" gaps where there is no specific passage to point at.
 
 Rules:
 - Be faithful to the source. Do not invent requirements not supported by the text.
@@ -93,13 +99,14 @@ def _mock(filename: str, raw_text: str) -> ExtractionResult:
             ),
         ],
         nfrs=[
-            NonFunctional(category="Performance", value="p95 < 2s", source_quote="Pages should load fast."),
-            NonFunctional(category="Availability", value="99.9%", source_quote="Service uptime: 99.9%."),
-            NonFunctional(category="Accessibility", value="WCAG 2.1 AA", source_quote="Must meet WCAG 2.1 AA."),
-            NonFunctional(category="PCI-DSS", value="SAQ-A", source_quote="PCI-DSS compliant."),
+            NonFunctional(id="NF-01", category="Performance", value="p95 < 2s", source_quote="Pages should load fast."),
+            NonFunctional(id="NF-02", category="Availability", value="99.9%", source_quote="Service uptime: 99.9%."),
+            NonFunctional(id="NF-03", category="Accessibility", value="WCAG 2.1 AA", source_quote="Must meet WCAG 2.1 AA."),
+            NonFunctional(id="NF-04", category="PCI-DSS", value="SAQ-A", source_quote="PCI-DSS compliant."),
         ],
         gaps=[
             Gap(
+                id="GAP-01",
                 severity="high",
                 question="What is the target p95 latency?",
                 section="§ 4.1",
@@ -107,6 +114,7 @@ def _mock(filename: str, raw_text: str) -> ExtractionResult:
                 source_quote="Pages should load fast.",
             ),
             Gap(
+                id="GAP-02",
                 severity="med",
                 question="Is there an admin actor?",
                 section="§ 3.2",
@@ -114,6 +122,7 @@ def _mock(filename: str, raw_text: str) -> ExtractionResult:
                 source_quote="Refunds are allowed within 30 days.",
             ),
             Gap(
+                id="GAP-03",
                 severity="med",
                 question="Error-state copy owner?",
                 section="§ 5",
@@ -121,6 +130,7 @@ def _mock(filename: str, raw_text: str) -> ExtractionResult:
                 source_quote="",
             ),
             Gap(
+                id="GAP-04",
                 severity="low",
                 question="Supported currencies?",
                 section="§ 2.4",

@@ -587,6 +587,11 @@ export default function ArtifactsPane({
   }, [comments])
   const briefComments = commentsByTarget.get('brief:') || []
   const commentsForStory = (storyId) => commentsByTarget.get(`story:${storyId}`) || []
+  // M4.5.2 — NFRs + gaps now carry stable IDs so threads can anchor on them.
+  // Empty string id (legacy rows) intentionally yields no thread; users must
+  // re-extract to enable comments on those.
+  const commentsForNfr = (nfrId) => (nfrId ? commentsByTarget.get(`nfr:${nfrId}`) || [] : [])
+  const commentsForGap = (gapId) => (gapId ? commentsByTarget.get(`gap:${gapId}`) || [] : [])
   // Spread the comment-mutation callbacks into a single object so we can pass
   // them through cleanly without 3-prop noise at every call site.
   const commentHandlers = {
@@ -1035,15 +1040,29 @@ export default function ArtifactsPane({
                         </IconTile>
                       </td>
                       <td style={{ fontWeight: 500, color: 'var(--text-strong)' }}>
-                        {editable ? (
-                          <EditableText
-                            value={n.category}
-                            onSave={(v) => updateNfr(i, { category: v })}
-                            placeholder="Category"
-                          />
-                        ) : (
-                          n.category
-                        )}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                          {editable ? (
+                            <EditableText
+                              value={n.category}
+                              onSave={(v) => updateNfr(i, { category: v })}
+                              placeholder="Category"
+                            />
+                          ) : (
+                            n.category
+                          )}
+                          {/* M4.5.2 — NFR comment thread. Renders only when
+                              the row carries a stable id (M4.5.2-or-later
+                              extractions); legacy rows show nothing. */}
+                          {extraction.id && n.id && (
+                            <CommentThread
+                              extractionId={extraction.id}
+                              targetKind="nfr"
+                              targetKey={n.id}
+                              comments={commentsForNfr(n.id)}
+                              {...commentHandlers}
+                            />
+                          )}
+                        </div>
                       </td>
                       <td
                         style={{

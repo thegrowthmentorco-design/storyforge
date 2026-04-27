@@ -37,6 +37,11 @@ class UserStory(BaseModel):
 
 class NonFunctional(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    # M4.5.2 — stable ID. Mirrors UserStory.id (`US-NN`); pattern `NF-NN`
+    # so comments on NFRs survive reorder/insert/delete. Default empty
+    # for back-compat with pre-M4.5.2 rows; the extract prompt populates
+    # it on new extractions and the regen path preserves existing values.
+    id: str = ""
     category: str
     value: str
     # M5.1 — same intent as UserStory.source_quote.
@@ -47,6 +52,10 @@ class NonFunctional(BaseModel):
 
 class Gap(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    # M4.5.2 — stable ID. Pattern `GAP-NN`. Same back-compat rule as
+    # NonFunctional.id — pre-M4.5.2 rows stay empty; comments on those
+    # rows aren't supported until the user re-runs the extraction.
+    id: str = ""
     severity: Literal["high", "med", "low"]
     question: str
     section: str = ""
@@ -343,7 +352,7 @@ class ExtractionRegenRequest(BaseModel):
 # ----- Comments (M4.5) -----
 
 
-CommentTargetKind = Literal["brief", "story"]
+CommentTargetKind = Literal["brief", "story", "nfr", "gap"]   # M4.5.2 — nfr/gap added once stable IDs landed
 
 
 class CommentRead(BaseModel):

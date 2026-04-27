@@ -5,6 +5,7 @@ import { useToast } from './Toast.jsx'
 import { Badge, Card, IconTile } from './primitives.jsx'
 import { EditableSelect, EditableText, EditableTextarea } from './Editable.jsx'
 import { RegenButton } from './ArtifactsPane.jsx'
+import CommentThread from './Comments.jsx'
 import { docNameFor, parseDocNames } from '../lib/multi_doc.js'
 import {
   AlertCircle,
@@ -68,7 +69,7 @@ function ActionDot() {
   return <span style={{ color: 'var(--text-soft)', fontSize: 11.5 }}>·</span>
 }
 
-function GapCard({ gap, idx, state, onResolve, onIgnore, onAsk, onReopen, onCopy, onPickQuote, onUpdate, onRemove, docName }) {
+function GapCard({ gap, idx, state, onResolve, onIgnore, onAsk, onReopen, onCopy, onPickQuote, onUpdate, onRemove, docName, extractionId, comments, commentHandlers }) {
   const meta = SEVERITY_META[gap.severity] || SEVERITY_META.low
   const isResolved = !!state?.resolved
   const wasAsked = !!state?.askedAt
@@ -175,6 +176,17 @@ function GapCard({ gap, idx, state, onResolve, onIgnore, onAsk, onReopen, onCopy
           <Badge tone="accent" size="sm">
             Asked
           </Badge>
+        )}
+        {/* M4.5.2 — comment thread on this gap. Renders only when the gap
+            carries a stable id (M4.5.2-or-later extractions). */}
+        {extractionId && gap.id && commentHandlers && (
+          <CommentThread
+            extractionId={extractionId}
+            targetKind="gap"
+            targetKey={gap.id}
+            comments={comments || []}
+            {...commentHandlers}
+          />
         )}
         <div style={{ flex: 1 }} />
         {(editable || gap.section) && (
@@ -335,7 +347,21 @@ const SEVERITY_FILTERS = [
   { id: 'low', label: 'Low' },
 ]
 
-export default function GapsRail({ gaps = [], extractionId, onPickQuote, onUpdate, onRegen, regenBusy, rawText, width }) {
+export default function GapsRail({
+  gaps = [],
+  extractionId,
+  onPickQuote,
+  onUpdate,
+  onRegen,
+  regenBusy,
+  rawText,
+  width,
+  // M4.5.2 — comments on gaps. Pre-filtered list per gap id is computed
+  // by the caller (App.jsx) from the master comment list; mutations bubble
+  // back via the standard handlers.
+  comments = [],
+  commentHandlers,
+}) {
   // M7.5.c — pull doc-name list from raw_text (single-doc → [""], no badges).
   const docNames = useMemo(() => parseDocNames(rawText || ''), [rawText])
   const isMultiDoc = docNames.length > 1
@@ -642,6 +668,9 @@ export default function GapsRail({ gaps = [], extractionId, onPickQuote, onUpdat
             onUpdate={editable ? (next) => updateGap(idx, next) : undefined}
             onRemove={editable ? () => removeGap(idx) : undefined}
             docName={isMultiDoc ? docNameFor(docNames, gap.source_doc) : ''}
+            extractionId={extractionId}
+            comments={gap.id ? comments.filter((c) => c.target_kind === 'gap' && c.target_key === gap.id) : []}
+            commentHandlers={commentHandlers}
           />
         ))}
 
