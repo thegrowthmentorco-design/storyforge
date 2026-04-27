@@ -172,7 +172,7 @@ function GapCard({ gap, idx, state, onResolve, onIgnore, onAsk, onReopen, onCopy
           </Badge>
         )}
         {wasAsked && !isResolved && (
-          <Badge tone="info" size="sm">
+          <Badge tone="accent" size="sm">
             Asked
           </Badge>
         )}

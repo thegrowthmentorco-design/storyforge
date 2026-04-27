@@ -549,7 +549,7 @@ export default function Account() {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14, maxWidth: 760 }}>
         <Section
           icon={<Activity size={16} />}
-          tone="purple"
+          tone="accent"
           title="Usage"
           description="Tokens billed, cost, and per-model breakdown — drawn from every Claude call you've made."
         >
@@ -567,7 +567,7 @@ export default function Account() {
 
         <Section
           icon={<Download size={16} />}
-          tone="info"
+          tone="accent"
           title="Data"
           description="GDPR-style data export, plus a one-shot button to claim any orphan dev rows from before per-user isolation landed."
         >

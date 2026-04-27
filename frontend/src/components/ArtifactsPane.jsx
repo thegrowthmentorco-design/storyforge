@@ -883,7 +883,7 @@ export default function ArtifactsPane({
       <div id="sec-actors" data-section="actors" style={{ marginBottom: 24, scrollMarginTop: 60 }} className="fade-in">
         <SectionHeader
           icon={<Users size={16} />}
-          tone="info"
+          tone="accent"
           title="Actors"
           count={extraction.actors.length}
         />
@@ -945,7 +945,7 @@ export default function ArtifactsPane({
       <div id="sec-stories" data-section="stories" style={{ marginBottom: 24, scrollMarginTop: 60 }} className="fade-in">
         <SectionHeader
           icon={<FileText size={16} />}
-          tone="purple"
+          tone="accent"
           title="User stories"
           count={extraction.stories.length}
           action={

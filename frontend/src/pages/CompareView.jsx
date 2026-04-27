@@ -138,7 +138,7 @@ export default function CompareView() {
       {/* Section: Actors */}
       <Section
         icon={<Users size={15} />}
-        tone="info"
+        tone="accent"
         title="Actors"
         summary={diffSummary(diff.actors)}
         emphasis={diff.actors.added.length + diff.actors.removed.length > 0}
@@ -153,7 +153,7 @@ export default function CompareView() {
       {/* Section: Stories */}
       <Section
         icon={<FileText size={15} />}
-        tone="purple"
+        tone="accent"
         title="User stories"
         summary={diffSummary(diff.stories)}
         emphasis={diff.stories.added.length + diff.stories.removed.length + diff.stories.changed.length > 0}

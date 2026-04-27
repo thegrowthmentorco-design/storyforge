@@ -202,7 +202,7 @@ export default function EmptyState({ onSubmit, loading }) {
                       textAlign: 'left',
                     }}
                   >
-                    <IconTile tone="info" size={28}>
+                    <IconTile tone="accent" size={28}>
                       <FileText size={14} />
                     </IconTile>
                     <div style={{ flex: 1, minWidth: 0 }}>
@@ -358,13 +358,13 @@ export default function EmptyState({ onSubmit, loading }) {
       >
         <HowItWorksStep
           icon={<Zap size={16} />}
-          tone="purple"
+          tone="accent"
           title="One-shot extraction"
           body="Drop a doc. Get a structured brief, actors, user stories with acceptance criteria, NFRs and gaps."
         />
         <HowItWorksStep
           icon={<Eye size={16} />}
-          tone="info"
+          tone="accent"
           title="Source-grounded"
           body="Every extraction stays faithful to the source. Highlights show where each gap came from."
         />

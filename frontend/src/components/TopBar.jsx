@@ -354,7 +354,7 @@ export default function TopBar({
             {extraction.filename}
           </span>
           {loading || rerunning ? (
-            <Badge tone="info" icon={<Sparkles size={12} />}>
+            <Badge tone="accent" icon={<Sparkles size={12} />}>
               {rerunning ? 'Re-running' : 'Running'}
             </Badge>
           ) : extraction.live ? (

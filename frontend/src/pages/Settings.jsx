@@ -1683,7 +1683,7 @@ function PromptTemplatesSection({ orgId }) {
       <p style={{ fontSize: 12.5, color: 'var(--text-muted)', margin: 0, lineHeight: 1.55 }}>
         Multiple named templates; one is active at a time. The active template is appended
         to the system prompt on every extract / rerun / regen. Org-shared templates
-        (marked with {' '}<Badge tone="info" size="sm">org</Badge>) apply to every member of your
+        (marked with {' '}<Badge tone="accent" size="sm">org</Badge>) apply to every member of your
         active workspace; personal templates are yours only.
       </p>
 
@@ -1715,7 +1715,7 @@ function PromptTemplatesSection({ orgId }) {
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 500, color: 'var(--text-strong)' }}>
                       {r.name}
-                      {r.org_id && <Badge tone="info" size="sm">org</Badge>}
+                      {r.org_id && <Badge tone="accent" size="sm">org</Badge>}
                     </div>
                     <div style={{ fontSize: 11, color: 'var(--text-soft)', marginTop: 2 }}>
                       {r.content.length.toLocaleString()} chars · updated {new Date(r.updated_at).toLocaleDateString()}
@@ -2235,7 +2235,7 @@ function FewShotExamplesSection() {
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 500, color: 'var(--text-strong)' }}>
                       {r.name}
-                      {r.org_id && <Badge tone="info" size="sm">org</Badge>}
+                      {r.org_id && <Badge tone="accent" size="sm">org</Badge>}
                     </div>
                     <div style={{ fontSize: 11, color: 'var(--text-soft)', marginTop: 2 }}>
                       {r.input_text.length.toLocaleString()} chars input · {sCount}st / {nCount}nfr / {gCount}gap output
@@ -2447,7 +2447,7 @@ export default function Settings() {
       </Section>
       <Section
         icon={<Download size={16} />}
-        tone="info"
+        tone="accent"
         title="Data export"
         description="Download a ZIP of everything we hold for you — extractions JSON, projects, gap-state marks, usage log, and the original uploaded source files. Streams direct from the server, never staged anywhere."
       >
@@ -2490,7 +2490,7 @@ export function ModelsPage() {
     >
       <Section
         icon={<Shield size={16} />}
-        tone="info"
+        tone="accent"
         title="API"
         description="Bring your own Anthropic API key. Encrypted server-side and only decrypted at extract time."
       >
@@ -2510,7 +2510,7 @@ export function ModelsPage() {
       </Section>
       <Section
         icon={<Sparkles size={16} />}
-        tone="purple"
+        tone="accent"
         title="Model"
         description="Choose which Claude model runs your extractions. Pricing is shown per million tokens of input / output."
       >
@@ -2541,7 +2541,7 @@ export function ToolsPage() {
     >
       <Section
         icon={<FileText size={16} />}
-        tone="purple"
+        tone="accent"
         title="Prompt templates"
         description="Save multiple named templates; activate one at a time. Append your own instructions to the system prompt — house style for stories, naming conventions, severity rules."
       >
@@ -2549,7 +2549,7 @@ export function ToolsPage() {
       </Section>
       <Section
         icon={<Sparkles size={16} />}
-        tone="info"
+        tone="accent"
         title="Few-shot examples"
         description="Saved input → expected-output pairs Claude sees on every extraction. Strong way to teach a custom story format or naming convention by example, not by description."
       >
@@ -2557,7 +2557,7 @@ export function ToolsPage() {
       </Section>
       <Section
         icon={<Key size={16} />}
-        tone="info"
+        tone="accent"
         title="API tokens"
         description="Programmatic access via Bearer tokens — for curl, Zapier, Make, custom scripts. Same scope as your account; tokens never expire but can be revoked any time."
       >
@@ -2642,7 +2642,7 @@ export function SupportPage() {
     >
       <Section
         icon={<HelpCircle size={16} />}
-        tone="info"
+        tone="accent"
         title="Resources"
         description="The two things you'll need most often."
       >
@@ -2689,7 +2689,7 @@ export function SupportPage() {
       </Section>
       <Section
         icon={<Sparkles size={16} />}
-        tone="purple"
+        tone="accent"
         title="What's new"
         description="Release notes will live here. Until then, the build plan in the repo is the canonical changelog."
       >
