@@ -31,6 +31,7 @@ import EmptyState from './components/EmptyState.jsx'
 import SourcePane from './components/SourcePane.jsx'
 import ArtifactsPane from './components/ArtifactsPane.jsx'
 import GapsRail from './components/GapsRail.jsx'
+import ResizeHandle from './components/ResizeHandle.jsx'
 import { Card, IconTile, Spinner } from './components/primitives.jsx'
 import { Sparkles, Check } from './components/icons.jsx'
 
@@ -289,6 +290,23 @@ function AuthedApp() {
     setSelectedQuote({ text, nonce: Date.now() })
   }
   const [theme, setThemeRaw] = useState(() => getSettings().theme || 'light')
+
+  // M8.2 — persisted source/artifacts split ratio. Default 0.42 (preserves
+  // the M2 fixed 42% width). Hydrated from localStorage on mount; written
+  // back on every drag tick — `setItem` is cheap and we'd rather lose at
+  // most one tick on a refresh than debounce + risk a stale write.
+  const [sourceRatio, setSourceRatioRaw] = useState(() => {
+    try {
+      const raw = window.localStorage.getItem('storyforge:studio:sourceRatio')
+      const n = raw == null ? NaN : parseFloat(raw)
+      return Number.isFinite(n) && n >= 0.20 && n <= 0.70 ? n : 0.42
+    } catch { return 0.42 }
+  })
+  const setSourceRatio = useCallback((next) => {
+    setSourceRatioRaw(next)
+    try { window.localStorage.setItem('storyforge:studio:sourceRatio', String(next)) } catch { /* private mode */ }
+  }, [])
+  const studioBodyRef = useRef(null)
   const [pendingName, setPendingName] = useState('')
   const [projects, setProjects] = useState([])
   const [projectsLoading, setProjectsLoading] = useState(true)
@@ -659,8 +677,20 @@ function AuthedApp() {
                   />
                 )}
                 {extraction && !loading && (
-                  <div className="body">
-                    <SourcePane extraction={extraction} selectedQuote={selectedQuote} />
+                  <div className="body" ref={studioBodyRef}>
+                    <SourcePane
+                      extraction={extraction}
+                      selectedQuote={selectedQuote}
+                      width={`${(sourceRatio * 100).toFixed(2)}%`}
+                    />
+                    {/* M8.2 — persisted resizable split. Min 20% / max 70%
+                        keeps both panes always usable. */}
+                    <ResizeHandle
+                      containerRef={studioBodyRef}
+                      onChange={setSourceRatio}
+                      min={0.20}
+                      max={0.70}
+                    />
                     <ArtifactsPane
                       extraction={extraction}
                       onPickQuote={pickQuote}

@@ -81,7 +81,7 @@ function quoteId(text) {
   return text.trim().toLowerCase().replace(/\s+/g, ' ').slice(0, 200)
 }
 
-export default function SourcePane({ extraction, selectedQuote }) {
+export default function SourcePane({ extraction, selectedQuote, width = '42%' }) {
   const bodyRef = useRef(null)
   const { toast } = useToast()
   const [downloadingIdx, setDownloadingIdx] = useState(null)
@@ -138,8 +138,11 @@ export default function SourcePane({ extraction, selectedQuote }) {
   return (
     <section
       style={{
-        width: '42%',
+        // M8.2 — width is parent-driven (App.jsx persists the ratio in
+        // localStorage). Default '42%' keeps single-call usage unchanged.
+        width,
         minWidth: 340,
+        flexShrink: 0,
         background: 'var(--bg-subtle)',
         borderRight: '1px solid var(--border)',
         overflow: 'auto',
