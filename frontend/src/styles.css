@@ -414,6 +414,39 @@ a:hover {
   animation: fade-in 0.3s ease-out both;
 }
 
+/* M10.3 — page transition. Wrap route content with `.page-fade key={location.key}`
+ * so each navigation re-mounts and replays the entrance. 200ms keeps it
+ * snappy enough not to feel sluggish on fast clicks. */
+.page-fade {
+  animation: page-in var(--dur-base) var(--ease-out) both;
+}
+
+@keyframes page-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* M10.3 — universal press feedback. Applied to anything clickable that
+ * wants the subtle "tap" without explicit handlers. */
+.btn-press:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+/* M10.3 — gradient halo. Optional subtle outer glow on hover for hero
+ * CTAs (one per surface). Combined with the button's own press scale
+ * for the full "pressable + alive" feel. */
+.btn-glow:hover:not(:disabled) {
+  box-shadow:
+    0 0 0 1px rgba(147, 51, 234, 0.18),
+    0 8px 24px -8px rgba(147, 51, 234, 0.4);
+}
+
 /* =========================================================================
    Icon container (pastel-tinted)
    ========================================================================= */
@@ -429,17 +462,20 @@ a:hover {
    Card (with optional hover effect)
    ========================================================================= */
 .card {
-  background: var(--bg-elevated);
+  background: var(--surface-1);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-xs);
-  transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+  transition:
+    border-color var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out);
 }
 
 .card.hover:hover {
   border-color: var(--border-strong);
   box-shadow: var(--shadow-md);
-  transform: translateY(-1px);
+  transform: translateY(-2px);
 }
 
 .card.hover.accent:hover {

@@ -332,7 +332,7 @@ export default function EmptyState({ onSubmit, loading }) {
             <Badge tone="neutral">mode: extract</Badge>
             <div style={{ flex: 1 }} />
             <Button
-              variant="primary"
+              variant="gradient"
               size="md"
               type="submit"
               disabled={!canRun}

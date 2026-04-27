@@ -19,11 +19,15 @@ export function Button({
   loading,
   style,
   disabled,
+  className,
   ...rest
 }) {
   const sz = BUTTON_SIZES[size] ?? BUTTON_SIZES.md
   const isPrimary = variant === 'primary'
   const isGhost = variant === 'ghost'
+  // M10.3 — gradient variant for the single hero CTA per surface
+  // (Extract requirements, sign-up CTA, etc.). Reserve sparingly.
+  const isGradient = variant === 'gradient'
 
   const base = {
     display: 'inline-flex',
@@ -36,7 +40,12 @@ export function Button({
     fontWeight: 500,
     borderRadius: 'var(--radius)',
     border: '1px solid transparent',
-    transition: 'background .15s, border-color .15s, color .15s, box-shadow .15s',
+    transition:
+      'background var(--dur-fast) var(--ease-out),' +
+      ' border-color var(--dur-fast) var(--ease-out),' +
+      ' color var(--dur-fast) var(--ease-out),' +
+      ' box-shadow var(--dur-fast) var(--ease-out),' +
+      ' transform var(--dur-fast) var(--ease-out)',
     width: fullWidth ? '100%' : undefined,
     whiteSpace: 'nowrap',
     opacity: disabled || loading ? 0.55 : 1,
@@ -45,7 +54,14 @@ export function Button({
   }
 
   let variantStyle = {}
-  if (isPrimary) {
+  if (isGradient) {
+    variantStyle = {
+      background: 'var(--gradient-hero)',
+      color: 'white',
+      borderColor: 'transparent',
+      boxShadow: '0 4px 14px -4px rgba(147, 51, 234, 0.45)',
+    }
+  } else if (isPrimary) {
     variantStyle = {
       background: 'var(--accent-strong)',
       color: 'white',
@@ -61,32 +77,51 @@ export function Button({
   } else {
     // secondary
     variantStyle = {
-      background: 'var(--bg-elevated)',
+      background: 'var(--surface-1)',
       color: 'var(--text-strong)',
       borderColor: 'var(--border)',
       boxShadow: 'var(--shadow-xs)',
     }
   }
 
+  // Compose className: btn-press always; btn-glow on the gradient hero
+  // CTA so it gets the subtle hover halo.
+  const classes = ['btn-press']
+  if (isGradient) classes.push('btn-glow')
+  if (className) classes.push(className)
+
   return (
     <button
       type="button"
       disabled={disabled || loading}
       {...rest}
+      className={classes.join(' ')}
       onMouseEnter={(e) => {
         if (disabled || loading) return
-        if (isPrimary) e.currentTarget.style.background = 'var(--accent)'
-        else if (isGhost) e.currentTarget.style.background = 'var(--bg-hover)'
-        else e.currentTarget.style.borderColor = 'var(--border-strong)'
+        if (isGradient) {
+          e.currentTarget.style.boxShadow = '0 8px 24px -6px rgba(147, 51, 234, 0.55)'
+        } else if (isPrimary) {
+          e.currentTarget.style.background = 'var(--accent)'
+        } else if (isGhost) {
+          e.currentTarget.style.background = 'var(--bg-hover)'
+        } else {
+          e.currentTarget.style.borderColor = 'var(--border-strong)'
+        }
       }}
       onMouseLeave={(e) => {
-        if (isPrimary) e.currentTarget.style.background = 'var(--accent-strong)'
-        else if (isGhost) e.currentTarget.style.background = 'transparent'
-        else e.currentTarget.style.borderColor = 'var(--border)'
+        if (isGradient) {
+          e.currentTarget.style.boxShadow = '0 4px 14px -4px rgba(147, 51, 234, 0.45)'
+        } else if (isPrimary) {
+          e.currentTarget.style.background = 'var(--accent-strong)'
+        } else if (isGhost) {
+          e.currentTarget.style.background = 'transparent'
+        } else {
+          e.currentTarget.style.borderColor = 'var(--border)'
+        }
       }}
       style={{ ...base, ...variantStyle }}
     >
-      {loading ? <Spinner size={14} color={isPrimary ? 'white' : 'currentColor'} /> : icon}
+      {loading ? <Spinner size={14} color={(isPrimary || isGradient) ? 'white' : 'currentColor'} /> : icon}
       {children}
       {iconRight}
     </button>
