@@ -1,8 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { NavLink } from 'react-router-dom'
-import { OrganizationSwitcher, UserButton, useUser } from '@clerk/clerk-react'
-import { createProjectApi } from '../api.js'
+import { NavLink, useNavigate } from 'react-router-dom'
+import { OrganizationSwitcher, useClerk, useUser } from '@clerk/clerk-react'
 import { useApp } from '../lib/AppContext.jsx'
+import { createProjectApi } from '../api.js'
 import { useToast } from './Toast.jsx'
 import { Badge, IconButton } from './primitives.jsx'
 import SidebarExtractionSection from './SidebarExtractionSection.jsx'
@@ -13,11 +13,14 @@ import {
   HelpCircle,
   LayoutTemplate,
   Logo,
+  Monitor,
+  Moon,
   Plug,
   Plus,
   Search,
   Settings,
   Sparkles,
+  Sun,
   User,
   X,
   Zap,
@@ -366,57 +369,216 @@ function UsageBar() {
   )
 }
 
-/** Footer pill backed by Clerk's useUser + UserButton (avatar + dropdown). */
+/* M1.1.4 — User pill with custom popover.
+ *
+ * Replaces Clerk's <UserButton> dropdown with our own menu so app-specific
+ * shortcuts (Account, Settings, Theme cycle) sit alongside Clerk's
+ * "Manage account" + "Sign out". One menu = one mental model.
+ *
+ * Click anywhere on the pill (avatar or text) to open. Click-outside or
+ * Esc dismiss. The menu opens *upward* since the pill lives at the bottom
+ * of a tall sidebar.
+ */
 function UserPill() {
   const { user, isLoaded } = useUser()
+  const { signOut, openUserProfile } = useClerk()
+  const { theme, setTheme } = useApp()
+  const navigate = useNavigate()
+  const [open, setOpen] = useState(false)
+  const popRef = useRef(null)
+  const btnRef = useRef(null)
+
+  useEffect(() => {
+    if (!open) return
+    const onClick = (e) => {
+      if (popRef.current?.contains(e.target)) return
+      if (btnRef.current?.contains(e.target)) return
+      setOpen(false)
+    }
+    const onKey = (e) => { if (e.key === 'Escape') setOpen(false) }
+    window.addEventListener('mousedown', onClick)
+    window.addEventListener('keydown', onKey)
+    return () => {
+      window.removeEventListener('mousedown', onClick)
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [open])
+
   const displayName = user?.fullName || user?.username || user?.primaryEmailAddress?.emailAddress || 'Account'
   const subline = user?.primaryEmailAddress?.emailAddress &&
     user.primaryEmailAddress.emailAddress !== displayName
     ? user.primaryEmailAddress.emailAddress
     : 'Free trial'
 
+  const themeLabel = theme === 'light' ? 'Switch to dark'
+                  : theme === 'dark'  ? 'Switch to system'
+                  :                     'Switch to light'
+  const ThemeIcon = theme === 'light' ? Moon : theme === 'dark' ? Monitor : Sun
+  const cycleTheme = () => {
+    setTheme(theme === 'light' ? 'dark' : theme === 'dark' ? 'system' : 'light')
+  }
+
+  const navTo = (path) => {
+    setOpen(false)
+    navigate(path)
+  }
+  const onSignOut = async () => {
+    setOpen(false)
+    try { await signOut({ redirectUrl: '/sign-in' }) } catch { /* fire-and-forget */ }
+  }
+  const onManage = () => {
+    setOpen(false)
+    openUserProfile?.()
+  }
+
   return (
-    <div
+    <div style={{ position: 'relative' }}>
+      <button
+        ref={btnRef}
+        type="button"
+        onClick={() => setOpen((s) => !s)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        style={{
+          width: '100%',
+          padding: '10px 14px',
+          borderTop: '1px solid var(--border)',
+          background: open ? 'var(--bg-hover)' : 'var(--bg-subtle)',
+          border: 'none',
+          borderTopLeftRadius: 0,
+          borderTopRightRadius: 0,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 10,
+          cursor: 'pointer',
+          textAlign: 'left',
+          fontFamily: 'inherit',
+          color: 'inherit',
+          transition: 'background var(--dur-fast) var(--ease-out)',
+        }}
+        onMouseEnter={(e) => { if (!open) e.currentTarget.style.background = 'var(--bg-hover)' }}
+        onMouseLeave={(e) => { if (!open) e.currentTarget.style.background = 'var(--bg-subtle)' }}
+      >
+        {user?.imageUrl ? (
+          <img
+            src={user.imageUrl}
+            alt=""
+            style={{
+              width: 28,
+              height: 28,
+              borderRadius: '50%',
+              flexShrink: 0,
+              objectFit: 'cover',
+            }}
+          />
+        ) : (
+          <span
+            style={{
+              width: 28,
+              height: 28,
+              borderRadius: '50%',
+              background: 'var(--accent-soft)',
+              color: 'var(--accent-strong)',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+              fontSize: 12,
+              fontWeight: 600,
+            }}
+          >
+            {displayName?.slice(0, 1).toUpperCase() || '?'}
+          </span>
+        )}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div
+            style={{
+              fontSize: 12.5,
+              fontWeight: 500,
+              color: 'var(--text-strong)',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {isLoaded ? displayName : '…'}
+          </div>
+          <div
+            style={{
+              fontSize: 11,
+              color: 'var(--text-soft)',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {isLoaded ? subline : ''}
+          </div>
+        </div>
+      </button>
+
+      {open && (
+        <div
+          ref={popRef}
+          role="menu"
+          style={{
+            position: 'absolute',
+            bottom: 'calc(100% + 6px)',
+            left: 8,
+            right: 8,
+            background: 'var(--surface-2)',
+            border: '1px solid var(--border)',
+            borderRadius: 'var(--radius)',
+            boxShadow: 'var(--shadow-lg)',
+            padding: 4,
+            zIndex: 50,
+          }}
+        >
+          <PillMenuItem icon={<User size={13} />} label="Account" onClick={() => navTo('/account')} />
+          <PillMenuItem icon={<Settings size={13} />} label="Settings" onClick={() => navTo('/settings')} />
+          <PillMenuItem icon={<ThemeIcon size={13} />} label={themeLabel} onClick={cycleTheme} />
+          <div style={{ height: 1, background: 'var(--border)', margin: '4px 0' }} />
+          <PillMenuItem label="Manage account…" onClick={onManage} />
+          <PillMenuItem label="Sign out" onClick={onSignOut} danger />
+        </div>
+      )}
+    </div>
+  )
+}
+
+function PillMenuItem({ icon, label, onClick, danger }) {
+  return (
+    <button
+      type="button"
+      role="menuitem"
+      onClick={onClick}
       style={{
-        padding: '10px 14px',
-        borderTop: '1px solid var(--border)',
-        background: 'var(--bg-subtle)',
         display: 'flex',
         alignItems: 'center',
-        gap: 10,
+        gap: 8,
+        width: '100%',
+        padding: '7px 10px',
+        background: 'transparent',
+        border: 'none',
+        borderRadius: 'var(--radius-sm)',
+        cursor: 'pointer',
+        fontSize: 12.5,
+        color: danger ? 'var(--danger-ink)' : 'var(--text-strong)',
+        textAlign: 'left',
+        fontFamily: 'inherit',
+        transition: 'background var(--dur-fast) var(--ease-out)',
       }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.background = danger ? 'var(--danger-soft)' : 'var(--bg-hover)'
+      }}
+      onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
     >
-      {/* Clerk's UserButton renders a 28px avatar that opens a manage-account
-          + sign-out dropdown. afterSignOutUrl bounces back to /sign-in. */}
-      <UserButton
-        afterSignOutUrl="/sign-in"
-        appearance={{ elements: { avatarBox: { width: 28, height: 28 } } }}
-      />
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div
-          style={{
-            fontSize: 12.5,
-            fontWeight: 500,
-            color: 'var(--text-strong)',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-          }}
-        >
-          {isLoaded ? displayName : '…'}
-        </div>
-        <div
-          style={{
-            fontSize: 11,
-            color: 'var(--text-soft)',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-          }}
-        >
-          {isLoaded ? subline : ''}
-        </div>
-      </div>
-    </div>
+      {icon && (
+        <span style={{ width: 14, color: 'var(--text-muted)', display: 'inline-flex' }}>
+          {icon}
+        </span>
+      )}
+      {label}
+    </button>
   )
 }
