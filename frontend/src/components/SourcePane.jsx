@@ -1,9 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { downloadExtractionSourceApi } from '../api.js'
-import { parseDocNames } from '../lib/multi_doc.js'
-import { useToast } from './Toast.jsx'
-import { Badge, Button } from './primitives.jsx'
-import { FileText, AlertTriangle, Download } from './icons.jsx'
+import { splitParagraphsByDoc } from '../lib/multi_doc.js'
+import { Badge } from './primitives.jsx'
+import { FileText, AlertTriangle } from './icons.jsx'
 
 /* M5.2 — collect every (quote, source-of-quote) pair from the extraction so
  * we can highlight them inline in the source text. Stories + NFRs get an
@@ -83,43 +81,20 @@ function quoteId(text) {
 
 export default function SourcePane({ extraction, selectedQuote, width = '42%' }) {
   const bodyRef = useRef(null)
-  const { toast } = useToast()
-  const [downloadingIdx, setDownloadingIdx] = useState(null)
 
-  const paragraphs = useMemo(() => {
-    return (extraction.raw_text || '')
-      .split(/\n{2,}/)
-      .map((p) => p.trim())
-      .filter(Boolean)
-  }, [extraction.raw_text])
+  // M8.5 — doc-aware paragraph split. Marker lines are stripped; surviving
+  // paragraphs carry the docIdx of the marker that preceded them. For
+  // single-doc inputs `docs.length` is 0 and every paragraph has docIdx=0.
+  const { docs, paragraphs: docParagraphs } = useMemo(
+    () => splitParagraphsByDoc(extraction.raw_text || ''),
+    [extraction.raw_text],
+  )
+  const isMultiDoc = docs.length > 1
+  const [activeDocIdx, setActiveDocIdx] = useState(() => (docs[0]?.idx ?? 0))
 
   const quotes = useMemo(() => collectQuotes(extraction), [extraction])
 
   const wordCount = (extraction.raw_text || '').trim().split(/\s+/).filter(Boolean).length
-
-  // M7.5.b — per-doc download links. Backend returns one entry per uploaded
-  // file in `source_file_paths`; legacy single-doc rows expose the single
-  // `source_file_path` and an empty list (the resolver in
-  // services.extractions normalises this server-side, but defend in depth
-  // here too in case the field hasn't propagated to a stale cached record).
-  const sourcePaths = useMemo(() => {
-    const list = extraction.source_file_paths || []
-    if (list.length) return list
-    if (extraction.source_file_path) return [extraction.source_file_path]
-    return []
-  }, [extraction.source_file_paths, extraction.source_file_path])
-  const docNames = useMemo(() => parseDocNames(extraction.raw_text || ''), [extraction.raw_text])
-
-  const downloadSource = async (idx, displayName) => {
-    setDownloadingIdx(idx)
-    try {
-      await downloadExtractionSourceApi(extraction.id, idx, displayName || extraction.filename)
-    } catch (err) {
-      toast.error(err?.message || 'Could not download source file')
-    } finally {
-      setDownloadingIdx(null)
-    }
-  }
 
   // M5.2 — when an artifact picks a quote, scroll to + flash the first
   // <mark> whose data-quote-id matches. Empty selection / no match = no-op.
@@ -134,6 +109,40 @@ export default function SourcePane({ extraction, selectedQuote, width = '42%' })
     void target.offsetWidth
     target.classList.add('quote-flash')
   }, [selectedQuote])
+
+  // M8.5 — scroll-spy: track the doc that the user is currently reading
+  // so the tab strip's active state stays honest when they scroll without
+  // clicking. We observe the per-doc anchor markers (one per doc, attached
+  // to the first paragraph of that doc); the topmost-visible anchor wins.
+  useEffect(() => {
+    if (!isMultiDoc || !bodyRef.current) return
+    const root = bodyRef.current
+    const anchors = root.querySelectorAll('[data-doc-anchor]')
+    if (!anchors.length) return
+    const observer = new IntersectionObserver(
+      (entries) => {
+        // Sort by viewport position; the smallest top-offset wins.
+        const visible = entries
+          .filter((e) => e.isIntersecting)
+          .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)
+        if (!visible.length) return
+        const idx = parseInt(visible[0].target.getAttribute('data-doc-anchor') || '0', 10)
+        if (Number.isFinite(idx) && idx > 0) setActiveDocIdx(idx)
+      },
+      { root, rootMargin: '-20% 0px -60% 0px', threshold: 0 },
+    )
+    anchors.forEach((a) => observer.observe(a))
+    return () => observer.disconnect()
+  }, [isMultiDoc, docParagraphs])
+
+  const scrollToDoc = (idx) => {
+    if (!bodyRef.current) return
+    const target = bodyRef.current.querySelector(`[data-doc-anchor="${idx}"]`)
+    if (target) {
+      setActiveDocIdx(idx)
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  }
 
   return (
     <section
@@ -193,7 +202,7 @@ export default function SourcePane({ extraction, selectedQuote, width = '42%' })
             {wordCount.toLocaleString()} words
           </Badge>
           <Badge tone="neutral" size="sm">
-            {paragraphs.length} paragraphs
+            {docParagraphs.length} paragraphs
           </Badge>
           {extraction.gaps.length > 0 && (
             <Badge tone="warn" size="sm" icon={<AlertTriangle size={11} />}>
@@ -202,64 +211,62 @@ export default function SourcePane({ extraction, selectedQuote, width = '42%' })
           )}
         </div>
 
-        {/* M7.5.b — per-doc downloads. Single-doc rows render one inline
-            "Download original" button; multi-doc rows render a vertical
-            list with the per-doc filename so users can grab any of the N
-            originals without re-uploading. Hidden when no source was saved
-            (paste-mode extractions). */}
-        {sourcePaths.length > 0 && (
-          <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {sourcePaths.length === 1 ? (
-              <Button
-                variant="ghost"
-                size="sm"
-                icon={<Download size={12} />}
-                onClick={() => downloadSource(0, extraction.filename)}
-                disabled={downloadingIdx !== null}
-                title="Download the original uploaded file"
-              >
-                {downloadingIdx === 0 ? 'Downloading…' : 'Download original'}
-              </Button>
-            ) : (
-              <>
-                <div
+        {/* M8.5 — multi-doc tab strip. One pill per doc; active state
+            tracked via scroll-spy + click-to-scroll. Hidden on single-doc
+            extractions (downloads still live in the Sidebar's "This
+            document → Sources" list — no need for a download UI here). */}
+        {isMultiDoc && (
+          <div
+            role="tablist"
+            aria-label="Source documents"
+            style={{
+              display: 'flex',
+              gap: 4,
+              marginTop: 12,
+              overflowX: 'auto',
+              paddingBottom: 2,
+            }}
+          >
+            {docs.map((d) => {
+              const isActive = d.idx === activeDocIdx
+              return (
+                <button
+                  key={d.idx}
+                  role="tab"
+                  type="button"
+                  aria-selected={isActive}
+                  onClick={() => scrollToDoc(d.idx)}
+                  title={d.name}
                   style={{
-                    fontSize: 10,
-                    fontWeight: 600,
-                    textTransform: 'uppercase',
-                    letterSpacing: 0.5,
-                    color: 'var(--text-soft)',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 4,
+                    padding: '4px 10px',
+                    border: 'none',
+                    borderRadius: 'var(--radius-pill)',
+                    fontSize: 11.5,
+                    fontWeight: 500,
+                    fontFamily: 'inherit',
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap',
+                    background: isActive ? 'var(--accent)' : 'var(--bg-elevated)',
+                    color: isActive ? '#fff' : 'var(--text)',
+                    border: isActive ? 'none' : '1px solid var(--border)',
+                    transition: 'background .12s, color .12s',
                   }}
                 >
-                  Originals · {sourcePaths.length}
-                </div>
-                {sourcePaths.map((_, i) => {
-                  // i is 0-based; doc-name array is 1-based (index 0 reserved).
-                  const display = docNames[i + 1] || `Document ${i + 1}`
-                  return (
-                    <Button
-                      key={i}
-                      variant="ghost"
-                      size="sm"
-                      icon={<Download size={12} />}
-                      onClick={() => downloadSource(i, display)}
-                      disabled={downloadingIdx !== null}
-                      title={`Download "${display}"`}
-                      style={{ justifyContent: 'flex-start' }}
-                    >
-                      {downloadingIdx === i ? 'Downloading…' : display}
-                    </Button>
-                  )
-                })}
-              </>
-            )}
+                  <FileText size={11} />
+                  {d.name}
+                </button>
+              )
+            })}
           </div>
         )}
       </div>
 
       {/* Body */}
-      <div ref={bodyRef} style={{ padding: '20px 24px 40px', flex: 1 }}>
-        {paragraphs.length === 0 && (
+      <div ref={bodyRef} style={{ padding: '20px 24px 40px', flex: 1, overflow: 'auto' }}>
+        {docParagraphs.length === 0 && (
           <div
             style={{
               color: 'var(--text-soft)',
@@ -272,12 +279,18 @@ export default function SourcePane({ extraction, selectedQuote, width = '42%' })
         )}
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {paragraphs.map((p, i) => {
-            const segments = segmentParagraph(p, quotes)
+          {docParagraphs.map(({ docIdx, text }, i) => {
+            const segments = segmentParagraph(text, quotes)
             const hasHit = segments.some((s) => s.hit)
+            // M8.5 — first paragraph of each doc gets a data-doc-anchor
+            // attribute so scrollToDoc can target it + IntersectionObserver
+            // can spy on which doc is currently in view.
+            const isFirstOfDoc = isMultiDoc && docIdx > 0 &&
+              (i === 0 || docParagraphs[i - 1].docIdx !== docIdx)
             return (
               <p
                 key={i}
+                data-doc-anchor={isFirstOfDoc ? docIdx : undefined}
                 style={{
                   margin: 0,
                   fontSize: 14,
@@ -287,6 +300,7 @@ export default function SourcePane({ extraction, selectedQuote, width = '42%' })
                   paddingLeft: hasHit ? 12 : 0,
                   borderLeft: hasHit ? '3px solid var(--border)' : 'none',
                   position: 'relative',
+                  scrollMarginTop: 16,
                 }}
               >
                 {segments.map((s, j) =>
