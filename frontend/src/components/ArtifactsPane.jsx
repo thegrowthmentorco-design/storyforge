@@ -175,6 +175,7 @@ function StoryCard({
       hover
       padding={16}
       className="has-action"
+      data-artifact-id={story.id ? `story:${story.id}` : undefined}
       style={{
         // Fade-in only on first render of an existing list — suppress for the
         // dragging item (DnD applies its own transform, fade competes).
@@ -182,6 +183,9 @@ function StoryCard({
         position: 'relative',
         // Make room for the drag grip on the left when sortable.
         paddingLeft: draggable ? 28 : 16,
+        // Needed for the M5.2.2 .artifact-flash animation to scroll-margin
+        // from the source-side click target.
+        scrollMarginTop: 80,
       }}
     >
       {/* Drag grip — hover-revealed via .has-action class. Only present when
@@ -564,6 +568,10 @@ export default function ArtifactsPane({
   onCommentCreate,
   onCommentPatch,
   onCommentDelete,
+  // M5.2.2 — set when SourcePane sends a quote-click here. The effect
+  // below switches to the right tab + scrolls + flashes the matching
+  // [data-artifact-id] card.
+  selectedArtifact,
 }) {
   // M7.5.c — parse "===== DOC i: name =====" markers from raw_text once
   // per render. Single-doc inputs produce [""] so docNameFor returns ""
@@ -730,6 +738,32 @@ export default function ArtifactsPane({
       setTimeout(() => { userClickRef.current = false }, 100)
     })
   }, [extraction.id, activeTab])
+
+  // M5.2.2 — reverse direction. SourcePane click on a quote dispatches
+  // selectedArtifact={kind, id, nonce}; we switch to the right tab,
+  // scroll to [data-artifact-id="kind:id"], and add .artifact-flash for
+  // the visual ping. Re-fires on every nonce change so clicking the
+  // same quote twice still flashes.
+  useEffect(() => {
+    if (!selectedArtifact) return
+    const { kind, id } = selectedArtifact
+    if (kind !== 'story' && kind !== 'nfr') return   // gaps live in GapsRail
+    const targetTab = kind === 'story' ? 'stories' : 'nfrs'
+    if (activeTab !== targetTab) setActiveTab(targetTab)
+    userClickRef.current = true
+    requestAnimationFrame(() => {
+      const el = document.querySelector(`[data-artifact-id="${kind}:${CSS.escape(id)}"]`)
+      if (!el) {
+        userClickRef.current = false
+        return
+      }
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      el.classList.remove('artifact-flash')
+      void el.offsetWidth
+      el.classList.add('artifact-flash')
+      setTimeout(() => { userClickRef.current = false }, 200)
+    })
+  }, [selectedArtifact, activeTab])
 
   const onTabClick = (id) => {
     const el = document.getElementById(`sec-${id}`)
@@ -1033,7 +1067,11 @@ export default function ArtifactsPane({
                 {extraction.nfrs.map((n, i) => {
                   const meta = nfrIcon(n.category)
                   return (
-                    <tr key={i}>
+                    <tr
+                      key={i}
+                      data-artifact-id={n.id ? `nfr:${n.id}` : undefined}
+                      style={{ scrollMarginTop: 80 }}
+                    >
                       <td>
                         <IconTile tone={meta.tone} size={28}>
                           {meta.icon}

@@ -367,6 +367,17 @@ function AuthedApp() {
     if (!text) return
     setSelectedQuote({ text, nonce: Date.now() })
   }
+  // M5.2.2 — reverse direction: SourcePane <mark> click → flash the
+  // owning artifact card. ArtifactsPane / GapsRail watch this for the
+  // matching `data-artifact-id` and run the flash + scroll.
+  const [selectedArtifact, setSelectedArtifact] = useState(null)
+  const pickArtifact = ({ kind, id }) => {
+    if (!kind || !id) return
+    // M5.2.2 — when the picked artifact is a gap, ensure GapsRail is
+    // visible (otherwise the scroll-flash target wouldn't be mounted).
+    if (kind === 'gap') setShowGaps(true)
+    setSelectedArtifact({ kind, id, nonce: Date.now() })
+  }
   const [theme, setThemeRaw] = useState(() => getSettings().theme || 'light')
 
   // M8.2 — persisted source/artifacts split ratio. Default 0.42 (preserves
@@ -807,6 +818,7 @@ function AuthedApp() {
                         <SourcePane
                           extraction={extraction}
                           selectedQuote={selectedQuote}
+                          onPickArtifact={pickArtifact}
                           width="100%"
                         />
                       )}
@@ -814,6 +826,7 @@ function AuthedApp() {
                         <ArtifactsPane
                           extraction={extraction}
                           onPickQuote={pickQuote}
+                          selectedArtifact={selectedArtifact}
                           onUpdate={updateExtraction}
                           onRegenSection={handleRegenSection}
                           regenBusy={regenBusy}
@@ -835,6 +848,7 @@ function AuthedApp() {
                           width="100%"
                           comments={comments}
                           commentHandlers={{ onCreate: onCommentCreate, onPatch: onCommentPatch, onDelete: onCommentDelete }}
+                          selectedArtifact={selectedArtifact}
                         />
                       )}
                     </div>
@@ -843,6 +857,7 @@ function AuthedApp() {
                       <SourcePane
                         extraction={extraction}
                         selectedQuote={selectedQuote}
+                        onPickArtifact={pickArtifact}
                         width={`${(sourceRatio * 100).toFixed(2)}%`}
                       />
                       {/* M8.2 — persisted resizable split. Min 20% / max 70%
@@ -856,6 +871,7 @@ function AuthedApp() {
                       <ArtifactsPane
                         extraction={extraction}
                         onPickQuote={pickQuote}
+                        selectedArtifact={selectedArtifact}
                         onUpdate={updateExtraction}
                         onRegenSection={handleRegenSection}
                         regenBusy={regenBusy}
@@ -901,6 +917,7 @@ function AuthedApp() {
           rawText={extraction.raw_text}
           comments={comments}
           commentHandlers={{ onCreate: onCommentCreate, onPatch: onCommentPatch, onDelete: onCommentDelete }}
+          selectedArtifact={selectedArtifact}
         />
       )}
       <PaywallModal paywall={paywall} onClose={() => setPaywall(null)} />

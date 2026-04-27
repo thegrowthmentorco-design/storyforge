@@ -15,16 +15,16 @@ import { FileText, AlertTriangle } from './icons.jsx'
 function collectQuotes(extraction) {
   const out = []
   for (const s of extraction.stories || []) {
-    if (s.source_quote) out.push({ quote: s.source_quote, kind: 'story', label: `${s.id} · ${s.actor}` })
+    if (s.source_quote) out.push({ quote: s.source_quote, kind: 'story', id: s.id || '', label: `${s.id} · ${s.actor}` })
   }
   for (const n of extraction.nfrs || []) {
-    if (n.source_quote) out.push({ quote: n.source_quote, kind: 'nfr', label: `${n.category} · ${n.value}` })
+    if (n.source_quote) out.push({ quote: n.source_quote, kind: 'nfr', id: n.id || '', label: `${n.category} · ${n.value}` })
   }
   for (const g of extraction.gaps || []) {
-    if (g.source_quote) out.push({ quote: g.source_quote, kind: 'gap', label: `${g.severity?.toUpperCase()} · ${g.question}` })
+    if (g.source_quote) out.push({ quote: g.source_quote, kind: 'gap', id: g.id || '', label: `${g.severity?.toUpperCase()} · ${g.question}` })
     // Legacy fallback — pre-M5.1 gaps only had `context`. Keep highlighting
     // those until the data is rerun against the new prompt.
-    else if (g.context && g.context.length >= 8) out.push({ quote: g.context, kind: 'gap', label: `${g.severity?.toUpperCase()} · ${g.question}` })
+    else if (g.context && g.context.length >= 8) out.push({ quote: g.context, kind: 'gap', id: g.id || '', label: `${g.severity?.toUpperCase()} · ${g.question}` })
   }
   return out.sort((a, b) => b.quote.length - a.quote.length)
 }
@@ -79,7 +79,7 @@ function quoteId(text) {
   return text.trim().toLowerCase().replace(/\s+/g, ' ').slice(0, 200)
 }
 
-export default function SourcePane({ extraction, selectedQuote, width = '42%' }) {
+export default function SourcePane({ extraction, selectedQuote, onPickArtifact, width = '42%' }) {
   const bodyRef = useRef(null)
 
   // M8.5 — doc-aware paragraph split. Marker lines are stripped; surviving
@@ -304,12 +304,19 @@ export default function SourcePane({ extraction, selectedQuote, width = '42%' })
                   scrollMarginTop: 16,
                 }}
               >
-                {segments.map((s, j) =>
-                  s.hit ? (
+                {segments.map((s, j) => {
+                  if (!s.hit) return <span key={j}>{s.text}</span>
+                  // M5.2.2 — click a highlighted quote to jump to the
+                  // owning artifact card. Only enabled when the artifact
+                  // has a stable id (always true for stories; M4.5.2+
+                  // for NFRs/gaps) AND the parent wired onPickArtifact.
+                  const canClick = !!(onPickArtifact && s.hit.id)
+                  return (
                     <mark
                       key={j}
                       data-quote-id={quoteId(s.hit.quote)}
-                      title={s.hit.label}
+                      title={canClick ? `${s.hit.label} — click to jump to artifact` : s.hit.label}
+                      onClick={canClick ? () => onPickArtifact({ kind: s.hit.kind, id: s.hit.id }) : undefined}
                       style={{
                         background: TONE_STYLE[s.hit.kind].bg,
                         color: TONE_STYLE[s.hit.kind].ink,
@@ -317,14 +324,13 @@ export default function SourcePane({ extraction, selectedQuote, width = '42%' })
                         borderRadius: 3,
                         fontWeight: 500,
                         scrollMarginTop: 80,
+                        cursor: canClick ? 'pointer' : 'default',
                       }}
                     >
                       {s.text}
                     </mark>
-                  ) : (
-                    <span key={j}>{s.text}</span>
-                  ),
-                )}
+                  )
+                })}
               </p>
             )
           })}

@@ -82,10 +82,12 @@ function GapCard({ gap, idx, state, onResolve, onIgnore, onAsk, onReopen, onCopy
       hover={!isResolved}
       padding={14}
       className="has-action"
+      data-artifact-id={gap.id ? `gap:${gap.id}` : undefined}
       style={{
         animation: `fade-in .25s ease-out ${Math.min(idx * 40, 400)}ms both`,
         opacity: isResolved ? 0.65 : 1,
         position: 'relative',
+        scrollMarginTop: 80,
       }}
     >
       {/* Floating action cluster — copy + (delete when editable). */}
@@ -361,6 +363,9 @@ export default function GapsRail({
   // back via the standard handlers.
   comments = [],
   commentHandlers,
+  // M5.2.2 — set when SourcePane sends a quote-click here. Effect below
+  // scrolls to + flashes the matching [data-artifact-id="gap:<id>"] card.
+  selectedArtifact,
 }) {
   // M7.5.c — pull doc-name list from raw_text (single-doc → [""], no badges).
   const docNames = useMemo(() => parseDocNames(rawText || ''), [rawText])
@@ -408,6 +413,22 @@ export default function GapsRail({
       .catch(() => { /* leave empty; user can still resolve/ignore */ })
     return () => { alive = false }
   }, [extractionId])
+
+  // M5.2.2 — reverse direction. SourcePane click on a gap-quote dispatches
+  // selectedArtifact={kind:'gap', id, nonce}; we scroll-flash the matching
+  // [data-artifact-id] card. Re-fires on every nonce change so clicking
+  // the same quote twice still flashes.
+  useEffect(() => {
+    if (!selectedArtifact || selectedArtifact.kind !== 'gap') return
+    requestAnimationFrame(() => {
+      const el = document.querySelector(`[data-artifact-id="gap:${CSS.escape(selectedArtifact.id)}"]`)
+      if (!el) return
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      el.classList.remove('artifact-flash')
+      void el.offsetWidth
+      el.classList.add('artifact-flash')
+    })
+  }, [selectedArtifact])
 
   // Tag gaps with their original index so we never lose alignment as we sort
   const indexed = useMemo(
