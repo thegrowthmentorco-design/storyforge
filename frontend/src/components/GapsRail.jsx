@@ -335,7 +335,7 @@ const SEVERITY_FILTERS = [
   { id: 'low', label: 'Low' },
 ]
 
-export default function GapsRail({ gaps = [], extractionId, onPickQuote, onUpdate, onRegen, regenBusy, rawText }) {
+export default function GapsRail({ gaps = [], extractionId, onPickQuote, onUpdate, onRegen, regenBusy, rawText, width }) {
   // M7.5.c — pull doc-name list from raw_text (single-doc → [""], no badges).
   const docNames = useMemo(() => parseDocNames(rawText || ''), [rawText])
   const isMultiDoc = docNames.length > 1
@@ -464,12 +464,17 @@ export default function GapsRail({ gaps = [], extractionId, onPickQuote, onUpdat
   // Apply severity filter to active list (ignored + footer untouched)
   const filteredActive = active.filter((x) => filter === 'all' || x.gap.severity === filter)
 
+  // M8.6 — `width` prop lets the narrow-viewport layout reuse the rail
+  // inline (full width inside .body) instead of as a fixed-320 right
+  // edge. Default preserves the legacy 320px wide-viewport behaviour.
+  const railWidth = width || 320
+
   return (
     <aside
       style={{
-        width: 320,
+        width: railWidth,
         background: 'var(--bg-subtle)',
-        borderLeft: '1px solid var(--border)',
+        borderLeft: railWidth === '100%' ? 'none' : '1px solid var(--border)',
         overflowY: 'auto',
         flexShrink: 0,
         display: 'flex',

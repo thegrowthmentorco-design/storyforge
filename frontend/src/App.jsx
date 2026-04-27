@@ -243,6 +243,78 @@ function LoadingState({ filename, usage, onStop }) {
   )
 }
 
+/* M8.6 — narrow-viewport pane switcher. Renders inside `.body` above
+ * the active pane when isNarrow. Three tabs: Source / Artifacts / Gaps.
+ * Gaps tab always rendered (even with zero gaps) so the user can confirm
+ * "no gaps here" without switching panes; the count badge stays hidden
+ * at zero so the visual stays calm. */
+function NarrowPaneTabs({ active, onChange, gapCount }) {
+  const tabs = [
+    { key: 'source',    label: 'Source' },
+    { key: 'artifacts', label: 'Artifacts' },
+    { key: 'gaps',      label: 'Gaps', badge: gapCount },
+  ]
+  return (
+    <div
+      role="tablist"
+      aria-label="Studio panes"
+      style={{
+        display: 'flex',
+        gap: 0,
+        borderBottom: '1px solid var(--border)',
+        background: 'var(--bg-elevated)',
+        flexShrink: 0,
+      }}
+    >
+      {tabs.map((t) => {
+        const isActive = active === t.key
+        return (
+          <button
+            key={t.key}
+            role="tab"
+            type="button"
+            aria-selected={isActive}
+            onClick={() => onChange(t.key)}
+            style={{
+              flex: 1,
+              padding: '10px 12px',
+              background: 'transparent',
+              border: 'none',
+              borderBottom: `2px solid ${isActive ? 'var(--accent)' : 'transparent'}`,
+              color: isActive ? 'var(--accent-strong)' : 'var(--text-muted)',
+              fontSize: 12.5,
+              fontWeight: isActive ? 600 : 500,
+              fontFamily: 'inherit',
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 6,
+            }}
+          >
+            {t.label}
+            {t.badge > 0 && (
+              <span
+                style={{
+                  fontSize: 10,
+                  fontWeight: 600,
+                  padding: '1px 6px',
+                  borderRadius: 999,
+                  background: isActive ? 'var(--accent)' : 'var(--bg-hover)',
+                  color: isActive ? '#fff' : 'var(--text-soft)',
+                  fontFamily: 'var(--font-mono)',
+                }}
+              >
+                {t.badge}
+              </span>
+            )}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
 /** Inner app — only mounts once the user is signed in. */
 function AuthedApp() {
   const { getToken } = useAuth()
@@ -307,6 +379,23 @@ function AuthedApp() {
     try { window.localStorage.setItem('storyforge:studio:sourceRatio', String(next)) } catch { /* private mode */ }
   }, [])
   const studioBodyRef = useRef(null)
+
+  // M8.6 — narrow-viewport collapse. Below 900px the three-pane layout
+  // becomes a tabbed single-pane (Source / Artifacts / Gaps). Live-updates
+  // on viewport resize via matchMedia so a window-drag doesn't strand the
+  // user in the wrong layout.
+  const [isNarrow, setIsNarrow] = useState(() => {
+    try { return window.matchMedia('(max-width: 900px)').matches }
+    catch { return false }
+  })
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return
+    const mq = window.matchMedia('(max-width: 900px)')
+    const handler = (e) => setIsNarrow(e.matches)
+    mq.addEventListener('change', handler)
+    return () => mq.removeEventListener('change', handler)
+  }, [])
+  const [narrowPane, setNarrowPane] = useState('artifacts')
   const [pendingName, setPendingName] = useState('')
   const [projects, setProjects] = useState([])
   const [projectsLoading, setProjectsLoading] = useState(true)
@@ -677,32 +766,82 @@ function AuthedApp() {
                   />
                 )}
                 {extraction && !loading && (
-                  <div className="body" ref={studioBodyRef}>
-                    <SourcePane
-                      extraction={extraction}
-                      selectedQuote={selectedQuote}
-                      width={`${(sourceRatio * 100).toFixed(2)}%`}
-                    />
-                    {/* M8.2 — persisted resizable split. Min 20% / max 70%
-                        keeps both panes always usable. */}
-                    <ResizeHandle
-                      containerRef={studioBodyRef}
-                      onChange={setSourceRatio}
-                      min={0.20}
-                      max={0.70}
-                    />
-                    <ArtifactsPane
-                      extraction={extraction}
-                      onPickQuote={pickQuote}
-                      onUpdate={updateExtraction}
-                      onRegenSection={handleRegenSection}
-                      regenBusy={regenBusy}
-                      comments={comments}
-                      onCommentCreate={onCommentCreate}
-                      onCommentPatch={onCommentPatch}
-                      onCommentDelete={onCommentDelete}
-                    />
-                  </div>
+                  isNarrow ? (
+                    /* M8.6 — narrow layout: tab strip + one pane. The
+                       side GapsRail also gates on !isNarrow below — at
+                       narrow widths gaps live in the 'gaps' tab here
+                       at full body width. */
+                    <div
+                      className="body"
+                      ref={studioBodyRef}
+                      style={{ flexDirection: 'column' }}
+                    >
+                      <NarrowPaneTabs
+                        active={narrowPane}
+                        onChange={setNarrowPane}
+                        gapCount={extraction.gaps?.length || 0}
+                      />
+                      {narrowPane === 'source' && (
+                        <SourcePane
+                          extraction={extraction}
+                          selectedQuote={selectedQuote}
+                          width="100%"
+                        />
+                      )}
+                      {narrowPane === 'artifacts' && (
+                        <ArtifactsPane
+                          extraction={extraction}
+                          onPickQuote={pickQuote}
+                          onUpdate={updateExtraction}
+                          onRegenSection={handleRegenSection}
+                          regenBusy={regenBusy}
+                          comments={comments}
+                          onCommentCreate={onCommentCreate}
+                          onCommentPatch={onCommentPatch}
+                          onCommentDelete={onCommentDelete}
+                        />
+                      )}
+                      {narrowPane === 'gaps' && (
+                        <GapsRail
+                          gaps={extraction.gaps}
+                          extractionId={extractionId}
+                          onPickQuote={pickQuote}
+                          onUpdate={(nextGaps) => updateExtraction({ gaps: nextGaps })}
+                          onRegen={() => handleRegenSection('gaps')}
+                          regenBusy={regenBusy === 'gaps'}
+                          rawText={extraction.raw_text}
+                          width="100%"
+                        />
+                      )}
+                    </div>
+                  ) : (
+                    <div className="body" ref={studioBodyRef}>
+                      <SourcePane
+                        extraction={extraction}
+                        selectedQuote={selectedQuote}
+                        width={`${(sourceRatio * 100).toFixed(2)}%`}
+                      />
+                      {/* M8.2 — persisted resizable split. Min 20% / max 70%
+                          keeps both panes always usable. */}
+                      <ResizeHandle
+                        containerRef={studioBodyRef}
+                        onChange={setSourceRatio}
+                        min={0.20}
+                        max={0.70}
+                      />
+                      <ArtifactsPane
+                        extraction={extraction}
+                        onPickQuote={pickQuote}
+                        onUpdate={updateExtraction}
+                        onRegenSection={handleRegenSection}
+                        regenBusy={regenBusy}
+                        comments={comments}
+                        onCommentCreate={onCommentCreate}
+                        onCommentPatch={onCommentPatch}
+                        onCommentDelete={onCommentDelete}
+                      />
+                    </div>
+                  )
                 )}
               </>
             }
@@ -717,7 +856,10 @@ function AuthedApp() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
-      {isHome && extraction && !loading && showGaps && (
+      {/* M8.6 — side GapsRail only renders at wide viewports. At narrow
+          widths the 'gaps' tab inside .body shows the same component
+          inline, so two-instance double-rendering is impossible. */}
+      {isHome && extraction && !loading && showGaps && !isNarrow && (
         <GapsRail
           gaps={extraction.gaps}
           extractionId={extractionId}
