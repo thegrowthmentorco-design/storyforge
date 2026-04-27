@@ -12,6 +12,7 @@ import {
 import { useApp } from '../lib/AppContext.jsx'
 import { useToast } from '../components/Toast.jsx'
 import { Badge, Button, Card, IconTile, Spinner } from '../components/primitives.jsx'
+import PageShell from '../components/PageShell.jsx'
 import {
   Activity,
   AlertTriangle,
@@ -519,87 +520,66 @@ export default function Account() {
     }
   }, [location.search, refreshPlan, toast, navigate])
 
+  // M10.7 — moved to PageShell. `wide` because the Profile section embeds
+  // Clerk's UserProfile widget which is itself a wide multi-column surface
+  // (~720px wants more room).
+  const description = isLoaded && user
+    ? `Signed in as ${user.primaryEmailAddress?.emailAddress || user.username || user.id}.`
+    : 'Loading account…'
   return (
-    <div
-      style={{
-        flex: 1,
-        overflow: 'auto',
-        padding: '24px 28px 40px',
-        background: 'var(--bg)',
-      }}
-    >
-      <h1
-        style={{
-          fontFamily: 'var(--font-display)',
-          fontSize: 24,
-          fontWeight: 600,
-          color: 'var(--text-strong)',
-          margin: '0 0 6px',
-          letterSpacing: -0.3,
-        }}
+    <PageShell title="Account" description={description} wide>
+      <Section
+        icon={<Activity size={16} />}
+        tone="accent"
+        title="Usage"
+        description="Tokens billed, cost, and per-model breakdown — drawn from every Claude call you've made."
       >
-        Account
-      </h1>
-      <p style={{ fontSize: 13.5, color: 'var(--text-muted)', margin: '0 0 22px', maxWidth: 640 }}>
-        {isLoaded && user
-          ? `Signed in as ${user.primaryEmailAddress?.emailAddress || user.username || user.id}.`
-          : 'Loading account…'}
-      </p>
+        <UsageSection />
+      </Section>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 14, maxWidth: 760 }}>
-        <Section
-          icon={<Activity size={16} />}
-          tone="accent"
-          title="Usage"
-          description="Tokens billed, cost, and per-model breakdown — drawn from every Claude call you've made."
-        >
-          <UsageSection />
-        </Section>
+      <Section
+        icon={<Sparkles size={16} />}
+        tone="success"
+        title="Plan"
+        description="Your subscription tier and any quota limits."
+      >
+        <PlanSection />
+      </Section>
 
-        <Section
-          icon={<Sparkles size={16} />}
-          tone="success"
-          title="Plan"
-          description="Your subscription tier and any quota limits."
-        >
-          <PlanSection />
-        </Section>
+      <Section
+        icon={<Download size={16} />}
+        tone="accent"
+        title="Data"
+        description="GDPR-style data export, plus a one-shot button to claim any orphan dev rows from before per-user isolation landed."
+      >
+        <DataSection />
+      </Section>
 
-        <Section
-          icon={<Download size={16} />}
-          tone="accent"
-          title="Data"
-          description="GDPR-style data export, plus a one-shot button to claim any orphan dev rows from before per-user isolation landed."
+      <Section
+        icon={<User size={16} />}
+        tone="accent"
+        title="Profile"
+        description="Update your name, email, password, MFA, and connected accounts. Powered by Clerk."
+      >
+        {/* Clerk's UserProfile is a full embedded surface — set routing so it
+            uses our /account path and doesn't try to navigate elsewhere. */}
+        <div
+          style={{
+            border: '1px solid var(--border)',
+            borderRadius: 'var(--radius)',
+            overflow: 'hidden',
+            background: 'var(--bg-elevated)',
+          }}
         >
-          <DataSection />
-        </Section>
-
-        <Section
-          icon={<User size={16} />}
-          tone="accent"
-          title="Profile"
-          description="Update your name, email, password, MFA, and connected accounts. Powered by Clerk."
-        >
-          {/* Clerk's UserProfile is a full embedded surface — set routing so it
-              uses our /account path and doesn't try to navigate elsewhere. */}
-          <div
-            style={{
-              border: '1px solid var(--border)',
-              borderRadius: 'var(--radius)',
-              overflow: 'hidden',
-              background: 'var(--bg-elevated)',
-            }}
-          >
-            {isLoaded ? (
-              <UserProfile routing="hash" />
-            ) : (
-              <div style={{ padding: 24, display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-muted)' }}>
-                <Spinner size={14} /> Loading profile…
-              </div>
-            )}
-          </div>
-        </Section>
-      </div>
-    </div>
+          {isLoaded ? (
+            <UserProfile routing="hash" />
+          ) : (
+            <div style={{ padding: 24, display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-muted)' }}>
+              <Spinner size={14} /> Loading profile…
+            </div>
+          )}
+        </div>
+      </Section>
+    </PageShell>
   )
 }

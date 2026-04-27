@@ -44,6 +44,7 @@ import { useApp } from '../lib/AppContext.jsx'
 import { useOrganization } from '@clerk/clerk-react'
 import { useToast } from '../components/Toast.jsx'
 import { Badge, Button, Card, IconTile, Spinner } from '../components/primitives.jsx'
+import PageShell from '../components/PageShell.jsx'
 import { Download, Eye, FileText, HelpCircle, Key, Monitor, Moon, Plug, Shield, Sparkles, Sun } from '../components/icons.jsx'
 
 function Section({ icon, tone, title, description, comingIn, children }) {
@@ -310,117 +311,9 @@ function ThemePicker() {
   )
 }
 
-/* M10.2 — shared page wrapper. Bigger display heading (32px Fraunces),
- * generous breathing room, and a thin gradient accent line under the
- * heading row that introduces the brand mark beyond the 28px Sidebar
- * Logo. The page background carries an ambient soft gradient at the top
- * for depth without distraction.
- *
- * M10.6 — content column now CENTERED in the available width (was
- * left-aligned), so the orphan-right whitespace becomes symmetric
- * padding. `wide` prop bumps the column to 960px for pages with
- * inherently-wide content (IntegrationsPage). The gradient backdrop
- * extends further (480px) and fades to transparent via mask-image so
- * the bottom edge no longer reads as a hard transition cliff.
- */
-function PageShell({ title, description, eyebrow, children, wide = false }) {
-  const maxWidth = wide ? 960 : 720
-  return (
-    <div
-      style={{
-        flex: 1,
-        overflow: 'auto',
-        position: 'relative',
-        background: 'var(--surface-0)',
-      }}
-    >
-      {/* Ambient brand wash — extended to 480px and faded to transparent
-          via mask so it doesn't end on a visible hard line. The mask is
-          duplicated for WebKit browsers (Safari) since they still need
-          the prefixed property as of 2026. */}
-      <div
-        aria-hidden
-        style={{
-          position: 'absolute',
-          top: 0, left: 0, right: 0,
-          height: 480,
-          background: 'var(--gradient-soft)',
-          maskImage: 'linear-gradient(to bottom, black 0%, black 55%, transparent 100%)',
-          WebkitMaskImage: 'linear-gradient(to bottom, black 0%, black 55%, transparent 100%)',
-          pointerEvents: 'none',
-          zIndex: 0,
-        }}
-      />
-      <div
-        style={{
-          position: 'relative',
-          zIndex: 1,
-          padding: 'var(--space-7) var(--space-7) var(--space-8)',
-          maxWidth,
-          margin: '0 auto',
-        }}
-      >
-        {eyebrow && (
-          <div
-            style={{
-              fontSize: 'var(--text-xs)',
-              fontWeight: 600,
-              letterSpacing: 'var(--tracking-wide)',
-              textTransform: 'uppercase',
-              color: 'var(--accent-strong)',
-              marginBottom: 'var(--space-2)',
-            }}
-          >
-            {eyebrow}
-          </div>
-        )}
-        <h1
-          style={{
-            fontFamily: 'var(--font-display)',
-            fontSize: 'var(--text-3xl)',
-            fontWeight: 600,
-            color: 'var(--text-strong)',
-            margin: 0,
-            lineHeight: 'var(--leading-tight)',
-            letterSpacing: 'var(--tracking-tight)',
-          }}
-        >
-          {title}
-        </h1>
-        {/* Thin gradient accent — quietly carries the brand without
-            shouting, like Linear's underline-on-hover or the Vercel
-            page-marker. */}
-        <div
-          aria-hidden
-          style={{
-            width: 56,
-            height: 3,
-            borderRadius: 'var(--radius-pill)',
-            background: 'var(--gradient-hero)',
-            marginTop: 'var(--space-3)',
-            marginBottom: description ? 'var(--space-3)' : 'var(--space-6)',
-          }}
-        />
-        {description && (
-          <p
-            style={{
-              fontSize: 'var(--text-md)',
-              color: 'var(--text-muted)',
-              margin: '0 0 var(--space-6)',
-              maxWidth: 640,
-              lineHeight: 'var(--leading-base)',
-            }}
-          >
-            {description}
-          </p>
-        )}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
-          {children}
-        </div>
-      </div>
-    </div>
-  )
-}
+// M10.7 — PageShell extracted to ../components/PageShell.jsx so Account,
+// Project, and other top-level pages can land on the same layout rhythm
+// without copy-pasting the wrapper.
 
 function ApiKeyForm({ keySet, keyPreview, onSaved }) {
   const { toast } = useToast()

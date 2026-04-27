@@ -14,6 +14,7 @@ import {
 import { useApp } from '../lib/AppContext.jsx'
 import { useToast } from '../components/Toast.jsx'
 import { Badge, Button, Card, IconTile, Spinner } from '../components/primitives.jsx'
+import PageShell from '../components/PageShell.jsx'
 import {
   AlertTriangle,
   Edit,
@@ -101,10 +102,11 @@ function NameEditor({ value, onSave }) {
         disabled={saving}
         style={{
           fontFamily: 'var(--font-display)',
-          fontSize: 24,
+          fontSize: 'var(--text-3xl)',
           fontWeight: 600,
           color: 'var(--text-strong)',
-          letterSpacing: -0.3,
+          letterSpacing: 'var(--tracking-tight)',
+          lineHeight: 'var(--leading-tight)',
           background: 'var(--bg-elevated)',
           border: '1px solid var(--accent)',
           borderRadius: 'var(--radius-sm)',
@@ -320,9 +322,20 @@ export default function Project() {
   }
 
   return (
-    <div style={{ flex: 1, overflow: 'auto', padding: '24px 28px 40px', background: 'var(--bg)' }}>
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
+    // M10.7 — PageShell with `wide` (project lists benefit from a roomier
+    // canvas like Documents) and no `title` since this page has its own
+    // custom header row (icon tile + inline name editor + delete button).
+    <PageShell wide>
+      {/* Header — IconTile + editable name + count + delete. Lives inside
+          PageShell so it picks up the centered + gradient + max-width
+          treatment without re-implementing the wrapper. */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 'var(--space-3)',
+        marginBottom: 'var(--space-2)',
+        flexWrap: 'wrap',
+      }}>
         <IconTile tone="accent" size={36}>
           <FolderClosed size={16} />
         </IconTile>
@@ -462,6 +475,6 @@ export default function Project() {
           })}
         </div>
       )}
-    </div>
+    </PageShell>
   )
 }
