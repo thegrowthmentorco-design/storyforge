@@ -315,7 +315,7 @@ function ThemePicker() {
 // Project, and other top-level pages can land on the same layout rhythm
 // without copy-pasting the wrapper.
 
-function ApiKeyForm({ keySet, keyPreview, onSaved }) {
+function ApiKeyForm({ keySet, keyPreview, byokMode = 'strict', onSaved }) {
   const { toast } = useToast()
   // The raw key is held in component state ONLY while the user is editing.
   // It is never persisted client-side — Save sends it once to the backend
@@ -373,6 +373,28 @@ function ApiKeyForm({ keySet, keyPreview, onSaved }) {
     }
   }
 
+  // M3.4.6 — managed mode: server pays for every extraction. The BYOK form
+  // is hidden entirely so users don't accidentally save a key that will be
+  // ignored. (UserSettings still allows model_default — picker is below.)
+  if (byokMode === 'managed') {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text-muted)' }}>
+        <span style={{ width: 8, height: 8, borderRadius: 999, background: 'var(--success)' }} />
+        <span>
+          Managed mode — extractions use the StoryForge-hosted Anthropic key.
+          You don't need to bring your own.
+        </span>
+      </div>
+    )
+  }
+
+  // Mode-aware copy for the inactive (no-user-key) state. In strict the env
+  // key is NOT a fallback for live extractions; in choice it is.
+  const inactiveCopy =
+    byokMode === 'choice'
+      ? 'Inactive — extractions use the server-managed key. Add your own to bring your own billing.'
+      : 'Inactive — extractions run in mock mode until you add a key.'
+
   return (
     <div>
       {/* Status */}
@@ -411,7 +433,7 @@ function ApiKeyForm({ keySet, keyPreview, onSaved }) {
               )}
             </>
           ) : (
-            'Inactive — using server config (env key or mock mode)'
+            inactiveCopy
           )}
         </span>
       </div>
@@ -2420,6 +2442,7 @@ export function ModelsPage() {
           <ApiKeyForm
             keySet={!!serverSettings?.anthropic_key_set}
             keyPreview={serverSettings?.anthropic_key_preview || null}
+            byokMode={serverSettings?.byok_mode || 'strict'}
             onSaved={(s) => setServerSettings(s)}
           />
         )}
