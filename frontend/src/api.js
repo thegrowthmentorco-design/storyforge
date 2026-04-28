@@ -184,6 +184,16 @@ export async function deleteExtractionApi(id) {
   return jsonOrThrow(res)
 }
 
+/** M4.5.3.b — mark an extraction as read for the calling user. Upserts
+ *  the (user, extraction) ExtractionView row with last_seen_at = now.
+ *  Returns nothing; subsequent GET /api/extractions/{id} responses will
+ *  show unread_comment_count: 0 until a new comment lands. */
+export async function markExtractionSeenApi(id) {
+  const res = await apiFetch(`/api/extractions/${encodeURIComponent(id)}/seen`, { method: 'POST' })
+  if (!res.ok) await jsonOrThrow(res)
+  return null
+}
+
 /** Partial update (filename, project_id). */
 export async function patchExtractionApi(id, patch) {
   const res = await apiFetch(`/api/extractions/${encodeURIComponent(id)}`, {

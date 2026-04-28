@@ -1,8 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import { SignedIn, SignedOut, useAuth, useOrganization, useUser } from '@clerk/clerk-react'
-import { extractStream, getMePlanApi, listCommentsApi, listProjectsApi, listVersionsApi, patchExtractionApi, regenSectionApi, rerunExtractionApi, setTokenGetter } from './api.js'
-import { markSeen, unreadCount } from './lib/extraction_seen.js'
+import { extractStream, getMePlanApi, listCommentsApi, listProjectsApi, listVersionsApi, markExtractionSeenApi, patchExtractionApi, regenSectionApi, rerunExtractionApi, setTokenGetter } from './api.js'
 import { getExtraction } from './lib/store.js'
 import { migrateLocalStorageOnce } from './lib/migrate.js'
 import { getSettings, setSettings } from './lib/settings.js'
@@ -610,23 +609,30 @@ function AuthedApp() {
       .catch(() => { /* unauth → already toasted; transient → leave empty */ })
     return () => { cancelled = true }
   }, [extractionId])
-  const onCommentCreate = (c) => setComments((prev) => [...prev, c])
   const onCommentPatch = (c) => setComments((prev) => prev.map((x) => (x.id === c.id ? c : x)))
   const onCommentDelete = (id) => setComments((prev) => prev.filter((x) => x.id !== id))
 
-  // M4.5.3 — unread comment count vs the user's last-seen timestamp for
-  // this extraction. Stored in localStorage (multi-device unread is M4.5.3.b
-  // — needs a backend table). The badge in Sidebar's "This document" section
-  // is the click target that advances last-seen → 0 unread.
+  // M4.5.3.b — unread comment count is server-authoritative now (was
+  // localStorage in M4.5.3). Comes through on `extraction.unread_comment_count`
+  // from GET /api/extractions/{id}. New comments posted in-session by other
+  // users bump the count locally so the badge shows before the next refetch.
+  // The Sidebar's "N new" pill click hits POST /seen → marks 0.
   const [unread, setUnread] = useState(0)
   useEffect(() => {
-    setUnread(unreadCount(extractionId, comments))
-  }, [extractionId, comments])
-  const markExtractionSeen = useCallback(() => {
+    setUnread(extraction?.unread_comment_count || 0)
+  }, [extraction])
+  const markExtractionSeen = useCallback(async () => {
     if (!extractionId) return
-    markSeen(extractionId)
     setUnread(0)
+    try { await markExtractionSeenApi(extractionId) }
+    catch { /* soft-fail: next page open will reconcile via the server count */ }
   }, [extractionId])
+  const onCommentCreate = useCallback((c) => {
+    setComments((prev) => [...prev, c])
+    if (c?.author_user_id && user?.user_id && c.author_user_id !== user.user_id) {
+      setUnread((n) => n + 1)
+    }
+  }, [user?.user_id])
 
   // M8.1 — version chain lifted from TopBar to App-level so the Sidebar's
   // "This document" section + the (now-stripped) TopBar version picker share

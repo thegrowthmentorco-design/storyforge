@@ -21,7 +21,7 @@ from fastapi import HTTPException
 from sqlalchemy import update
 from sqlmodel import Session, select
 
-from db.models import Extraction, GapState, Project, UsageLog
+from db.models import Comment, Extraction, ExtractionView, GapState, Project, UsageLog
 from extract import extract_requirements, resolve_model
 from models import (
     ExtractionPayload,
@@ -65,8 +65,19 @@ def mint_project_id() -> str:
 # ---------- conversions ----------
 
 
-def extraction_to_record(row: Extraction) -> ExtractionRecord:
-    """SQLModel row -> API response shape."""
+def extraction_to_record(
+    row: Extraction,
+    *,
+    session: Session | None = None,
+    user_id: str | None = None,
+) -> ExtractionRecord:
+    """SQLModel row -> API response shape.
+
+    M4.5.3.b: when both `session` and `user_id` are provided, also computes
+    `unread_comment_count` (count of comments newer than this user's
+    last_seen_at on this extraction). Both args optional for back-compat
+    with callers that don't have or care about the calling user.
+    """
     return ExtractionRecord(
         id=row.id,
         filename=row.filename,
@@ -83,7 +94,50 @@ def extraction_to_record(row: Extraction) -> ExtractionRecord:
         stories=row.stories,
         nfrs=row.nfrs,
         gaps=row.gaps,
+        unread_comment_count=(
+            count_unread_comments(session, row.id, user_id)
+            if session is not None and user_id else 0
+        ),
     )
+
+
+def count_unread_comments(session: Session, extraction_id: str, user_id: str) -> int:
+    """Count comments on `extraction_id` newer than `user_id`'s last_seen_at.
+
+    Returns 0 when the user has never opened the extraction (no
+    ExtractionView row) — we treat "first visit" as "everything is new
+    but not surfaced as unread", matching the M4.5.3 client behaviour.
+    The first POST /seen is what arms unread tracking for that pair.
+    """
+    if not extraction_id or not user_id:
+        return 0
+    view = session.get(ExtractionView, (user_id, extraction_id))
+    if view is None:
+        return 0
+    stmt = (
+        select(Comment)
+        .where(Comment.extraction_id == extraction_id)
+        .where(Comment.created_at > view.last_seen_at)
+    )
+    return len(session.exec(stmt).all())
+
+
+def mark_extraction_seen(session: Session, extraction_id: str, user_id: str) -> ExtractionView:
+    """Upsert an ExtractionView row with last_seen_at = now. Returns the row."""
+    now = datetime.now(timezone.utc)
+    view = session.get(ExtractionView, (user_id, extraction_id))
+    if view is None:
+        view = ExtractionView(
+            user_id=user_id,
+            extraction_id=extraction_id,
+            last_seen_at=now,
+        )
+    else:
+        view.last_seen_at = now
+    session.add(view)
+    session.commit()
+    session.refresh(view)
+    return view
 
 
 def resolved_source_paths(row: Extraction) -> list[str]:

@@ -112,7 +112,27 @@ def list_extractions(
 
 @router.get("/{extraction_id}", response_model=ExtractionRecord)
 def get_extraction(extraction_id: str, session: SessionDep, user: UserDep) -> ExtractionRecord:
-    return extraction_to_record(_owned_extraction(session, extraction_id, user))
+    # M4.5.3.b — pass session + user_id so the response carries
+    # `unread_comment_count` for this caller.
+    return extraction_to_record(
+        _owned_extraction(session, extraction_id, user),
+        session=session,
+        user_id=user.user_id,
+    )
+
+
+# ---------------- mark seen (M4.5.3.b) ----------------
+
+
+@router.post("/{extraction_id}/seen", status_code=204)
+def mark_seen(extraction_id: str, session: SessionDep, user: UserDep) -> None:
+    """Mark this extraction as read by the calling user. Upserts the
+    ExtractionView row with last_seen_at = now so subsequent fetches see
+    `unread_comment_count: 0` until a new comment lands."""
+    from services.extractions import mark_extraction_seen
+    row = _owned_extraction(session, extraction_id, user)
+    mark_extraction_seen(session, row.id, user.user_id)
+    return None
 
 
 # ---------------- patch ----------------

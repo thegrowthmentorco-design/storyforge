@@ -111,6 +111,11 @@ class ExtractionRecord(ExtractionPayload):
     source_file_paths: list[str] = Field(default_factory=list)
     created_at: datetime
     root_id: str | None = None  # M2.6 — null for v1, set for re-runs
+    # M4.5.3.b — count of comments newer than the calling user's last
+    # seen timestamp on this extraction. 0 when the user has no
+    # ExtractionView row yet OR has seen everything. Computed at read
+    # time; not persisted on the row itself.
+    unread_comment_count: int = 0
 
 
 class ExtractionSummary(BaseModel):

@@ -297,6 +297,27 @@ class Comment(SQLModel, table=True):
     edited_at: datetime | None = Field(default=None)
 
 
+class ExtractionView(SQLModel, table=True):
+    """Per-(user, extraction) last-seen timestamp for unread comment tracking (M4.5.3.b).
+
+    Replaces the M4.5.3 localStorage-only solution so unread counts are
+    consistent across devices + share-link viewers. One row per
+    (user_id, extraction_id) pair; updated whenever the user explicitly
+    marks the extraction as read (Sidebar "N new" pill click) or — in
+    the future — passively after a stable view dwell.
+
+    `last_seen_at` defaults to row-creation time. The unread count for a
+    given extraction is `count(comments where created_at > last_seen_at)`,
+    computed in the route layer (`services/extractions.py`).
+    """
+
+    __tablename__ = "extraction_view"
+
+    user_id: str = Field(primary_key=True)
+    extraction_id: str = Field(primary_key=True, foreign_key="extraction.id")
+    last_seen_at: datetime = Field(default_factory=_utcnow)
+
+
 class GapState(SQLModel, table=True):
     """Per-gap user state (resolved / ignored / asked).
 
