@@ -3,7 +3,7 @@ import { downloadExtractionDocxApi } from '../api.js'
 import { track } from '../lib/analytics.js'
 import { buildCsv, buildJson, buildMarkdown, downloadFile, exportBaseName } from '../lib/exports.js'
 import { useToast } from './Toast.jsx'
-import { Badge, Button, IconButton } from './primitives.jsx'
+import { Badge, Button, IconButton, LivePulse } from './primitives.jsx'
 import {
   AlertTriangle,
   ChevronRight,
@@ -12,7 +12,6 @@ import {
   MoreHorizontal,
   Plug,
   RefreshCw,
-  Sparkles,
   Zap,
 } from './icons.jsx'
 
@@ -354,9 +353,10 @@ export default function TopBar({
             {extraction.filename}
           </span>
           {loading || rerunning ? (
-            <Badge tone="accent" icon={<Sparkles size={12} />}>
-              {rerunning ? 'Re-running' : 'Running'}
-            </Badge>
+            // M12.6 — LivePulse replaces the static "Running" Badge
+            // during streaming/rerunning so the active state actually
+            // reads as live.
+            <LivePulse label={rerunning ? 'Re-running' : 'Streaming'} />
           ) : extraction.live ? (
             <Badge tone="success" dot>
               Live{currentVersion ? ` · v${currentVersion}` : ' · v1'}

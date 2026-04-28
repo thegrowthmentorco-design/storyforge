@@ -265,6 +265,56 @@ export function IconTile({ children, tone = 'accent', size = 36, style }) {
 }
 
 /* =========================================================================
+   LivePulse — pulsing dot + label for "live" state surfaces
+   =========================================================================
+ *
+ * M12.6 — pattern lifted from the reference dashboard ("Live — last hour"
+ * with a pulsing green dot). Use to label a surface that's currently
+ * streaming/active — Studio's running badge during extraction, future
+ * realtime panels.
+ *
+ *   <LivePulse label="Streaming" />
+ *
+ * Dot color is `--success` (green); the outer ring pulse is keyframed
+ * in styles.css. Label is uppercase mini-text in success-ink.
+ */
+export function LivePulse({ label = 'Live', style }) {
+  return (
+    <span
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 6,
+        ...style,
+      }}
+    >
+      <span
+        aria-hidden
+        className="live-pulse-dot"
+        style={{
+          width: 8,
+          height: 8,
+          borderRadius: '50%',
+          background: 'var(--success)',
+          flexShrink: 0,
+        }}
+      />
+      <span
+        style={{
+          fontSize: 'var(--text-xs)',
+          fontWeight: 600,
+          letterSpacing: 'var(--tracking-wide)',
+          textTransform: 'uppercase',
+          color: 'var(--success-ink)',
+        }}
+      >
+        {label}
+      </span>
+    </span>
+  )
+}
+
+/* =========================================================================
    ActivityTimeline — vertical event log
    =========================================================================
  *
