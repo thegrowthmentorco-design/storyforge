@@ -519,7 +519,10 @@ a:hover {
   font-weight: 400;
   cursor: pointer;
   text-decoration: none;
-  transition: background 0.12s, color 0.12s;
+  transition:
+    background var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out);
 }
 
 .nav-link:hover {
@@ -527,10 +530,27 @@ a:hover {
   color: var(--text);
 }
 
+/* M12.1 — active state lifted from the screenshot reference: solid
+ * accent fill with white text + icon, soft shadow so the pill reads
+ * as elevated. Replaces the previous quiet bg-hover treatment that
+ * was easy to miss as "current page". */
 .nav-link.active {
-  background: var(--bg-hover);
-  color: var(--text-strong);
+  background: var(--accent-strong);
+  color: #fff;
   font-weight: 500;
+  box-shadow: 0 1px 2px rgba(79, 70, 229, 0.18), 0 4px 10px -4px rgba(79, 70, 229, 0.35);
+}
+
+.nav-link.active:hover {
+  background: var(--accent);
+  color: #fff;
+}
+
+/* The trailing count number on a NavItem (e.g. extraction count on a
+ * project row) sits in its own span — invert color when the row is
+ * active so it stays legible on the solid pill. */
+.nav-link.active span:last-child {
+  color: rgba(255, 255, 255, 0.8);
 }
 
 /* =========================================================================

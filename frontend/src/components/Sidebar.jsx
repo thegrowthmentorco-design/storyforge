@@ -46,6 +46,31 @@ function NavItem({ icon, label, to, count }) {
   )
 }
 
+/* M12.1 — Sidebar section label. Uppercase mini-heading that visually
+ * groups related nav items. Pattern lifted from the screenshot reference
+ * (OVERVIEW / MANAGE / MONITOR / SETTINGS) and adapted to our 3-group
+ * structure (WORKSPACE / SETUP / ACCOUNT). The first group skips the
+ * top margin so the brand row + workspace switcher don't crowd the
+ * label. */
+function NavGroupLabel({ children, first }) {
+  return (
+    <div
+      style={{
+        padding: '0 14px 4px',
+        marginTop: first ? 4 : 18,
+        marginBottom: 2,
+        fontSize: 10,
+        fontWeight: 600,
+        letterSpacing: 0.6,
+        textTransform: 'uppercase',
+        color: 'var(--text-soft)',
+      }}
+    >
+      {children}
+    </div>
+  )
+}
+
 function ProjectsSection() {
   const { projects, projectsLoading, refreshProjects } = useApp()
   const { toast } = useToast()
@@ -239,21 +264,24 @@ export default function Sidebar({ onNew, extractionContext }) {
         />
       </div>
 
-      {/* Scrollable nav */}
-      <div style={{ flex: 1, overflowY: 'auto', paddingTop: 6, paddingBottom: 12 }}>
+      {/* M12.1 — Scrollable nav, organized into 3 labelled groups so the
+          flat list reads as intentional clusters rather than a stack of
+          equally-weighted items. */}
+      <div style={{ flex: 1, overflowY: 'auto', paddingTop: 4, paddingBottom: 12 }}>
+        <NavGroupLabel first>Workspace</NavGroupLabel>
         <NavItem icon={<FileText size={16} />} label="Documents" to="/documents" />
         <ProjectsSection />
-        <div style={{ marginTop: 12 }}>
-          <NavItem icon={<User size={16} />} label="Account" to="/account" />
-          <NavItem icon={<Settings size={16} />} label="Settings" to="/settings" />
-          {/* M9.2 — top-level pages promoted out of Settings. Each has
-              its own route; clicking any nav item lands on a focused
-              page rather than scrolling a single mega-page. */}
-          <NavItem icon={<Sparkles size={16} />} label="Models" to="/models" />
-          <NavItem icon={<LayoutTemplate size={16} />} label="Tools" to="/tools" />
-          <NavItem icon={<Plug size={16} />} label="Integrations" to="/integrations" />
-          <NavItem icon={<HelpCircle size={16} />} label="Support" to="/support" />
-        </div>
+
+        <NavGroupLabel>Setup</NavGroupLabel>
+        <NavItem icon={<Sparkles size={16} />} label="Models" to="/models" />
+        <NavItem icon={<LayoutTemplate size={16} />} label="Tools" to="/tools" />
+        <NavItem icon={<Plug size={16} />} label="Integrations" to="/integrations" />
+
+        <NavGroupLabel>Account</NavGroupLabel>
+        <NavItem icon={<User size={16} />} label="Account" to="/account" />
+        <NavItem icon={<Settings size={16} />} label="Settings" to="/settings" />
+        <NavItem icon={<HelpCircle size={16} />} label="Support" to="/support" />
+
         {/* M8.1 — Studio context. Renders only when an extraction is open
             (App.jsx passes null otherwise). */}
         {extractionContext && <SidebarExtractionSection {...extractionContext} />}
