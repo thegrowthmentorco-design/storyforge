@@ -729,16 +729,15 @@ a:hover {
   user-select: none;
 }
 
-/* M13.2.b — two-column stage. Bulb + explainer pinned to the left
-   (cord hangs from the top of the column, like a real ceiling fixture);
-   Clerk widget vertically centered in the right column. Falls back to
-   single-column stack at narrow widths. */
+/* M13.2.b — two-column stage. M13.2.c shrinks both columns to ~480px
+   each and centers the whole grid so the bulb + form sit closer to
+   page-center (was: 50/50 split with the form pinned hard right). */
 .bulb-stage {
   flex: 1;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: minmax(360px, 520px) minmax(360px, 480px);
+  justify-content: center;
   width: 100%;
-  max-width: 1200px;
   margin: 0 auto;
   padding: 0 48px 80px;
   gap: 48px;
@@ -754,7 +753,7 @@ a:hover {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 480px;
+  min-height: 520px;
 }
 @media (max-width: 860px) {
   .bulb-stage {
@@ -775,17 +774,33 @@ a:hover {
   align-items: center;
   transform-origin: top center;
   transition: transform 220ms cubic-bezier(.34, 1.56, .64, 1);
-  outline-offset: 8px;
+  /* M13.2.c — outline removed from the button itself (was drawing a
+     yellow rectangle around the whole cord+bulb span — the "cage"
+     visible in the lit state). Focus ring relocated to the bulb wrap
+     below so keyboard users still see a clear focus target. */
 }
-.bulb-cord-btn:focus-visible {
+.bulb-cord-btn:focus-visible .bulb-svg-wrap {
   outline: 2px solid #fbbf24;
-  border-radius: 4px;
+  outline-offset: 12px;
+  border-radius: 50%;
 }
 .bulb-cord-btn.is-tugging { transform: translateY(18px) scaleY(1.04); }
 
+/* M13.2.c — gentle pendulum sway after the bulb is lit. Pivots from
+   the top of the cord (transform-origin already top center) so the
+   whole rig swings like a real pendant lamp. Excluded while tugging
+   so the spring-back animation doesn't clash. */
+@keyframes bulb-sway {
+  0%, 100% { transform: rotate(-1.2deg); }
+  50%      { transform: rotate(1.2deg); }
+}
+.bulbpage.is-lit .bulb-cord-btn:not(.is-tugging) {
+  animation: bulb-sway 4.2s ease-in-out infinite;
+}
+
 .bulb-cord-line {
   width: 2px;
-  height: 180px;
+  height: 140px;
   background: linear-gradient(180deg, transparent 0%, rgba(255,255,255,0.32) 60%, rgba(255,255,255,0.55) 100%);
   transition: background 700ms ease;
 }
@@ -796,8 +811,8 @@ a:hover {
 .bulb-svg-wrap { position: relative; pointer-events: none; }
 .bulb-halo {
   position: absolute;
-  inset: -120px;
-  background: radial-gradient(circle, rgba(252, 211, 77, 0.55) 0%, rgba(252, 211, 77, 0) 60%);
+  inset: -280px;
+  background: radial-gradient(circle, rgba(252, 211, 77, 0.75) 0%, rgba(252, 211, 77, 0.20) 35%, rgba(252, 211, 77, 0) 65%);
   opacity: 0;
   transition: opacity 800ms ease;
   pointer-events: none;
@@ -896,4 +911,5 @@ a:hover {
     transition: none !important;
   }
   .bulb-pull-hint { animation: none; }
+  .bulbpage.is-lit .bulb-cord-btn { animation: none; }
 }

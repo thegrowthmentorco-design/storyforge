@@ -26,13 +26,19 @@ export default function SignInPage() {
   const [lit, setLit] = useState(false)
   const [tugging, setTugging] = useState(false)
 
-  const pull = () => {
+  const pull = (e) => {
     if (lit) return
     setTugging(true)
     // ~250ms is the cord-snap-back duration in CSS; light up just after
     // the snap so the bulb-glow chases the cord motion (feels causal).
     window.setTimeout(() => setTugging(false), 250)
     window.setTimeout(() => setLit(true), 200)
+    // Blur the cord button so its focus ring doesn't linger as a "cage"
+    // around the lit bulb. Keyboard users land on the Clerk widget on
+    // their next Tab.
+    if (e?.currentTarget && typeof e.currentTarget.blur === 'function') {
+      e.currentTarget.blur()
+    }
   }
 
   return (
@@ -53,7 +59,7 @@ export default function SignInPage() {
             </span>
           </button>
 
-          <div className="bulb-explainer">
+          <div className="bulb-explainer" style={{ marginTop: 8 }}>
             <h1
               style={{
                 fontFamily: 'Fraunces, Georgia, serif',
@@ -62,7 +68,6 @@ export default function SignInPage() {
                 letterSpacing: '-0.02em',
                 fontWeight: 600,
                 margin: 0,
-                marginTop: 12,
               }}
             >
               StoryForge
@@ -108,7 +113,7 @@ export default function SignInPage() {
  */
 function Bulb() {
   return (
-    <svg width="90" height="130" viewBox="0 0 90 130" aria-hidden style={{ display: 'block' }}>
+    <svg width="150" height="216" viewBox="0 0 90 130" aria-hidden style={{ display: 'block' }}>
       {/* Glass envelope — round top tapering into the neck. */}
       <path
         className="bulb-glass"
