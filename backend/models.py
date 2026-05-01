@@ -269,10 +269,6 @@ class UserSettingsRead(BaseModel):
     model_default: str | None = None
     prompt_suffix: str | None = None  # M7.1 — appended to the system prompt
     updated_at: datetime | None = None
-    # M3.4.6 — server-wide BYOK_MODE so the Settings UI can hide the API-key
-    # form in 'managed' deployments and surface optional/required copy in
-    # 'choice' / 'strict' deployments.
-    byok_mode: str = "strict"
 
 
 class UserSettingsPatch(BaseModel):

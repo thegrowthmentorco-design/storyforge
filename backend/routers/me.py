@@ -44,7 +44,7 @@ from models import (
     UserSettingsPatch,
     UserSettingsRead,
 )
-from services.byok import byok_mode, decrypt_secret, encrypt_secret, key_preview
+from services.byok import decrypt_secret, encrypt_secret, key_preview
 from services.plans import get_plan
 from services.scope import apply_scope
 
@@ -57,7 +57,6 @@ UserDep = Annotated[CurrentUser, Depends(current_user)]
 
 
 def _to_read(row: UserSettings | None) -> UserSettingsRead:
-    mode = byok_mode()
     if row is None or not row.anthropic_key_encrypted:
         return UserSettingsRead(
             anthropic_key_set=False,
@@ -65,7 +64,6 @@ def _to_read(row: UserSettings | None) -> UserSettingsRead:
             model_default=row.model_default if row else None,
             prompt_suffix=row.prompt_suffix if row else None,
             updated_at=row.updated_at if row else None,
-            byok_mode=mode,
         )
     plaintext = decrypt_secret(row.anthropic_key_encrypted)
     # Decryption can return None if MASTER_KEY rotated. Treat that as "not set"
@@ -76,7 +74,6 @@ def _to_read(row: UserSettings | None) -> UserSettingsRead:
         model_default=row.model_default,
         prompt_suffix=row.prompt_suffix,
         updated_at=row.updated_at,
-        byok_mode=mode,
     )
 
 

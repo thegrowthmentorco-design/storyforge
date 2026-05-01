@@ -182,13 +182,10 @@ def extract_requirements(
     is a list of FewShotExample rows prepended as prior conversation turns
     so Claude sees concrete input → expected-output demonstrations.
     """
-    # M3.4.6 — caller (services.byok.resolve_user_byok) is now authoritative
-    # for picking the key, including the mode-aware fallback to the server's
-    # ANTHROPIC_API_KEY in 'managed' / 'choice' deployments. Strict mode
-    # passes None when the user hasn't BYOK'd, dropping us into mock mode.
-    if not api_key:
+    # BYOK key (from request header) takes precedence over the server's env key
+    effective_key = api_key or os.environ.get("ANTHROPIC_API_KEY")
+    if not effective_key:
         return _mock(filename, raw_text), None
-    effective_key = api_key
 
     effective_model = resolve_model(model)
 
