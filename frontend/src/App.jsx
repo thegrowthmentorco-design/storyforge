@@ -27,6 +27,7 @@ const ShareView = lazy(() => import('./pages/ShareView.jsx'))
 const CompareView = lazy(() => import('./pages/CompareView.jsx'))
 const SignInPage = lazy(() => import('./pages/SignInPage.jsx'))
 const SignUpPage = lazy(() => import('./pages/SignUpPage.jsx'))
+const Landing = lazy(() => import('./pages/Landing.jsx'))
 const PushToJiraModal = lazy(() => import('./components/PushToJiraModal.jsx'))
 const PushToLinearModal = lazy(() => import('./components/PushToLinearModal.jsx'))
 const PushToGitHubModal = lazy(() => import('./components/PushToGitHubModal.jsx'))
@@ -984,6 +985,22 @@ export default function App() {
         {/* M4.6 — public share view; outside the SignedIn gate so visitors
             without a Clerk account can read shared documents by URL. */}
         <Route path="/share/:token" element={<ShareView />} />
+        {/* M13.1 — `/` shows the public Landing page to signed-out
+            visitors and the studio (AuthedApp) to signed-in users.
+            All other paths require sign-in (catch-all below). */}
+        <Route
+          path="/"
+          element={
+            <>
+              <SignedIn>
+                <AuthedApp />
+              </SignedIn>
+              <SignedOut>
+                <Landing />
+              </SignedOut>
+            </>
+          }
+        />
         <Route
           path="*"
           element={
