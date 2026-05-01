@@ -629,10 +629,10 @@ function AuthedApp() {
   }, [extractionId])
   const onCommentCreate = useCallback((c) => {
     setComments((prev) => [...prev, c])
-    if (c?.author_user_id && user?.user_id && c.author_user_id !== user.user_id) {
+    if (c?.author_user_id && clerkUser?.id && c.author_user_id !== clerkUser.id) {
       setUnread((n) => n + 1)
     }
-  }, [user?.user_id])
+  }, [clerkUser?.id])
 
   // M8.1 — version chain lifted from TopBar to App-level so the Sidebar's
   // "This document" section + the (now-stripped) TopBar version picker share
