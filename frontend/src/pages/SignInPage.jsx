@@ -37,55 +37,59 @@ export default function SignInPage() {
 
   return (
     <div className={'bulbpage' + (lit ? ' is-lit' : '')}>
-      <div className="bulb-rig">
-        <button
-          type="button"
-          className={'bulb-cord-btn' + (tugging ? ' is-tugging' : '')}
-          onClick={pull}
-          aria-label={lit ? 'Light is on' : 'Pull the cord to sign in'}
-          aria-pressed={lit}
-        >
-          <span className="bulb-cord-line" aria-hidden />
-          <span className="bulb-svg-wrap">
-            <span className="bulb-halo" aria-hidden />
-            <Bulb />
-          </span>
-        </button>
+      <div className="bulb-stage">
+        <div className="bulb-stage-left">
+          <button
+            type="button"
+            className={'bulb-cord-btn' + (tugging ? ' is-tugging' : '')}
+            onClick={pull}
+            aria-label={lit ? 'Light is on' : 'Pull the cord to sign in'}
+            aria-pressed={lit}
+          >
+            <span className="bulb-cord-line" aria-hidden />
+            <span className="bulb-svg-wrap">
+              <span className="bulb-halo" aria-hidden />
+              <Bulb />
+            </span>
+          </button>
 
-        <div className="bulb-explainer">
-          <h1
-            style={{
-              fontFamily: 'Fraunces, Georgia, serif',
-              fontSize: 'clamp(28px, 4vw, 40px)',
-              lineHeight: 1.1,
-              letterSpacing: '-0.02em',
-              fontWeight: 600,
-              margin: 0,
-              marginTop: 12,
-            }}
-          >
-            StoryForge
-          </h1>
-          <p
-            style={{
-              fontSize: 15,
-              lineHeight: 1.6,
-              marginTop: 14,
-              marginBottom: 0,
-            }}
-          >
-            Drop a BRD, transcript, or messy doc — Claude pulls out user
-            stories, acceptance criteria, NFRs, and the gaps you'd otherwise
-            miss. Every artifact links back to the source quote, and one
-            click pushes them to Jira, Linear, or Notion.
-          </p>
-          <span className="bulb-pull-hint" aria-hidden>
-            <span style={{ fontSize: 18, lineHeight: 1 }}>↑</span> Pull the cord to sign in
-          </span>
+          <div className="bulb-explainer">
+            <h1
+              style={{
+                fontFamily: 'Fraunces, Georgia, serif',
+                fontSize: 'clamp(28px, 4vw, 40px)',
+                lineHeight: 1.1,
+                letterSpacing: '-0.02em',
+                fontWeight: 600,
+                margin: 0,
+                marginTop: 12,
+              }}
+            >
+              StoryForge
+            </h1>
+            <p
+              style={{
+                fontSize: 15,
+                lineHeight: 1.6,
+                marginTop: 14,
+                marginBottom: 0,
+              }}
+            >
+              Drop a BRD, transcript, or messy doc — Claude pulls out user
+              stories, acceptance criteria, NFRs, and the gaps you'd otherwise
+              miss. Every artifact links back to the source quote, and one
+              click pushes them to Jira, Linear, or Notion.
+            </p>
+            <span className="bulb-pull-hint" aria-hidden>
+              <span style={{ fontSize: 18, lineHeight: 1 }}>↑</span> Pull the cord — sign-in appears on the right
+            </span>
+          </div>
         </div>
 
-        <div className="bulb-clerk">
-          <SignIn routing="path" path="/sign-in" signUpUrl="/sign-up" />
+        <div className="bulb-stage-right">
+          <div className="bulb-clerk">
+            <SignIn routing="path" path="/sign-in" signUpUrl="/sign-up" />
+          </div>
         </div>
       </div>
 

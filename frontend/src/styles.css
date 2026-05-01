@@ -729,6 +729,42 @@ a:hover {
   user-select: none;
 }
 
+/* M13.2.b — two-column stage. Bulb + explainer pinned to the left
+   (cord hangs from the top of the column, like a real ceiling fixture);
+   Clerk widget vertically centered in the right column. Falls back to
+   single-column stack at narrow widths. */
+.bulb-stage {
+  flex: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 48px 80px;
+  gap: 48px;
+}
+.bulb-stage-left {
+  align-self: start;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.bulb-stage-right {
+  align-self: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 480px;
+}
+@media (max-width: 860px) {
+  .bulb-stage {
+    grid-template-columns: 1fr;
+    padding: 0 24px 80px;
+    gap: 24px;
+  }
+  .bulb-stage-right { min-height: 0; }
+}
+
 .bulb-cord-btn {
   background: transparent;
   border: 0;
@@ -833,11 +869,14 @@ a:hover {
 .bulbpage.is-lit .bulb-skip { display: none; }
 
 .bulb-clerk {
-  margin-top: 40px;
   opacity: 0;
   transform: translateY(16px);
   transition: opacity 600ms ease 350ms, transform 600ms ease 350ms;
   pointer-events: none;
+}
+@media (max-width: 860px) {
+  /* In stacked mode the widget needs breathing room from the explainer */
+  .bulb-clerk { margin-top: 24px; }
 }
 .bulbpage.is-lit .bulb-clerk {
   opacity: 1;
