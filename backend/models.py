@@ -116,6 +116,12 @@ class ExtractionRecord(ExtractionPayload):
     # ExtractionView row yet OR has seen everything. Computed at read
     # time; not persisted on the row itself.
     unread_comment_count: int = 0
+    # M14.1 — lens dispatcher. 'stories' (default for back-compat) means
+    # the frontend mounts the StoriesView using brief/actors/stories/nfrs/
+    # gaps fields above. 'dossier' means it mounts DossierPane reading
+    # the structured payload from `lens_payload`.
+    lens: str = "stories"
+    lens_payload: dict | None = None
 
 
 class ExtractionSummary(BaseModel):

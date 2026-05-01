@@ -97,6 +97,15 @@ class Extraction(SQLModel, table=True):
     nfrs: list[dict[str, Any]] = Field(sa_column=Column(JSON, nullable=False))
     gaps: list[dict[str, Any]] = Field(sa_column=Column(JSON, nullable=False))
 
+    # M14.1 — lens dispatcher. 'stories' (default for back-compat) uses the
+    # brief/actors/stories/nfrs/gaps columns above. Other lenses ('dossier',
+    # future ones) leave those empty and put their structured output into
+    # lens_payload. Frontend dispatches the renderer on this column.
+    lens: str = Field(default="stories", index=True)
+    lens_payload: dict[str, Any] | None = Field(
+        default=None, sa_column=Column(JSON, nullable=True),
+    )
+
 
 class PromptTemplate(SQLModel, table=True):
     """Named prompt-suffix template (M7.1.b).

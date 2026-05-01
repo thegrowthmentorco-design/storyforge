@@ -94,6 +94,10 @@ def extraction_to_record(
         stories=row.stories,
         nfrs=row.nfrs,
         gaps=row.gaps,
+        # M14.1 — surface lens + lens_payload so the frontend can mount
+        # the right renderer (DossierPane vs StoriesView).
+        lens=getattr(row, "lens", None) or "stories",
+        lens_payload=getattr(row, "lens_payload", None),
         unread_comment_count=(
             count_unread_comments(session, row.id, user_id)
             if session is not None and user_id else 0
@@ -230,6 +234,71 @@ def persist_extraction(
         stories=[s.model_dump() for s in result.stories],
         nfrs=[n.model_dump() for n in result.nfrs],
         gaps=[g.model_dump() for g in result.gaps],
+        lens="stories",
+        lens_payload=None,
+    )
+    session.add(row)
+    session.commit()
+    session.refresh(row)
+    return row
+
+
+def persist_dossier_extraction(
+    session: Session,
+    *,
+    filename: str,
+    raw_text: str,
+    dossier,  # services.lenses.dossier.DocumentDossier
+    model_used: str,
+    live: bool,
+    user_id: str = "local",
+    org_id: str | None = None,
+    project_id: str | None = None,
+    extraction_id: str | None = None,
+    created_at: datetime | None = None,
+    source_file_path: str | None = None,
+    source_file_paths: list[str] | None = None,
+    root_id: str | None = None,
+) -> Extraction:
+    """Insert one Extraction row from a DocumentDossier (M14.1).
+
+    Schema-shape decision: stories-shape JSON columns (brief / actors /
+    stories / nfrs / gaps) are populated with empty defaults. The full
+    dossier JSON lives in `lens_payload`; `lens='dossier'` tells the
+    frontend which renderer to mount.
+
+    *Folded user-stories carve-out* (M14.0 pick (b)): if the dossier's
+    `user_stories` list is non-empty (i.e. the doc was requirements-shaped
+    so the model populated it), we ALSO mirror those stories into the
+    legacy `stories` column. That keeps any back-compat code path that
+    reads `extraction.stories` directly working without dossier-awareness.
+    """
+    payload = dossier.model_dump()
+    folded_stories = payload.get("user_stories") or []
+
+    row = Extraction(
+        id=extraction_id or mint_extraction_id(),
+        filename=filename,
+        raw_text=raw_text,
+        model_used=model_used,
+        live=live,
+        user_id=user_id,
+        org_id=org_id,
+        project_id=project_id,
+        source_file_path=source_file_path,
+        source_file_paths=list(source_file_paths or []),
+        root_id=root_id,
+        created_at=created_at or datetime.now(timezone.utc),
+        # Stories-shape columns: brief mirrors dossier.brief; user_stories
+        # mirror to the stories column for back-compat; actors/nfrs/gaps
+        # left empty (those are stories-lens-only concepts).
+        brief=payload.get("brief") or {"summary": "", "tags": []},
+        actors=[],
+        stories=folded_stories,
+        nfrs=[],
+        gaps=[],
+        lens="dossier",
+        lens_payload=payload,
     )
     session.add(row)
     session.commit()
@@ -430,25 +499,48 @@ def call_claude(
     model: str | None,
     prompt_suffix: str | None = None,
     few_shot_examples: list | None = None,
-) -> tuple[ExtractionResult, str, TokenUsage | None]:
+    lens: str = "stories",
+) -> tuple[object, str, TokenUsage | None]:
     """Run extraction and translate Anthropic errors into HTTPExceptions.
 
-    Returns `(result, model_used, usage)`. `model_used` is "mock" when no key
-    was set; `usage` is None for mock calls and populated otherwise so callers
-    can persist UsageLog rows (M3.0 instrumentation).
+    Returns `(result, model_used, usage)`. The shape of `result` depends on
+    the `lens` (M14.1):
+      - `lens='stories'` (default, back-compat): result is `ExtractionResult`
+        (brief / actors / stories / nfrs / gaps).
+      - `lens='dossier'`: result is `DocumentDossier` (the M14.1 4-act narrated
+        dossier — overture, bridges, 14 sections, closing).
+
+    `model_used` is "mock" when no key was set; `usage` is None for mock calls
+    and populated otherwise so callers can persist UsageLog rows.
 
     M7.1: `prompt_suffix` is the user's saved system-prompt override.
-    M7.2: `few_shot_examples` is the user's enabled FewShotExample rows.
-    Both threaded through to `extract_requirements`; routes resolve them via
-    `services.prompts.resolve_prompt_suffix` + `services.few_shot.resolve_enabled_examples`.
+    M7.2: `few_shot_examples` is the user's enabled FewShotExample rows
+          (only used by stories lens; ignored by other lenses for now).
     """
+    from services.lenses import LENSES, normalize as normalize_lens
+    lens = normalize_lens(lens)
+
     try:
-        result, usage = extract_requirements(
-            filename, raw_text,
-            api_key=api_key, model=model,
-            prompt_suffix=prompt_suffix,
-            few_shot_examples=few_shot_examples,
-        )
+        if lens == "dossier":
+            from services.lenses.dossier import extract_dossier
+            result, usage = extract_dossier(
+                filename, raw_text,
+                api_key=api_key, model=model,
+                prompt_suffix=prompt_suffix,
+            )
+            # Treat dossier as 'live' if a usage came back (real Claude call).
+            # Mock path (no api_key) returns usage=None and the mock dossier
+            # already has placeholder content telegraphing mock mode.
+            live = usage is not None
+        else:
+            # stories lens (default, back-compat)
+            result, usage = extract_requirements(
+                filename, raw_text,
+                api_key=api_key, model=model,
+                prompt_suffix=prompt_suffix,
+                few_shot_examples=few_shot_examples,
+            )
+            live = result.live
     except anthropic.AuthenticationError:
         log.warning("anthropic authentication failed")
         detail = (
@@ -480,7 +572,7 @@ def call_claude(
         log.exception("extraction failed")
         raise HTTPException(status_code=500, detail=f"Extraction failed: {e}")
 
-    model_used = resolve_model(model) if result.live else "mock"
+    model_used = resolve_model(model) if live else "mock"
     return result, model_used, usage
 
 

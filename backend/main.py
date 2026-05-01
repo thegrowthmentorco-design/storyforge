@@ -231,6 +231,11 @@ async def extract(
     text: str | None = Form(default=None),
     filename: str | None = Form(default=None),
     project_id: str | None = Form(default=None),
+    # M14.1 — lens dispatcher. Default 'dossier' (the new narrated 4-act
+    # dossier); 'stories' for the legacy user-stories extraction (back-
+    # compat with existing API consumers + sub-paths that haven't been
+    # ported). Unknown values normalize to the default.
+    lens: str | None = Form(default=None),
     x_anthropic_key: str | None = Header(default=None, alias="X-Anthropic-Key"),
     x_storyforge_model: str | None = Header(default=None, alias="X-Storyforge-Model"),
 ) -> ExtractionRecord:
@@ -287,6 +292,10 @@ async def extract(
 
     # Anthropic errors are translated to HTTPExceptions inside `call_claude`,
     # so we let them propagate uncaught.
+    # M14.1 — normalise lens choice. Unknown values default to dossier.
+    from services.lenses import normalize as normalize_lens
+    effective_lens = normalize_lens(lens)
+
     suffix = resolve_prompt_suffix(session, user.user_id, user.org_id)  # M7.1
     examples = resolve_enabled_examples(session, user.user_id, user.org_id)  # M7.2
     result, model_used, usage = call_claude(
@@ -296,6 +305,7 @@ async def extract(
         model=effective_model,
         prompt_suffix=suffix,
         few_shot_examples=examples,
+        lens=effective_lens,
     )
 
     # Mint the id up front so the upload path can reference it before the
@@ -315,17 +325,41 @@ async def extract(
         # any reader that still keys off `source_file_path`.
         source_path = source_paths[0]
 
-    row = persist_extraction(
-        session,
-        result=result,
-        model_used=model_used,
-        user_id=user.user_id,
-        org_id=user.org_id,
-        project_id=project_id or None,
-        extraction_id=extraction_id,
-        source_file_path=source_path,
-        source_file_paths=source_paths,
-    )
+    # M14.1 — branch the persistence by lens. Stories rows go through
+    # persist_extraction (existing path); dossier rows go through
+    # persist_dossier_extraction which writes lens_payload + folds the
+    # user_stories list back into the legacy stories column.
+    if effective_lens == "dossier":
+        from services.extractions import persist_dossier_extraction
+        row = persist_dossier_extraction(
+            session,
+            filename=source_name,
+            raw_text=raw_text,
+            dossier=result,
+            model_used=model_used,
+            live=usage is not None,  # mock dossier returns usage=None
+            user_id=user.user_id,
+            org_id=user.org_id,
+            project_id=project_id or None,
+            extraction_id=extraction_id,
+            source_file_path=source_path,
+            source_file_paths=source_paths,
+        )
+        live_flag = usage is not None
+    else:
+        row = persist_extraction(
+            session,
+            result=result,
+            model_used=model_used,
+            user_id=user.user_id,
+            org_id=user.org_id,
+            project_id=project_id or None,
+            extraction_id=extraction_id,
+            source_file_path=source_path,
+            source_file_paths=source_paths,
+        )
+        live_flag = result.live
+
     record_usage(
         session,
         user_id=user.user_id,
@@ -333,7 +367,7 @@ async def extract(
         extraction_id=row.id,
         action="extract",
         model=model_used,
-        live=result.live,
+        live=live_flag,
         usage=usage,
     )
     return extraction_to_record(row)

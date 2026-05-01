@@ -116,6 +116,17 @@ def _apply_soft_migrations() -> None:
                 "ALTER TABLE extraction ADD COLUMN source_file_paths JSON DEFAULT '[]'"
             )
             conn.commit()
+        if "lens" not in ext_cols:
+            log.info("migrating: adding extraction.lens (M14.1)")
+            conn.exec_driver_sql(
+                "ALTER TABLE extraction ADD COLUMN lens VARCHAR NOT NULL DEFAULT 'stories'"
+            )
+            conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_extraction_lens ON extraction (lens)")
+            conn.commit()
+        if "lens_payload" not in ext_cols:
+            log.info("migrating: adding extraction.lens_payload (M14.1)")
+            conn.exec_driver_sql("ALTER TABLE extraction ADD COLUMN lens_payload JSON")
+            conn.commit()
 
         # ---- project ----
         proj_cols = _columns("project")
