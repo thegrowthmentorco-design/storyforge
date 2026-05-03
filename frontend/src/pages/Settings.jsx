@@ -3018,57 +3018,191 @@ function TokensSecurityRail() {
 
 /* ---- /integrations ------------------------------------------------- */
 
+/* M14.5.e — IntegrationsPage rebuilt as 2-column workspace matching
+ * the design replica. Hero header with serif "Integrations" title +
+ * teal accent underline + subtitle. Main column has 5 brand-toned
+ * connection cards (Jira / Linear / GitHub / Slack / Notion) each
+ * wrapping the existing connection-form section unchanged. Right rail
+ * has 3 informational cards (How integrations work, Supported exports,
+ * Security note).
+ */
 export function IntegrationsPage() {
   return (
-    <PageShell
-      title="Integrations"
-      description="Push extracted artifacts into the tools your team already uses."
-      icon={<Plug size={18} />}
-      wide
-    >
-      <Section
-        icon={<Plug size={16} />}
-        tone="success"
-        title="Jira"
-        description="Push extracted user stories straight into a Jira project. One issue per story; criteria included as bullet points in the description."
-      >
-        <JiraConnectionForm />
-      </Section>
-      <Section
-        icon={<Plug size={16} />}
-        tone="purple"
-        title="Linear"
-        description="Push extracted user stories into a Linear team. One issue per story; criteria as a markdown checklist in the description."
-      >
-        <LinearConnectionForm />
-      </Section>
-      <Section
-        icon={<Plug size={16} />}
-        tone="info"
-        title="GitHub Issues"
-        description="Push extracted user stories into a GitHub repo as issues. Criteria render as a clickable task list in each issue body."
-      >
-        <GitHubConnectionForm />
-      </Section>
-      <Section
-        icon={<Plug size={16} />}
-        tone="warn"
-        title="Slack"
-        description="Send unresolved gaps to a Slack channel as a Block Kit message. Webhook is bound to one channel — connect different webhooks for different channels."
-      >
-        <SlackConnectionForm />
-        <SlackAdditionalDestinations />
-      </Section>
-      <Section
-        icon={<Plug size={16} />}
-        tone="accent"
-        title="Notion"
-        description="Push extracted user stories into a Notion database. Title goes in the database's title column; the rest of the story renders as page body blocks."
-      >
-        <NotionConnectionForm />
-      </Section>
-    </PageShell>
+    <div style={modelsShell}>
+      <div style={modelsContainer}>
+        {/* Header — slightly different from Models/Tools: serif title with
+            a teal underline accent below, no IconTile (more horizontal,
+            lets the card icons carry the visual weight). */}
+        <header style={{ marginBottom: 32 }}>
+          <h1 style={{ ...modelsTitle, marginBottom: 8 }}>Integrations</h1>
+          <div
+            aria-hidden
+            style={{ width: 56, height: 3, background: 'var(--accent)', borderRadius: 2, marginBottom: 16 }}
+          />
+          <p style={{ ...modelsSubtitle, marginTop: 0 }}>
+            Connect Lucid to your team's delivery tools and push extracted artifacts directly into your workflow.
+          </p>
+        </header>
+
+        <div className="settings-split">
+          <div style={modelsMain}>
+            <IntegrationCard
+              tone="info"
+              name="Jira"
+              subtitle="Push extracted user stories into Jira issues with acceptance criteria and metadata."
+            >
+              <JiraConnectionForm />
+            </IntegrationCard>
+
+            <IntegrationCard
+              tone="purple"
+              name="Linear"
+              subtitle="Send extracted stories into a Linear team with description, labels, and acceptance criteria."
+            >
+              <LinearConnectionForm />
+            </IntegrationCard>
+
+            <IntegrationCard
+              tone="neutral"
+              name="GitHub Issues"
+              subtitle="Push extracted user stories into a GitHub repo as issues with task-list criteria."
+            >
+              <GitHubConnectionForm />
+            </IntegrationCard>
+
+            <IntegrationCard
+              tone="warn"
+              name="Slack"
+              subtitle="Send unresolved gaps to a Slack channel as a Block Kit message. One channel per webhook."
+            >
+              <SlackConnectionForm />
+              <SlackAdditionalDestinations />
+            </IntegrationCard>
+
+            <IntegrationCard
+              tone="accent"
+              name="Notion"
+              subtitle="Push extracted user stories into a Notion database with mapped properties."
+            >
+              <NotionConnectionForm />
+            </IntegrationCard>
+          </div>
+
+          <aside style={modelsRail}>
+            <HowIntegrationsWorkRail />
+            <SupportedExportsRail />
+            <IntegrationsSecurityRail />
+          </aside>
+        </div>
+      </div>
+    </div>
   )
+}
+
+// ============================================================================
+// M14.5.e — Integrations card shell + right-rail components
+// ============================================================================
+
+function IntegrationCard({ tone, name, subtitle, children }) {
+  return (
+    <div style={modelsCard}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14 }}>
+        <IconTile tone={tone} size={36}><Plug size={16} /></IconTile>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+            <div style={cardTitle}>{name}</div>
+            {/* Decorative status pill — actual connection state is rendered
+                inside the form body below. This is the "at a glance" badge
+                the screenshot shows in the top-right; can be wired to live
+                state in M14.5.e.b if desired. */}
+            <span style={statusPillIdle}>
+              <span style={{ width: 6, height: 6, borderRadius: 999, background: 'var(--text-soft)' }} />
+              Configure below
+            </span>
+          </div>
+          <div style={{ ...cardSubtitle, marginTop: 4 }}>{subtitle}</div>
+        </div>
+      </div>
+      <div style={{ marginTop: 18 }}>{children}</div>
+    </div>
+  )
+}
+
+function HowIntegrationsWorkRail() {
+  const items = [
+    'Connect once and reuse across extractions.',
+    'Push stories directly to project tools.',
+    'Credentials are encrypted and stored securely.',
+  ]
+  return (
+    <div style={railCard}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+        <span style={railIconDisc}><Plug size={14} /></span>
+        <div style={railTitle}>How integrations work</div>
+      </div>
+      <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {items.map((it) => (
+          <li key={it} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+            <span style={{ color: 'var(--success)', marginTop: 1, flexShrink: 0 }}>
+              <CheckCircle size={14} />
+            </span>
+            <span style={{ fontSize: 12.5, color: 'var(--text-muted)', lineHeight: 1.55 }}>{it}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+function SupportedExportsRail() {
+  const items = ['User stories', 'Acceptance criteria', 'Metadata', 'Tags']
+  return (
+    <div style={railCard}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+        <span style={{ ...railIconDisc, background: 'var(--purple-soft)', color: 'var(--purple-ink)' }}>
+          <FileText size={14} />
+        </span>
+        <div style={railTitle}>Supported exports</div>
+      </div>
+      <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {items.map((it) => (
+          <li key={it} style={{ display: 'flex', gap: 10, alignItems: 'center', fontSize: 13, color: 'var(--text)' }}>
+            <span aria-hidden style={{ width: 5, height: 5, borderRadius: 999, background: 'var(--accent-strong)', flexShrink: 0 }} />
+            {it}
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+function IntegrationsSecurityRail() {
+  return (
+    <div style={railCard}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+        <span style={railIconDisc}><Lock size={14} /></span>
+        <div style={railTitle}>Security</div>
+      </div>
+      <p style={{ ...railDesc, marginTop: 0 }}>
+        Tokens are encrypted at rest and only decrypted at push time.
+      </p>
+    </div>
+  )
+}
+
+const statusPillIdle = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 6,
+  padding: '3px 10px',
+  borderRadius: 999,
+  background: 'var(--bg-subtle)',
+  border: '1px solid var(--border)',
+  fontSize: 11.5,
+  fontWeight: 500,
+  color: 'var(--text-muted)',
+  whiteSpace: 'nowrap',
+  flexShrink: 0,
 }
 
 /* ---- /support ------------------------------------------------------ */
