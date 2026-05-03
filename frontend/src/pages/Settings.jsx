@@ -46,7 +46,7 @@ import { useOrganization } from '@clerk/clerk-react'
 import { useToast } from '../components/Toast.jsx'
 import { Badge, Button, Card, IconTile, Spinner } from '../components/primitives.jsx'
 import PageShell from '../components/PageShell.jsx'
-import { BookOpen, Brush, ChevronRight, Clock, Code, CheckCircle, DollarSign, Download, ExternalLink, Eye, FileText, Headphones, HelpCircle, Inbox, Info, Key, Lightbulb, Lock, Mail, Monitor, Moon, Plug, Send, Shield, Sparkles, Sun, Trash, Users, Wrench, Zap } from '../components/icons.jsx'
+import { Activity, BookOpen, Brush, ChevronRight, Clock, Code, CheckCircle, DollarSign, Download, ExternalLink, Eye, FileText, Headphones, HelpCircle, Inbox, Info, Key, Lightbulb, Lock, Mail, Monitor, Moon, Plug, Send, Settings as SettingsIcon, Shield, Sparkles, Sun, Trash, Users, Wrench, Zap } from '../components/icons.jsx'
 
 function Section({ icon, tone, title, description, comingIn, children }) {
   return (
