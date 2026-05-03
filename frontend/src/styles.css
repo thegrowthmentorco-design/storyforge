@@ -1017,3 +1017,18 @@ a:hover {
 @media (min-width: 980px) {
   .account-kpi-row { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
+
+/* M14.5.i — Documents page KPI strip. 4 cards at >= 1080px, 2 cols
+   below 880px, single column on mobile. Each card has min-width:0 so
+   long values like "1,234" don't blow the grid. */
+.documents-kpi-row {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+@media (min-width: 640px) {
+  .documents-kpi-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (min-width: 1080px) {
+  .documents-kpi-row { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}

@@ -171,17 +171,44 @@ function ProjectsSection() {
         </div>
       )}
 
-      {/* List */}
+      {/* List — M14.5.i: empty state is now a dashed-border card with a
+          folder icon + "Create your first project" affordance, matching
+          the design replica. The plain italic line was easy to miss. */}
       {!projectsLoading && projects.length === 0 && !creating && (
         <div
           style={{
-            padding: '6px 14px 4px',
-            fontSize: 11.5,
-            color: 'var(--text-soft)',
-            fontStyle: 'italic',
+            margin: '6px 12px 8px',
+            padding: '14px 14px 12px',
+            border: '1px dashed var(--border-strong)',
+            borderRadius: 'var(--radius)',
+            background: 'var(--bg-subtle)',
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: 10,
           }}
         >
-          No projects yet.
+          <FolderClosed size={16} style={{ color: 'var(--text-soft)', flexShrink: 0, marginTop: 2 }} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 2 }}>
+              No projects yet.
+            </div>
+            <button
+              type="button"
+              onClick={() => setCreating(true)}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                padding: 0,
+                color: 'var(--accent-strong)',
+                fontSize: 12.5,
+                fontWeight: 600,
+                cursor: 'pointer',
+                fontFamily: 'inherit',
+              }}
+            >
+              Create your first project
+            </button>
+          </div>
         </div>
       )}
 
@@ -404,6 +431,17 @@ function UsageBar() {
               transition: 'width .25s, background .25s',
             }}
           />
+        </div>
+        {/* M14.5.i — period label clarifies what the count counts. The
+            screenshot shows "Extractions this month" / "this trial period". */}
+        <div
+          style={{
+            fontSize: 11,
+            color: 'var(--text-soft)',
+            marginTop: 2,
+          }}
+        >
+          Extractions {period_label || 'this period'}
         </div>
         {(overFlag || nearFlag) && upgrade_to && (
           <div

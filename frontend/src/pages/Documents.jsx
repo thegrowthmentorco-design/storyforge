@@ -638,29 +638,75 @@ export default function Documents() {
           </Button>
         </div>
       ) : (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-          <h1
-            style={{
-              fontFamily: 'var(--font-display)',
-              fontSize: 'var(--text-3xl)',
-              fontWeight: 600,
-              color: 'var(--text-strong)',
-              margin: 0,
-              letterSpacing: 'var(--tracking-tight)',
-              lineHeight: 'var(--leading-tight)',
-            }}
-          >
-            Documents
-          </h1>
-          <Badge tone="neutral">
-            {query ? `${records.length} match${records.length === 1 ? '' : 'es'}` : records.length}
-          </Badge>
-          {searching && <Spinner size={14} />}
-          <div style={{ flex: 1 }} />
-          <Button variant="primary" size="sm" icon={<Plus size={13} />} onClick={() => navigate('/')}>
-            New extraction
-          </Button>
+        <div style={{ marginBottom: 24 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 6 }}>
+            <h1
+              style={{
+                fontFamily: 'var(--font-display)',
+                fontSize: 'clamp(28px, 3vw, 36px)',
+                fontWeight: 600,
+                color: 'var(--text-strong)',
+                margin: 0,
+                letterSpacing: '-0.02em',
+                lineHeight: 1.1,
+              }}
+            >
+              Documents
+            </h1>
+            <span
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                minWidth: 26,
+                height: 22,
+                padding: '0 8px',
+                borderRadius: 999,
+                background: 'var(--bg-subtle)',
+                border: '1px solid var(--border)',
+                fontSize: 12,
+                fontWeight: 600,
+                color: 'var(--text-muted)',
+                fontFamily: 'var(--font-mono)',
+              }}
+            >
+              {query ? records.length : records.length}
+            </span>
+            {searching && <Spinner size={14} />}
+            <div style={{ flex: 1 }} />
+            <button
+              type="button"
+              onClick={() => navigate('/')}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '9px 14px',
+                background: 'var(--accent-strong)',
+                color: '#fff',
+                border: 'none',
+                borderRadius: 'var(--radius)',
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: 'pointer',
+                fontFamily: 'inherit',
+                boxShadow: '0 2px 8px -2px rgba(20, 184, 166, 0.30)',
+              }}
+            >
+              <Plus size={13} />
+              New extraction
+            </button>
+          </div>
+          <p style={{ margin: 0, fontSize: 14, color: 'var(--text-muted)', lineHeight: 1.55 }}>
+            All your requirement documents and extractions in one place.
+          </p>
         </div>
+      )}
+
+      {/* M14.5.i — KPI summary strip. Computes totals across the loaded
+          records so users see workspace scale at a glance. */}
+      {!hasSelection && records.length > 0 && (
+        <DocumentsKpiStrip records={records} />
       )}
 
       {/* Search */}
@@ -1000,4 +1046,67 @@ export default function Documents() {
       </div>
     </div>
   )
+}
+
+// ============================================================================
+// M14.5.i — Documents KPI summary strip (4 cards above the filter chips)
+// ============================================================================
+
+function DocumentsKpiStrip({ records }) {
+  // Sum across loaded records — these are ExtractionSummary rows so the
+  // counts (actor_count / story_count / gap_count) come for free without
+  // hitting the per-extraction endpoint.
+  const totals = records.reduce(
+    (acc, r) => ({
+      actors: acc.actors + (r.actor_count || 0),
+      stories: acc.stories + (r.story_count || 0),
+      gaps: acc.gaps + (r.gap_count || 0),
+    }),
+    { actors: 0, stories: 0, gaps: 0 },
+  )
+  const cards = [
+    { icon: <FileText size={18} />, label: 'Documents', value: records.length, sub: 'Total documents', tone: 'accent' },
+    { icon: <Users size={18} />, label: 'Actors identified', value: totals.actors, sub: 'Across all documents', tone: 'purple' },
+    { icon: <Sparkles size={18} />, label: 'Stories generated', value: totals.stories, sub: 'Across all documents', tone: 'accent' },
+    { icon: <AlertTriangle size={18} />, label: 'Gaps detected', value: totals.gaps, sub: 'Across all documents', tone: 'warn' },
+  ]
+  return (
+    <div className="documents-kpi-row" style={{ marginBottom: 'var(--space-4)' }}>
+      {cards.map((c) => (
+        <div key={c.label} style={docKpiCard}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+            <IconTile tone={c.tone} size={36} style={{ flexShrink: 0 }}>{c.icon}</IconTile>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 12.5, color: 'var(--text-muted)', marginBottom: 4 }}>
+                {c.label}
+              </div>
+              <div style={{
+                fontFamily: 'var(--font-display)',
+                fontSize: 'clamp(20px, 2.2vw, 26px)',
+                fontWeight: 600,
+                color: 'var(--text-strong)',
+                letterSpacing: '-0.015em',
+                lineHeight: 1.1,
+                marginBottom: 4,
+              }}>
+                {c.value.toLocaleString()}
+              </div>
+              <div style={{ fontSize: 11.5, color: 'var(--text-soft)' }}>
+                {c.sub}
+              </div>
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+const docKpiCard = {
+  padding: 16,
+  background: 'var(--bg-elevated)',
+  border: '1px solid var(--border)',
+  borderRadius: 'var(--radius-lg)',
+  minWidth: 0,
+  boxShadow: 'var(--shadow-xs)',
 }
