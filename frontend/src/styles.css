@@ -985,3 +985,17 @@ a:hover {
   0%, 100% { opacity: 1; }
   50%      { opacity: 0; }
 }
+
+/* M14.5.c — Models page 2-column body. Single column < 1080px so the
+   right rail (model guide + billing + security) drops below the main
+   cards on narrow viewports; 1fr + 320px right rail at desktop widths. */
+.models-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 24px;
+}
+@media (min-width: 1080px) {
+  .models-body {
+    grid-template-columns: minmax(0, 1fr) 320px;
+  }
+}

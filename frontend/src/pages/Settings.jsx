@@ -45,7 +45,7 @@ import { useOrganization } from '@clerk/clerk-react'
 import { useToast } from '../components/Toast.jsx'
 import { Badge, Button, Card, IconTile, Spinner } from '../components/primitives.jsx'
 import PageShell from '../components/PageShell.jsx'
-import { Download, Eye, FileText, HelpCircle, Key, Monitor, Moon, Plug, Shield, Sparkles, Sun } from '../components/icons.jsx'
+import { CheckCircle, DollarSign, Download, ExternalLink, Eye, FileText, HelpCircle, Info, Key, Lock, Monitor, Moon, Plug, Send, Shield, Sparkles, Sun, Trash } from '../components/icons.jsx'
 
 function Section({ icon, tone, title, description, comingIn, children }) {
   return (
@@ -148,10 +148,14 @@ function ModelPicker({ selected, onChange }) {
     }
   }
 
+  /* M14.5.c — radio rows with right-aligned pricing column matching the
+     design replica. Default option gets a "Default" pill in the
+     pricing column (server config doesn't have a $ price). */
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       {MODEL_OPTIONS.map((opt) => {
         const isSelected = selected === opt.id
+        const isDefault = opt.id === ''
         return (
           <button
             key={opt.id || 'default'}
@@ -160,21 +164,19 @@ function ModelPicker({ selected, onChange }) {
             style={{
               display: 'flex',
               alignItems: 'flex-start',
-              gap: 12,
-              padding: 14,
+              gap: 14,
+              padding: '14px 16px',
               border: `1px solid ${isSelected ? 'var(--accent)' : 'var(--border)'}`,
               borderRadius: 'var(--radius)',
               background: isSelected ? 'var(--accent-soft)' : 'var(--bg-elevated)',
               cursor: 'pointer',
               textAlign: 'left',
-              transition: 'border-color .12s, background .12s, box-shadow .12s',
-              boxShadow: isSelected
-                ? '0 0 0 1px var(--accent), var(--shadow-xs)'
-                : 'var(--shadow-xs)',
+              transition: 'border-color .12s, background .12s',
               fontFamily: 'inherit',
               color: 'inherit',
             }}
           >
+            {/* Radio circle */}
             <span
               aria-hidden
               style={{
@@ -186,26 +188,20 @@ function ModelPicker({ selected, onChange }) {
                 alignItems: 'center',
                 justifyContent: 'center',
                 flexShrink: 0,
-                marginTop: 1,
+                marginTop: 2,
                 background: 'var(--bg-elevated)',
                 transition: 'border-color .12s',
               }}
             >
               {isSelected && (
-                <span
-                  style={{
-                    width: 9,
-                    height: 9,
-                    borderRadius: 999,
-                    background: 'var(--accent)',
-                  }}
-                />
+                <span style={{ width: 9, height: 9, borderRadius: 999, background: 'var(--accent)' }} />
               )}
             </span>
 
+            {/* Middle: name + badge inline, description below */}
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
-                <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text-strong)' }}>
+                <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-strong)' }}>
                   {opt.name}
                 </span>
                 {opt.badge && (
@@ -216,25 +212,37 @@ function ModelPicker({ selected, onChange }) {
               </div>
               <div
                 style={{
-                  fontSize: 12,
+                  fontSize: 12.5,
                   color: 'var(--text-muted)',
                   lineHeight: 1.5,
-                  marginBottom: opt.pricing ? 4 : 0,
                 }}
               >
                 {opt.description}
               </div>
-              {opt.pricing && (
-                <div
-                  style={{
-                    fontSize: 11,
-                    color: 'var(--text-soft)',
-                    fontFamily: 'var(--font-mono)',
-                  }}
-                >
-                  {opt.pricing}
-                </div>
-              )}
+            </div>
+
+            {/* Right: pricing (or "Default" pill for the server-default option) */}
+            <div style={{
+              flexShrink: 0,
+              textAlign: 'right',
+              minWidth: 110,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'flex-end',
+              gap: 2,
+            }}>
+              {opt.pricing ? (
+                <>
+                  <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-strong)', fontFamily: 'var(--font-mono)' }}>
+                    {opt.pricing.split('·')[0]?.trim()}
+                  </span>
+                  <span style={{ fontSize: 11, color: 'var(--text-soft)' }}>
+                    {opt.pricing.split('·')[1]?.trim() || 'per 1M tokens'}
+                  </span>
+                </>
+              ) : isDefault ? (
+                <Badge tone="neutral" size="sm">Default</Badge>
+              ) : null}
             </div>
           </button>
         )
@@ -397,14 +405,14 @@ function ApiKeyForm({ keySet, keyPreview, byokMode = 'strict', onSaved }) {
 
   return (
     <div>
-      {/* Status */}
+      {/* M14.5.c — status row: colored dot + status text + info icon. */}
       <div
         style={{
           display: 'flex',
           alignItems: 'center',
           gap: 8,
-          marginBottom: 12,
-          fontSize: 12,
+          marginBottom: 14,
+          fontSize: 13,
         }}
       >
         <span
@@ -413,19 +421,20 @@ function ApiKeyForm({ keySet, keyPreview, byokMode = 'strict', onSaved }) {
             height: 8,
             borderRadius: 999,
             background: keySet ? 'var(--success)' : 'var(--text-soft)',
+            flexShrink: 0,
           }}
         />
-        <span style={{ color: 'var(--text-muted)' }}>
+        <span style={{ color: keySet ? 'var(--text)' : 'var(--text-muted)', flex: 1 }}>
           {keySet ? (
             <>
-              Active — extractions use your key{' '}
+              Active — extractions use your key
               {keyPreview && (
                 <span
                   style={{
                     fontFamily: 'var(--font-mono)',
-                    fontSize: 11,
-                    color: 'var(--text-strong)',
-                    marginLeft: 4,
+                    fontSize: 11.5,
+                    color: 'var(--text-soft)',
+                    marginLeft: 8,
                   }}
                 >
                   ({keyPreview})
@@ -436,19 +445,44 @@ function ApiKeyForm({ keySet, keyPreview, byokMode = 'strict', onSaved }) {
             inactiveCopy
           )}
         </span>
+        <span
+          aria-label="More info"
+          title="Status reflects whether your stored key is active for live extractions."
+          style={{
+            color: 'var(--text-soft)',
+            display: 'inline-flex',
+            cursor: 'help',
+          }}
+        >
+          <Info size={14} />
+        </span>
       </div>
+
+      {/* Field label */}
+      <label
+        style={{
+          fontSize: 11.5,
+          fontWeight: 600,
+          color: 'var(--text-muted)',
+          letterSpacing: '0.04em',
+          textTransform: 'uppercase',
+          display: 'block',
+          marginBottom: 6,
+        }}
+      >
+        API key
+      </label>
 
       {/* Input */}
       <div
         style={{
           display: 'flex',
           alignItems: 'center',
-          padding: '0 10px',
+          padding: '0 12px',
           background: 'var(--bg-elevated)',
-          border: '1px solid var(--border)',
+          border: '1px solid var(--border-strong)',
           borderRadius: 'var(--radius)',
           gap: 6,
-          boxShadow: 'var(--shadow-xs)',
         }}
       >
         <input
@@ -461,7 +495,7 @@ function ApiKeyForm({ keySet, keyPreview, byokMode = 'strict', onSaved }) {
           disabled={saving}
           style={{
             flex: 1,
-            height: 38,
+            height: 42,
             border: 'none',
             background: 'transparent',
             fontSize: 13,
@@ -479,7 +513,7 @@ function ApiKeyForm({ keySet, keyPreview, byokMode = 'strict', onSaved }) {
           style={{
             background: 'transparent',
             border: 'none',
-            padding: 4,
+            padding: 6,
             borderRadius: 4,
             color: 'var(--text-muted)',
             cursor: 'pointer',
@@ -488,43 +522,84 @@ function ApiKeyForm({ keySet, keyPreview, byokMode = 'strict', onSaved }) {
             justifyContent: 'center',
           }}
         >
-          <Eye size={14} />
+          <Eye size={15} />
         </button>
       </div>
 
-      {/* Actions */}
-      <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
-        <Button variant="secondary" size="sm" loading={testing} onClick={onTest} disabled={!trimmed || saving}>
+      {/* Actions — three buttons matching the design replica:
+          Test connection (ghost) · Save key (solid teal primary) · Remove (red ghost). */}
+      <div style={{ display: 'flex', gap: 10, marginTop: 16, flexWrap: 'wrap' }}>
+        <button
+          type="button"
+          onClick={onTest}
+          disabled={!trimmed || saving || testing}
+          style={apiKeyBtnGhost}
+        >
+          <Sparkles size={13} />
           {testing ? 'Testing…' : 'Test connection'}
-        </Button>
-        <Button variant="primary" size="sm" loading={saving} disabled={!dirty || saving} onClick={onSave}>
-          {keySet ? 'Replace' : 'Save'}
-        </Button>
+        </button>
+        <button
+          type="button"
+          onClick={onSave}
+          disabled={!dirty || saving}
+          style={{
+            ...apiKeyBtnPrimary,
+            opacity: (!dirty || saving) ? 0.55 : 1,
+            cursor: (!dirty || saving) ? 'not-allowed' : 'pointer',
+          }}
+        >
+          <Shield size={13} />
+          {saving ? 'Saving…' : (keySet ? 'Replace key' : 'Save key')}
+        </button>
         {keySet && (
-          <Button variant="ghost" size="sm" onClick={onRemove} disabled={saving}>
+          <button
+            type="button"
+            onClick={onRemove}
+            disabled={saving}
+            style={apiKeyBtnDanger}
+          >
+            <Trash size={13} />
             Remove
-          </Button>
+          </button>
         )}
       </div>
-
-      <p
-        style={{
-          fontSize: 11.5,
-          color: 'var(--text-soft)',
-          marginTop: 14,
-          marginBottom: 0,
-          lineHeight: 1.55,
-        }}
-      >
-        Encrypted server-side with Fernet (AES-128-CBC + HMAC) and decrypted only at extract time.
-        The key never leaves the backend in plaintext after Save. Get a key at{' '}
-        <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener noreferrer">
-          console.anthropic.com
-        </a>
-        .
-      </p>
     </div>
   )
+}
+
+const apiKeyBtnBase = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: 6,
+  padding: '8px 14px',
+  borderRadius: 'var(--radius)',
+  fontSize: 13,
+  fontWeight: 600,
+  fontFamily: 'inherit',
+  cursor: 'pointer',
+  transition: 'background var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out)',
+}
+
+const apiKeyBtnGhost = {
+  ...apiKeyBtnBase,
+  background: 'var(--bg-elevated)',
+  color: 'var(--text-strong)',
+  border: '1px solid var(--border-strong)',
+}
+
+const apiKeyBtnPrimary = {
+  ...apiKeyBtnBase,
+  background: 'var(--accent-strong)',
+  color: '#fff',
+  border: '1px solid var(--accent-strong)',
+}
+
+const apiKeyBtnDanger = {
+  ...apiKeyBtnBase,
+  background: 'var(--bg-elevated)',
+  color: 'var(--danger-ink)',
+  border: '1px solid var(--danger-soft)',
 }
 
 /* M6.2.c — scope picker shared by all 5 connection forms. Only renders
@@ -2404,6 +2479,13 @@ export default function Settings() {
 
 /* ---- /models ------------------------------------------------------- */
 
+/* M14.5.c — ModelsPage rebuilt as a 2-column layout (main + right rail)
+ * matching the design replica: API key card with Shield icon disc, status
+ * row, three buttons (Test connection / Save key / Remove); Choose-a-
+ * model card with radio rows; right rail with "When to use each model" +
+ * "How billing works" + security note. Bypasses PageShell because that
+ * shell forces a single centered column with a max-width of 720/960.
+ */
 export function ModelsPage() {
   const [serverSettings, setServerSettings] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -2421,51 +2503,345 @@ export function ModelsPage() {
   }, [])
 
   return (
-    <PageShell
-      title="Models"
-      description="Bring your own Anthropic API key and pick which Claude model runs your extractions."
-      icon={<Sparkles size={18} />}
-    >
-      <Section
-        icon={<Shield size={16} />}
-        tone="accent"
-        title="API"
-        description="Bring your own Anthropic API key. Encrypted server-side and only decrypted at extract time."
-      >
-        {loading ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-muted)', fontSize: 13 }}>
-            <Spinner size={14} /> Loading settings…
+    <div style={modelsShell}>
+      <div style={modelsContainer}>
+        {/* Page header */}
+        <header style={modelsHeader}>
+          <IconTile tone="accent" size={44} style={{ flexShrink: 0 }}>
+            <Sparkles size={20} />
+          </IconTile>
+          <div>
+            <h1 style={modelsTitle}>Models</h1>
+            <p style={modelsSubtitle}>
+              Bring your own Anthropic API key and choose which Claude model runs your extractions.
+            </p>
           </div>
+        </header>
+
+        {/* 2-column body — see .models-body in styles.css for the
+            responsive grid (single column < 1080px, 1fr + 320px above). */}
+        <div className="models-body">
+          {/* MAIN COLUMN */}
+          <div style={modelsMain}>
+            {/* API key card */}
+            <ApiKeyCardShell loading={loading} error={error}>
+              <ApiKeyForm
+                keySet={!!serverSettings?.anthropic_key_set}
+                keyPreview={serverSettings?.anthropic_key_preview || null}
+                byokMode={serverSettings?.byok_mode || 'strict'}
+                onSaved={(s) => setServerSettings(s)}
+              />
+            </ApiKeyCardShell>
+
+            {/* Choose a model card */}
+            <ChooseModelCardShell loading={loading}>
+              <ModelPicker
+                selected={serverSettings?.model_default || ''}
+                onChange={(model) => setServerSettings((s) => ({ ...(s || {}), model_default: model || null }))}
+              />
+            </ChooseModelCardShell>
+          </div>
+
+          {/* RIGHT RAIL */}
+          <aside style={modelsRail}>
+            <ModelGuideRail />
+            <BillingRailCard />
+            <SecurityRailCard />
+          </aside>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ============================================================================
+// M14.5.c — ModelsPage layout primitives + sub-components
+// ============================================================================
+
+function ApiKeyCardShell({ loading, error, children }) {
+  return (
+    <div style={modelsCard}>
+      <div style={cardHeader}>
+        <IconTile tone="accent" size={36}><Shield size={16} /></IconTile>
+        <div>
+          <div style={cardTitle}>API key</div>
+          <div style={cardSubtitle}>
+            Bring your own Anthropic API key. It's encrypted server-side and only decrypted at extract time.
+          </div>
+        </div>
+      </div>
+      <div style={{ marginTop: 18 }}>
+        {loading ? (
+          <div style={loadingRow}><Spinner size={14} /> Loading settings…</div>
         ) : error ? (
           <div style={{ fontSize: 13, color: 'var(--danger-ink)' }}>{error}</div>
-        ) : (
-          <ApiKeyForm
-            keySet={!!serverSettings?.anthropic_key_set}
-            keyPreview={serverSettings?.anthropic_key_preview || null}
-            byokMode={serverSettings?.byok_mode || 'strict'}
-            onSaved={(s) => setServerSettings(s)}
-          />
-        )}
-      </Section>
-      <Section
-        icon={<Sparkles size={16} />}
-        tone="accent"
-        title="Model"
-        description="Choose which Claude model runs your extractions. Pricing is shown per million tokens of input / output."
-      >
-        {loading ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-muted)', fontSize: 13 }}>
-            <Spinner size={14} /> Loading…
-          </div>
-        ) : (
-          <ModelPicker
-            selected={serverSettings?.model_default || ''}
-            onChange={(model) => setServerSettings((s) => ({ ...(s || {}), model_default: model || null }))}
-          />
-        )}
-      </Section>
-    </PageShell>
+        ) : children}
+      </div>
+      <div style={cardFooterNote}>
+        Keys are encrypted with Fernet (AES-128-CBC + HMAC) and decrypted only at extract time.
+        Your key never leaves our servers in plaintext. Learn more at{' '}
+        <a
+          href="https://console.anthropic.com"
+          target="_blank"
+          rel="noopener noreferrer"
+          style={cardFooterLink}
+        >
+          console.anthropic.com <ExternalLink size={11} />
+        </a>
+      </div>
+    </div>
   )
+}
+
+function ChooseModelCardShell({ loading, children }) {
+  return (
+    <div style={modelsCard}>
+      <div style={cardHeader}>
+        <IconTile tone="accent" size={36}><Sparkles size={16} /></IconTile>
+        <div>
+          <div style={cardTitle}>Choose a model</div>
+          <div style={cardSubtitle}>
+            Select which Claude model should run your extractions. Pricing is shown per million tokens.
+          </div>
+        </div>
+      </div>
+      <div style={{ marginTop: 18 }}>
+        {loading ? (
+          <div style={loadingRow}><Spinner size={14} /> Loading…</div>
+        ) : children}
+      </div>
+    </div>
+  )
+}
+
+function ModelGuideRail() {
+  return (
+    <div style={railCard}>
+      <div style={railTitle}>When to use each model</div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 14 }}>
+        <div>
+          <div style={{ ...railModelName, color: '#9333ea' }}>Claude Opus 4.7</div>
+          <p style={railDesc}>
+            Use for the most complex documents, nuanced instructions, or when quality is critical.
+          </p>
+        </div>
+        <div>
+          <div style={{ ...railModelName, color: 'var(--accent-strong)' }}>Claude Sonnet 4.6</div>
+          <p style={railDesc}>
+            Great default for most extractions with strong accuracy and speed.
+          </p>
+        </div>
+        <div>
+          <div style={{ ...railModelName, color: 'var(--text-strong)' }}>Server default</div>
+          <p style={railDesc}>
+            Follows your server configuration. Useful for team-wide consistency.
+          </p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function BillingRailCard() {
+  return (
+    <div style={railCard}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+        <span style={railIconDisc}><DollarSign size={14} /></span>
+        <div style={railTitle}>How billing works</div>
+      </div>
+      <p style={railDesc}>
+        You're billed directly by Anthropic for API usage based on the model you choose.
+      </p>
+      <a
+        href="https://www.anthropic.com/pricing"
+        target="_blank"
+        rel="noopener noreferrer"
+        style={railLink}
+      >
+        View pricing details <ExternalLink size={11} />
+      </a>
+    </div>
+  )
+}
+
+function SecurityRailCard() {
+  return (
+    <div style={{ ...railCard, background: 'var(--bg-subtle)' }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+        <span style={{ ...railIconDisc, background: 'transparent', color: 'var(--text-muted)' }}>
+          <Lock size={14} />
+        </span>
+        <p style={{ ...railDesc, marginTop: 0 }}>
+          Your API key is stored securely and is never shared with third parties.
+        </p>
+      </div>
+    </div>
+  )
+}
+
+// ---- styles for ModelsPage layout ----
+
+const modelsShell = {
+  flex: 1,
+  overflow: 'auto',
+  background: 'var(--bg)',
+  minHeight: '100%',
+}
+
+const modelsContainer = {
+  width: '100%',
+  maxWidth: 1280,
+  margin: '0 auto',
+  padding: 'clamp(28px, 4vw, 48px) clamp(20px, 3vw, 40px) 80px',
+}
+
+const modelsHeader = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 14,
+  marginBottom: 32,
+}
+
+const modelsTitle = {
+  margin: 0,
+  fontFamily: 'var(--font-display)',
+  fontSize: 'clamp(28px, 3vw, 36px)',
+  fontWeight: 600,
+  color: 'var(--text-strong)',
+  letterSpacing: '-0.02em',
+  lineHeight: 1.1,
+}
+
+const modelsSubtitle = {
+  margin: '6px 0 0',
+  fontSize: 14,
+  color: 'var(--text-muted)',
+  lineHeight: 1.55,
+}
+
+// Body uses a CSS class (.models-body) defined in styles.css so the
+// grid can react to viewport resize via a media query — runtime JS
+// matchMedia at module-load wouldn't track resize.
+
+const modelsMain = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 20,
+  minWidth: 0,
+}
+
+const modelsRail = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 16,
+  minWidth: 0,
+}
+
+const modelsCard = {
+  background: 'var(--bg-elevated)',
+  border: '1px solid var(--border)',
+  borderRadius: 'var(--radius-lg)',
+  padding: 24,
+  boxShadow: 'var(--shadow-xs)',
+}
+
+const cardHeader = {
+  display: 'flex',
+  alignItems: 'flex-start',
+  gap: 14,
+}
+
+const cardTitle = {
+  fontFamily: 'var(--font-display)',
+  fontSize: 19,
+  fontWeight: 600,
+  color: 'var(--text-strong)',
+  letterSpacing: '-0.01em',
+  lineHeight: 1.3,
+}
+
+const cardSubtitle = {
+  marginTop: 4,
+  fontSize: 13.5,
+  color: 'var(--text-muted)',
+  lineHeight: 1.55,
+  maxWidth: 600,
+}
+
+const loadingRow = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 8,
+  color: 'var(--text-muted)',
+  fontSize: 13,
+}
+
+const cardFooterNote = {
+  marginTop: 18,
+  paddingTop: 14,
+  borderTop: '1px solid var(--border)',
+  fontSize: 11.5,
+  color: 'var(--text-soft)',
+  lineHeight: 1.55,
+}
+
+const cardFooterLink = {
+  color: 'var(--accent-strong)',
+  textDecoration: 'none',
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 3,
+  fontWeight: 500,
+}
+
+const railCard = {
+  background: 'var(--bg-elevated)',
+  border: '1px solid var(--border)',
+  borderRadius: 'var(--radius-lg)',
+  padding: 18,
+}
+
+const railTitle = {
+  fontSize: 14,
+  fontWeight: 600,
+  color: 'var(--text-strong)',
+  letterSpacing: '-0.005em',
+}
+
+const railModelName = {
+  fontSize: 13.5,
+  fontWeight: 600,
+  marginBottom: 4,
+}
+
+const railDesc = {
+  margin: 0,
+  fontSize: 12.5,
+  color: 'var(--text-muted)',
+  lineHeight: 1.55,
+}
+
+const railLink = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 4,
+  marginTop: 10,
+  fontSize: 12.5,
+  fontWeight: 600,
+  color: 'var(--accent-strong)',
+  textDecoration: 'none',
+}
+
+const railIconDisc = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  width: 28,
+  height: 28,
+  borderRadius: 'var(--radius-sm)',
+  background: 'var(--accent-soft)',
+  color: 'var(--accent-ink)',
+  flexShrink: 0,
 }
 
 /* ---- /tools -------------------------------------------------------- */

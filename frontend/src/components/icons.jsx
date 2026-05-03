@@ -300,6 +300,36 @@ export const Edit = (p) => (
   </I>
 )
 
+export const Info = (p) => (
+  <I {...p}>
+    <circle cx="12" cy="12" r="10" />
+    <line x1="12" y1="16" x2="12" y2="12" />
+    <line x1="12" y1="8" x2="12.01" y2="8" />
+  </I>
+)
+
+export const DollarSign = (p) => (
+  <I {...p}>
+    <line x1="12" y1="1" x2="12" y2="23" />
+    <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+  </I>
+)
+
+export const Lock = (p) => (
+  <I {...p}>
+    <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+    <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+  </I>
+)
+
+export const ExternalLink = (p) => (
+  <I {...p}>
+    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+    <polyline points="15 3 21 3 21 9" />
+    <line x1="10" y1="14" x2="21" y2="3" />
+  </I>
+)
+
 export const Trash = (p) => (
   <I {...p}>
     <polyline points="3 6 5 6 21 6" />
