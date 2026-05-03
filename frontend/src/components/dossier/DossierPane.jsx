@@ -29,9 +29,13 @@
  *     active-chapter highlighting yet — M14.1.c polish)
  */
 import React, { useEffect, useRef, useState } from 'react'
+import { ConfidenceBadge, GlossaryTermified, SourceQuote } from './annotations.jsx'
 
 export default function DossierPane({ extraction }) {
   const dossier = extraction?.lens_payload
+  // M14.2 — glossary terms feed the GlossaryTermified component everywhere
+  // text renders. Pulled once so every section uses the same list.
+  const glossaryTerms = dossier?.glossary || []
   // M14.1.c — scrollspy: track which chapter is currently in viewport so
   // the sticky nav highlights it. The pane itself is the scroll container
   // (paneShell has overflow:auto), so we observe relative to scrollerRef
@@ -76,11 +80,11 @@ export default function DossierPane({ extraction }) {
         <Overture text={dossier.overture} />
 
         <Chapter id="orient" roman="I" title="Orient" intro={dossier.orient_intro}>
-          <BriefSection brief={dossier.brief} />
+          <BriefSection brief={dossier.brief} terms={glossaryTerms} />
           <Bridge text={dossier.bridge_brief_to_tldr} />
-          <TLDRLadder ladder={dossier.tldr_ladder} />
+          <TLDRLadder ladder={dossier.tldr_ladder} terms={glossaryTerms} />
           <Bridge text={dossier.bridge_tldr_to_5w1h} />
-          <FiveW1H w={dossier.five_w_one_h} />
+          <FiveW1H w={dossier.five_w_one_h} terms={glossaryTerms} />
         </Chapter>
 
         <Bridge text={dossier.bridge_5w1h_to_structure} />
@@ -89,32 +93,33 @@ export default function DossierPane({ extraction }) {
           <Bridge text={dossier.bridge_glossary_to_mindmap} />
           <MindmapTree mindmap={dossier.mindmap} />
           <Bridge text={dossier.bridge_mindmap_to_domain} />
-          <DomainGrid domain={dossier.domain} />
+          <DomainGrid domain={dossier.domain} terms={glossaryTerms} />
           <Bridge text={dossier.bridge_domain_to_systems} />
-          <SystemsView systems={dossier.systems} />
+          <SystemsView systems={dossier.systems} terms={glossaryTerms} />
         </Chapter>
 
         <Bridge text={dossier.bridge_systems_to_interrogate} />
         <Chapter id="interrogate" roman="III" title="Interrogate" intro={dossier.interrogate_intro}>
-          <FiveWhys steps={dossier.five_whys} />
+          <FiveWhys steps={dossier.five_whys} terms={glossaryTerms} />
           <Bridge text={dossier.bridge_whys_to_assumptions} />
-          <AssumptionsAudit items={dossier.assumptions} />
+          <AssumptionsAudit items={dossier.assumptions} terms={glossaryTerms} />
           <Bridge text={dossier.bridge_assumptions_to_inversion} />
-          <InversionList items={dossier.inversion} />
+          <InversionList items={dossier.inversion} terms={glossaryTerms} />
           <Bridge text={dossier.bridge_inversion_to_questions} />
-          <BetterQuestions items={dossier.better_questions} />
+          <BetterQuestions items={dossier.better_questions} terms={glossaryTerms} />
         </Chapter>
 
         <Bridge text={dossier.bridge_questions_to_act} />
         <Chapter id="act" roman="IV" title="Act" intro={dossier.act_intro}>
-          <ActionItems items={dossier.action_items} />
+          <ActionItems items={dossier.action_items} terms={glossaryTerms} />
           <DecisionsRecord
             made={dossier.decisions_made}
             open={dossier.decisions_open}
+            terms={glossaryTerms}
           />
-          <WhatToRevisit items={dossier.what_to_revisit} />
+          <WhatToRevisit items={dossier.what_to_revisit} terms={glossaryTerms} />
           {dossier.user_stories && dossier.user_stories.length > 0 && (
-            <UserStoriesSection stories={dossier.user_stories} />
+            <UserStoriesSection stories={dossier.user_stories} terms={glossaryTerms} />
           )}
         </Chapter>
 
@@ -387,12 +392,12 @@ function SectionShell({ title, children }) {
   )
 }
 
-function BriefSection({ brief }) {
+function BriefSection({ brief, terms }) {
   if (!brief) return null
   return (
     <SectionShell title="Brief">
       <p style={{ margin: 0, fontSize: 15, lineHeight: 1.6, color: 'var(--text)' }}>
-        {brief.summary}
+        <GlossaryTermified text={brief.summary} terms={terms} />
       </p>
       {brief.tags && brief.tags.length > 0 && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 14 }}>
@@ -421,7 +426,7 @@ function BriefSection({ brief }) {
 // Section: TLDR Ladder
 // ============================================================================
 
-function TLDRLadder({ ladder }) {
+function TLDRLadder({ ladder, terms }) {
   if (!ladder) return null
   const rows = [
     { label: '1 line', text: ladder.one_line },
@@ -448,7 +453,7 @@ function TLDRLadder({ ladder }) {
               {r.label}
             </span>
             <p style={{ margin: 0, fontSize: 14, lineHeight: 1.55, color: 'var(--text)', flex: 1 }}>
-              {r.text}
+              <GlossaryTermified text={r.text} terms={terms} />
             </p>
           </div>
         ))}
@@ -461,7 +466,7 @@ function TLDRLadder({ ladder }) {
 // Section: 5W1H
 // ============================================================================
 
-function FiveW1H({ w }) {
+function FiveW1H({ w, terms }) {
   if (!w) return null
   const cells = [
     { k: 'WHO', v: w.who },
@@ -503,7 +508,7 @@ function FiveW1H({ w }) {
               {c.k}
             </div>
             <p style={{ margin: 0, fontSize: 13.5, lineHeight: 1.5, color: 'var(--text)' }}>
-              {c.v}
+              <GlossaryTermified text={c.v} terms={terms} />
             </p>
           </div>
         ))}
@@ -601,7 +606,7 @@ const branchTick = {
 // Section: Domain Map (7-card grid)
 // ============================================================================
 
-function DomainGrid({ domain }) {
+function DomainGrid({ domain, terms }) {
   if (!domain) return null
   const branches = [
     { k: 'Business Purpose', v: domain.business_purpose },
@@ -643,7 +648,9 @@ function DomainGrid({ domain }) {
             </div>
             <ul style={{ margin: 0, paddingLeft: 16, fontSize: 13, lineHeight: 1.5, color: 'var(--text)' }}>
               {(b.v?.points || []).map((p, i) => (
-                <li key={i} style={{ marginBottom: 3 }}>{p}</li>
+                <li key={i} style={{ marginBottom: 3 }}>
+                  <GlossaryTermified text={p} terms={terms} />
+                </li>
               ))}
             </ul>
           </div>
@@ -657,7 +664,7 @@ function DomainGrid({ domain }) {
 // Section: Systems View (entities + flows + feedback loops)
 // ============================================================================
 
-function SystemsView({ systems }) {
+function SystemsView({ systems, terms }) {
   if (!systems) return null
   const { entities = [], flows = [], feedback_loops = [] } = systems
   if (!entities.length && !flows.length && !feedback_loops.length) return null
@@ -672,7 +679,9 @@ function SystemsView({ systems }) {
           {entities.map((e, i) => (
             <div key={i} style={{ padding: '8px 12px', background: 'var(--bg-subtle)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
               <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--text-strong)' }}>{e.name}</div>
-              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>{e.role}</div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
+                <GlossaryTermified text={e.role} terms={terms} />
+              </div>
             </div>
           ))}
         </div>
@@ -685,7 +694,7 @@ function SystemsView({ systems }) {
               <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-strong)' }}>{f.from_entity}</span>{' '}
               <span style={{ color: 'var(--text-soft)' }}>→</span>{' '}
               <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-strong)' }}>{f.to_entity}</span>{' '}
-              <span style={{ color: 'var(--text-muted)' }}>· {f.label}</span>
+              <span style={{ color: 'var(--text-muted)' }}>· <GlossaryTermified text={f.label} terms={terms} /></span>
             </li>
           ))}
         </ul>
@@ -694,7 +703,9 @@ function SystemsView({ systems }) {
       {feedback_loops.length > 0 && (
         <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13, lineHeight: 1.55, color: 'var(--text)' }}>
           {feedback_loops.map((l, i) => (
-            <li key={i} style={{ marginBottom: 4 }}>{l.description}</li>
+            <li key={i} style={{ marginBottom: 4 }}>
+              <GlossaryTermified text={l.description} terms={terms} />
+            </li>
           ))}
         </ul>
       )}
@@ -714,7 +725,7 @@ function SubsectionHeader({ children }) {
 // Section: 5 Whys (chain)
 // ============================================================================
 
-function FiveWhys({ steps }) {
+function FiveWhys({ steps, terms }) {
   if (!steps || steps.length === 0) return null
   return (
     <SectionShell title="5 Whys">
@@ -740,26 +751,16 @@ function FiveWhys({ steps }) {
               {i + 1}
             </div>
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-strong)', marginBottom: 4 }}>
-                {s.question}
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
+                <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-strong)', flex: 1 }}>
+                  <GlossaryTermified text={s.question} terms={terms} />
+                </div>
+                <ConfidenceBadge sourced={!!s.evidence} />
               </div>
               <div style={{ fontSize: 13.5, color: 'var(--text)', lineHeight: 1.55 }}>
-                → {s.answer}
+                → <GlossaryTermified text={s.answer} terms={terms} />
               </div>
-              {s.evidence && (
-                <blockquote
-                  style={{
-                    margin: '8px 0 0',
-                    padding: '6px 12px',
-                    borderLeft: '2px solid var(--border-strong)',
-                    fontSize: 12.5,
-                    fontStyle: 'italic',
-                    color: 'var(--text-muted)',
-                  }}
-                >
-                  “{s.evidence}”
-                </blockquote>
-              )}
+              <SourceQuote text={s.evidence} />
             </div>
           </li>
         ))}
@@ -772,7 +773,7 @@ function FiveWhys({ steps }) {
 // Section: Assumptions Audit
 // ============================================================================
 
-function AssumptionsAudit({ items }) {
+function AssumptionsAudit({ items, terms }) {
   if (!items || items.length === 0) return null
   const toneFor = (lvl) => ({
     high: { bg: 'var(--danger-soft)', fg: 'var(--danger-ink)' },
@@ -797,7 +798,7 @@ function AssumptionsAudit({ items }) {
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' }}>
                 <p style={{ margin: 0, fontSize: 14, color: 'var(--text-strong)', fontWeight: 500, flex: 1 }}>
-                  {a.assumption}
+                  <GlossaryTermified text={a.assumption} terms={terms} />
                 </p>
                 <span
                   style={{
@@ -816,7 +817,7 @@ function AssumptionsAudit({ items }) {
                 </span>
               </div>
               <p style={{ margin: '6px 0 0', fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.5 }}>
-                {a.risk_explanation}
+                <GlossaryTermified text={a.risk_explanation} terms={terms} />
               </p>
             </div>
           )
@@ -830,7 +831,7 @@ function AssumptionsAudit({ items }) {
 // Section: Inversion (failure modes)
 // ============================================================================
 
-function InversionList({ items }) {
+function InversionList({ items, terms }) {
   if (!items || items.length === 0) return null
   return (
     <SectionShell title="Inversion · what could go catastrophically wrong">
@@ -839,7 +840,7 @@ function InversionList({ items }) {
           <li key={i} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
             <span style={{ color: 'var(--danger-ink)', fontFamily: 'var(--font-mono)', flexShrink: 0, marginTop: 2 }}>×</span>
             <p style={{ margin: 0, fontSize: 14, color: 'var(--text)', lineHeight: 1.55, flex: 1 }}>
-              {f.scenario}
+              <GlossaryTermified text={f.scenario} terms={terms} />
             </p>
             {f.likelihood && (
               <span
@@ -868,7 +869,7 @@ function InversionList({ items }) {
 // Section: Better Questions
 // ============================================================================
 
-function BetterQuestions({ items }) {
+function BetterQuestions({ items, terms }) {
   if (!items || items.length === 0) return null
   return (
     <SectionShell title="Better Questions">
@@ -876,11 +877,11 @@ function BetterQuestions({ items }) {
         {items.map((q, i) => (
           <li key={i}>
             <p style={{ margin: 0, fontSize: 14, fontWeight: 500, color: 'var(--text-strong)', lineHeight: 1.5 }}>
-              {i + 1}. {q.question}
+              {i + 1}. <GlossaryTermified text={q.question} terms={terms} />
             </p>
             {q.why_it_matters && (
               <p style={{ margin: '4px 0 0 18px', fontSize: 12.5, color: 'var(--text-muted)', fontStyle: 'italic' }}>
-                {q.why_it_matters}
+                <GlossaryTermified text={q.why_it_matters} terms={terms} />
               </p>
             )}
           </li>
@@ -894,7 +895,7 @@ function BetterQuestions({ items }) {
 // Section: Action Items
 // ============================================================================
 
-function ActionItems({ items }) {
+function ActionItems({ items, terms }) {
   if (!items || items.length === 0) return null
   return (
     <SectionShell title="Action Items">
@@ -921,7 +922,15 @@ function ActionItems({ items }) {
                   {a.owner}
                 </span>
               </td>
-              <td style={{ ...tdStyle, color: 'var(--text)' }}>{a.action}</td>
+              <td style={{ ...tdStyle, color: 'var(--text)' }}>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <GlossaryTermified text={a.action} terms={terms} />
+                  </span>
+                  <ConfidenceBadge sourced={!!a.source} />
+                </div>
+                <SourceQuote text={a.source} />
+              </td>
               <td style={{ ...tdStyle, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{a.when}</td>
             </tr>
           ))}
@@ -952,7 +961,7 @@ const tdStyle = {
 // Section: Decisions Made / Open
 // ============================================================================
 
-function DecisionsRecord({ made = [], open = [] }) {
+function DecisionsRecord({ made = [], open = [], terms }) {
   if (!made.length && !open.length) return null
   return (
     <SectionShell title="Decisions">
@@ -961,7 +970,9 @@ function DecisionsRecord({ made = [], open = [] }) {
           <SubsectionHeader>Decisions made</SubsectionHeader>
           <ul style={{ margin: '0 0 14px', paddingLeft: 18, fontSize: 14, lineHeight: 1.55, color: 'var(--text)' }}>
             {made.map((d, i) => (
-              <li key={i} style={{ marginBottom: 4 }}>{d}</li>
+              <li key={i} style={{ marginBottom: 4 }}>
+                <GlossaryTermified text={d} terms={terms} />
+              </li>
             ))}
           </ul>
         </>
@@ -971,7 +982,9 @@ function DecisionsRecord({ made = [], open = [] }) {
           <SubsectionHeader>Open / unresolved</SubsectionHeader>
           <ul style={{ margin: 0, paddingLeft: 18, fontSize: 14, lineHeight: 1.55, color: 'var(--text-muted)' }}>
             {open.map((d, i) => (
-              <li key={i} style={{ marginBottom: 4 }}>{d}</li>
+              <li key={i} style={{ marginBottom: 4 }}>
+                <GlossaryTermified text={d} terms={terms} />
+              </li>
             ))}
           </ul>
         </>
@@ -984,7 +997,7 @@ function DecisionsRecord({ made = [], open = [] }) {
 // Section: What to Revisit
 // ============================================================================
 
-function WhatToRevisit({ items }) {
+function WhatToRevisit({ items, terms }) {
   if (!items || items.length === 0) return null
   return (
     <SectionShell title="What to Revisit">
@@ -1005,10 +1018,10 @@ function WhatToRevisit({ items }) {
             </span>
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-strong)', marginBottom: 2 }}>
-                {r.item}
+                <GlossaryTermified text={r.item} terms={terms} />
               </div>
               <div style={{ fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.5 }}>
-                {r.why}
+                <GlossaryTermified text={r.why} terms={terms} />
               </div>
             </div>
           </li>
@@ -1022,7 +1035,7 @@ function WhatToRevisit({ items }) {
 // Section: User Stories (folded in per M14 pick (b))
 // ============================================================================
 
-function UserStoriesSection({ stories }) {
+function UserStoriesSection({ stories, terms }) {
   if (!stories || stories.length === 0) return null
   return (
     <SectionShell title="User Stories">
@@ -1040,38 +1053,28 @@ function UserStoriesSection({ stories }) {
               border: '1px solid var(--border)',
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 6 }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
               <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, fontWeight: 700, color: 'var(--accent-strong)' }}>
                 {s.id}
               </span>
-              <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-strong)' }}>
-                As a {s.actor}, I want {s.want}
+              <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-strong)', flex: 1, minWidth: 0 }}>
+                As a {s.actor}, I want <GlossaryTermified text={s.want} terms={terms} />
               </span>
+              <ConfidenceBadge sourced={!!s.source_quote} />
             </div>
             <div style={{ fontSize: 13, color: 'var(--text)', marginBottom: 8, paddingLeft: 4 }}>
-              so that {s.so_that}.
+              so that <GlossaryTermified text={s.so_that} terms={terms} />.
             </div>
             {s.criteria && s.criteria.length > 0 && (
               <ul style={{ margin: '0 0 0 18px', padding: 0, fontSize: 12.5, color: 'var(--text-muted)', lineHeight: 1.5 }}>
                 {s.criteria.map((c, i) => (
-                  <li key={i}>{c}</li>
+                  <li key={i}>
+                    <GlossaryTermified text={c} terms={terms} />
+                  </li>
                 ))}
               </ul>
             )}
-            {s.source_quote && (
-              <blockquote
-                style={{
-                  margin: '10px 0 0',
-                  padding: '6px 12px',
-                  borderLeft: '2px solid var(--border-strong)',
-                  fontSize: 12.5,
-                  fontStyle: 'italic',
-                  color: 'var(--text-muted)',
-                }}
-              >
-                “{s.source_quote}”
-              </blockquote>
-            )}
+            <SourceQuote text={s.source_quote} />
           </div>
         ))}
       </div>
