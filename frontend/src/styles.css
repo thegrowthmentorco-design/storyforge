@@ -1001,3 +1001,19 @@ a:hover {
     grid-template-columns: minmax(0, 1fr) 320px;
   }
 }
+
+/* M14.5.f — Account KPI row. 4 columns at >= 980px so all KPIs sit
+   side-by-side; 2 columns mid-width; single column on mobile. Each card
+   has `min-width: 0` (set on the kpiCard inline style) so long values
+   like "128,540" don't blow the grid out. */
+.account-kpi-row {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+@media (min-width: 640px) {
+  .account-kpi-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (min-width: 980px) {
+  .account-kpi-row { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}

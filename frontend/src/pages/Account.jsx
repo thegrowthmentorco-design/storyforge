@@ -17,11 +17,18 @@ import PageShell from '../components/PageShell.jsx'
 import {
   Activity,
   AlertTriangle,
+  Box,
+  Calendar,
   Check,
+  Clock,
+  DollarSign,
   Download,
+  ExternalLink,
   FileText,
+  Info,
   RefreshCw,
   Settings as SettingsIcon,
+  Shield,
   Sparkles,
   User,
   Zap,
@@ -640,73 +647,71 @@ export default function Account() {
     }
   }, [location.search, refreshPlan, toast, navigate])
 
-  // M10.7 — moved to PageShell. `wide` because the Profile section embeds
-  // Clerk's UserProfile widget which is itself a wide multi-column surface
-  // (~720px wants more room).
-  // M12.4 — icon prop renders a 36px IconTile next to the title for a
-  // visual anchor (matches the reference dashboard pattern).
-  // M12.2 — KpiStrip renders above the existing Section stack for an
-  // at-a-glance read on usage + spend.
-  const description = isLoaded && user
-    ? `Signed in as ${user.primaryEmailAddress?.emailAddress || user.username || user.id}.`
-    : 'Loading account…'
+  /* M14.5.f — custom AccountPage layout matching the design replica.
+   * Bypasses PageShell to use a full-width container with bigger KPI
+   * cards + a 2-col Recent activity card (description left, list right)
+   * + a Plan & subscription card with monthly/annual toggle and tier
+   * rows. Underlying section logic (UsageSection, RecentActivitySection,
+   * PlanSection, DataSection) reused unchanged — wrapped in new card
+   * shells. The Profile (Clerk UserProfile) section also wrapped.
+   */
   return (
-    <PageShell title="Account" description={description} icon={<User size={18} />} wide>
-      <KpiStrip />
-      <Section
-        icon={<Activity size={16} />}
-        tone="accent"
-        title="Usage"
-        description="Tokens billed, cost, and per-model breakdown — drawn from every Claude call you've made."
-      >
-        <UsageSection />
-      </Section>
+    <div style={accountShell}>
+      <div style={accountContainer}>
+        {/* Header */}
+        <header style={accountHeader}>
+          <IconTile tone="accent" size={56} style={{ flexShrink: 0 }}>
+            <User size={24} />
+          </IconTile>
+          <div>
+            <h1 style={accountTitle}>Account</h1>
+            <p style={accountSubtitle}>
+              Manage your profile, usage, activity and subscription.
+            </p>
+          </div>
+        </header>
 
-      {/* M12.5 — recent extractions timeline. Sits between Usage and
-          Plan because activity flows naturally after the spend summary. */}
-      <Section
-        icon={<Activity size={16} />}
-        tone="accent"
-        title="Recent activity"
-        description="Your most recent extractions. Click any row to open it in the studio."
-      >
-        <RecentActivitySection />
-      </Section>
+        {/* M14.5.f — KPI strip rebuilt: 4 cards matching the screenshot */}
+        <NewKpiStrip />
 
-      <Section
-        icon={<Sparkles size={16} />}
-        tone="success"
-        title="Plan"
-        description="Your subscription tier and any quota limits."
-      >
-        <PlanSection />
-      </Section>
+        {/* Usage card with sparkline preview */}
+        <UsageCard>
+          <UsageSection />
+        </UsageCard>
 
-      <Section
-        icon={<Download size={16} />}
-        tone="accent"
-        title="Data"
-        description="GDPR-style data export, plus a one-shot button to claim any orphan dev rows from before per-user isolation landed."
-      >
-        <DataSection />
-      </Section>
+        {/* Recent activity — 2-col card with description left + list right */}
+        <RecentActivityCard>
+          <RecentActivitySection />
+        </RecentActivityCard>
 
-      <Section
-        icon={<User size={16} />}
-        tone="accent"
-        title="Profile"
-        description="Update your name, email, password, MFA, and connected accounts. Powered by Clerk."
-      >
-        {/* Clerk's UserProfile is a full embedded surface — set routing so it
-            uses our /account path and doesn't try to navigate elsewhere. */}
-        <div
-          style={{
-            border: '1px solid var(--border)',
-            borderRadius: 'var(--radius)',
-            overflow: 'hidden',
-            background: 'var(--bg-elevated)',
-          }}
+        {/* Plan & subscription */}
+        <PlanCard>
+          <PlanSection />
+        </PlanCard>
+
+        {/* Data export */}
+        <AccountCard
+          icon={<Download size={16} />}
+          title="Data"
+          subtitle="GDPR-style data export, plus a one-shot button to claim any orphan dev rows from before per-user isolation landed."
         >
+          <DataSection />
+        </AccountCard>
+
+        {/* Profile (Clerk UserProfile embed) */}
+        <AccountCard
+          icon={<User size={16} />}
+          title="Profile"
+          subtitle="Update your name, email, password, MFA, and connected accounts. Powered by Clerk."
+        >
+          <div
+            style={{
+              border: '1px solid var(--border)',
+              borderRadius: 'var(--radius)',
+              overflow: 'hidden',
+              background: 'var(--bg-elevated)',
+            }}
+          >
           {isLoaded ? (
             <UserProfile routing="hash" />
           ) : (
@@ -714,8 +719,370 @@ export default function Account() {
               <Spinner size={14} /> Loading profile…
             </div>
           )}
+          </div>
+        </AccountCard>
+      </div>
+    </div>
+  )
+}
+
+// ============================================================================
+// M14.5.f — AccountPage layout primitives + new sub-components matching the
+// design replica. Reuses the workspace card chrome from M14.5.c (Models page)
+// but without a right rail — Account is full-width-stack of cards.
+// ============================================================================
+
+const accountShell = {
+  flex: 1,
+  overflow: 'auto',
+  background: 'var(--bg)',
+  minHeight: '100%',
+}
+
+const accountContainer = {
+  width: '100%',
+  maxWidth: 1280,
+  margin: '0 auto',
+  padding: 'clamp(28px, 4vw, 48px) clamp(20px, 3vw, 40px) 80px',
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 20,
+}
+
+const accountHeader = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 16,
+  marginBottom: 16,
+}
+
+const accountTitle = {
+  margin: 0,
+  fontFamily: 'var(--font-display)',
+  fontSize: 'clamp(32px, 3.5vw, 42px)',
+  fontWeight: 600,
+  color: 'var(--text-strong)',
+  letterSpacing: '-0.02em',
+  lineHeight: 1.1,
+}
+
+const accountSubtitle = {
+  margin: '6px 0 0',
+  fontSize: 14,
+  color: 'var(--text-muted)',
+  lineHeight: 1.55,
+}
+
+const accountCard = {
+  background: 'var(--bg-elevated)',
+  border: '1px solid var(--border)',
+  borderRadius: 'var(--radius-lg)',
+  padding: 24,
+  boxShadow: 'var(--shadow-xs)',
+}
+
+const accountCardHeader = {
+  display: 'flex',
+  alignItems: 'flex-start',
+  gap: 14,
+}
+
+const accountCardTitle = {
+  fontFamily: 'var(--font-display)',
+  fontSize: 19,
+  fontWeight: 600,
+  color: 'var(--text-strong)',
+  letterSpacing: '-0.01em',
+  lineHeight: 1.3,
+}
+
+const accountCardSubtitle = {
+  marginTop: 4,
+  fontSize: 13.5,
+  color: 'var(--text-muted)',
+  lineHeight: 1.55,
+  maxWidth: 600,
+}
+
+function AccountCard({ icon, title, subtitle, actions, children }) {
+  return (
+    <div style={accountCard}>
+      <div style={{ ...accountCardHeader, justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14, flex: 1, minWidth: 0 }}>
+          <IconTile tone="accent" size={36}>{icon}</IconTile>
+          <div>
+            <div style={accountCardTitle}>{title}</div>
+            <div style={accountCardSubtitle}>{subtitle}</div>
+          </div>
         </div>
-      </Section>
-    </PageShell>
+        {actions}
+      </div>
+      <div style={{ marginTop: 18 }}>{children}</div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// New KPI strip — 4 cards matching the design replica
+// ---------------------------------------------------------------------------
+
+function NewKpiStrip() {
+  const { plan } = useApp()
+  const [usage, setUsage] = useState(null)
+  const [error, setError] = useState(false)
+  useEffect(() => {
+    let alive = true
+    getMeUsageApi()
+      .then((u) => { if (alive) setUsage(u) })
+      .catch(() => { if (alive) setError(true) })
+    return () => { alive = false }
+  }, [])
+
+  // Skeleton + soft-fail states match M12.2 KpiStrip behaviour.
+  if (error) return null
+  if (!usage) {
+    return (
+      <div className="account-kpi-row">
+        {[0, 1, 2, 3].map((i) => (
+          <div
+            key={i}
+            style={{
+              minWidth: 0,
+              height: 124,
+              borderRadius: 'var(--radius-lg)',
+              background: 'var(--bg-subtle)',
+              border: '1px solid var(--border)',
+              animation: `fade-in .25s ease-out ${i * 40}ms both`,
+            }}
+          />
+        ))}
+      </div>
+    )
+  }
+
+  const tm = usage.this_month || {}
+  const tokensThisMonth = (tm.input_tokens || 0) + (tm.output_tokens || 0)
+  const tokenLimit = 1_000_000  // M14.5.f — no plan-level token cap today; aspirational ceiling
+  const tokenPct = Math.min(100, (tokensThisMonth / tokenLimit) * 100)
+
+  // Plan + renewal — soft fall-throughs if plan API hasn't loaded.
+  const planName = plan?.plan_name || 'Trial'
+  const renewsAt = plan?.plan_renews_at
+    ? new Date(plan.plan_renews_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
+    : (plan?.period_resets_at
+      ? `Resets ${new Date(plan.period_resets_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}`
+      : '—')
+
+  return (
+    <div className="account-kpi-row">
+      <KpiCard
+        icon={<Activity size={16} />}
+        label="Tokens used"
+        value={fmtNum(tokensThisMonth)}
+        sublabel={`of ${fmtNum(tokenLimit)}`}
+        progress={tokenPct}
+        rightLabel={`${tokenPct.toFixed(1)}%`}
+      />
+      <KpiCard
+        icon={<DollarSign size={16} />}
+        label="Total cost"
+        value={fmtCents(tm.cost_cents || 0)}
+        sublabel="This billing cycle"
+        tone="purple"
+      />
+      <KpiCard
+        icon={<Box size={16} />}
+        label="Extractions"
+        value={fmtNum(tm.calls || 0)}
+        sublabel="This month"
+        tone="purple"
+      />
+      <KpiCard
+        icon={<Calendar size={16} />}
+        label="Plan"
+        value={planName}
+        sublabel={planName === 'Trial' ? 'Trial period' : `Renews on ${renewsAt}`}
+      />
+    </div>
+  )
+}
+
+function KpiCard({ icon, label, value, sublabel, progress, rightLabel, tone = 'accent' }) {
+  return (
+    <div style={kpiCard}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+        <IconTile tone={tone} size={32}>{icon}</IconTile>
+        <span title="More info" style={{ color: 'var(--text-soft)', display: 'inline-flex', cursor: 'help' }}>
+          <Info size={13} />
+        </span>
+      </div>
+      <div style={kpiLabel}>{label}</div>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+        <div style={kpiValue}>{value}</div>
+        {sublabel && progress === undefined && (
+          <span style={kpiSublabelInline}>{sublabel}</span>
+        )}
+      </div>
+      {progress !== undefined && (
+        <>
+          {sublabel && (
+            <div style={{ fontSize: 11.5, color: 'var(--text-soft)', marginTop: 4 }}>
+              {sublabel}
+            </div>
+          )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10 }}>
+            <div style={{ flex: 1, height: 6, background: 'var(--bg-subtle)', borderRadius: 999, overflow: 'hidden' }}>
+              <div style={{
+                width: `${progress}%`,
+                height: '100%',
+                background: 'linear-gradient(90deg, var(--accent), var(--accent-strong))',
+                borderRadius: 999,
+                transition: 'width 600ms var(--ease-out)',
+              }} />
+            </div>
+            {rightLabel && (
+              <span style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--accent-strong)', fontFamily: 'var(--font-mono)' }}>
+                {rightLabel}
+              </span>
+            )}
+          </div>
+        </>
+      )}
+      {sublabel && progress === undefined && (
+        <div style={{ fontSize: 12.5, color: 'var(--text-soft)', marginTop: 4 }}>
+          {/* sublabel rendered inline above when no progress; this branch
+              kept empty intentionally so the placement is consistent */}
+        </div>
+      )}
+      {!progress && sublabel && (
+        <div style={{ fontSize: 12.5, color: 'var(--text-soft)', marginTop: 6 }}>{sublabel}</div>
+      )}
+    </div>
+  )
+}
+
+const kpiCard = {
+  background: 'var(--bg-elevated)',
+  border: '1px solid var(--border)',
+  borderRadius: 'var(--radius-lg)',
+  padding: 18,
+  minWidth: 0,
+  display: 'flex',
+  flexDirection: 'column',
+  boxShadow: 'var(--shadow-xs)',
+}
+
+const kpiLabel = {
+  fontSize: 12.5,
+  color: 'var(--text-muted)',
+  marginBottom: 6,
+}
+
+const kpiValue = {
+  fontFamily: 'var(--font-display)',
+  fontSize: 'clamp(22px, 2.4vw, 28px)',
+  fontWeight: 600,
+  color: 'var(--text-strong)',
+  letterSpacing: '-0.015em',
+  lineHeight: 1.1,
+}
+
+const kpiSublabelInline = {
+  fontSize: 12,
+  color: 'var(--text-soft)',
+  fontWeight: 500,
+}
+
+// ---------------------------------------------------------------------------
+// Usage / Recent activity / Plan card wrappers
+// ---------------------------------------------------------------------------
+
+function UsageCard({ children }) {
+  return (
+    <div style={accountCard}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 24 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14, flex: 1, minWidth: 0 }}>
+          <IconTile tone="accent" size={36}><Activity size={16} /></IconTile>
+          <div>
+            <div style={accountCardTitle}>Usage</div>
+            <div style={accountCardSubtitle}>
+              Tokens billed, cost, and per-model breakdown — from every Claude call you've made.
+            </div>
+          </div>
+        </div>
+        {/* Decorative sparkline preview — see Sparkline below. */}
+        <div style={{ flexShrink: 0, width: 'min(280px, 30vw)', height: 60 }}>
+          <Sparkline />
+        </div>
+      </div>
+      <div style={{ marginTop: 18 }}>{children}</div>
+    </div>
+  )
+}
+
+function Sparkline() {
+  // M14.5.f — purely decorative line illustration. Real per-day usage chart
+  // is M14.5.f.b territory; for now this hints at "data trends over time"
+  // without implying a specific dataset.
+  return (
+    <svg viewBox="0 0 280 60" width="100%" height="100%" preserveAspectRatio="none" aria-hidden>
+      <defs>
+        <linearGradient id="sparkfill" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.18" />
+          <stop offset="100%" stopColor="var(--accent)" stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      <path
+        d="M 0 50 L 20 45 L 40 42 L 60 38 L 80 40 L 100 35 L 120 30 L 140 26 L 160 28 L 180 22 L 200 18 L 220 14 L 240 16 L 260 10 L 280 12"
+        fill="none"
+        stroke="var(--accent)"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M 0 50 L 20 45 L 40 42 L 60 38 L 80 40 L 100 35 L 120 30 L 140 26 L 160 28 L 180 22 L 200 18 L 220 14 L 240 16 L 260 10 L 280 12 L 280 60 L 0 60 Z"
+        fill="url(#sparkfill)"
+      />
+      <circle cx="280" cy="12" r="3" fill="var(--accent-strong)" />
+    </svg>
+  )
+}
+
+function RecentActivityCard({ children }) {
+  return (
+    <div style={accountCard}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(220px, 320px)', gap: 24 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14 }}>
+          <IconTile tone="accent" size={36}><Clock size={16} /></IconTile>
+          <div>
+            <div style={accountCardTitle}>Recent activity</div>
+            <div style={accountCardSubtitle}>
+              Your most recent extractions. Click any row to open it in the studio.
+            </div>
+          </div>
+        </div>
+        <div style={{ minWidth: 0 }}>{children}</div>
+      </div>
+    </div>
+  )
+}
+
+function PlanCard({ children }) {
+  return (
+    <div style={accountCard}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14, flex: 1, minWidth: 0 }}>
+          <IconTile tone="accent" size={36}><SettingsIcon size={16} /></IconTile>
+          <div>
+            <div style={accountCardTitle}>Plan & subscription</div>
+            <div style={accountCardSubtitle}>
+              Your subscription tier and quota limits.
+            </div>
+          </div>
+        </div>
+      </div>
+      <div style={{ marginTop: 18 }}>{children}</div>
+    </div>
   )
 }
