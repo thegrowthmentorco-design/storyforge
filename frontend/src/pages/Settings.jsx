@@ -45,7 +45,7 @@ import { useOrganization } from '@clerk/clerk-react'
 import { useToast } from '../components/Toast.jsx'
 import { Badge, Button, Card, IconTile, Spinner } from '../components/primitives.jsx'
 import PageShell from '../components/PageShell.jsx'
-import { CheckCircle, DollarSign, Download, ExternalLink, Eye, FileText, HelpCircle, Info, Key, Lock, Monitor, Moon, Plug, Send, Shield, Sparkles, Sun, Trash } from '../components/icons.jsx'
+import { BookOpen, CheckCircle, DollarSign, Download, ExternalLink, Eye, FileText, HelpCircle, Inbox, Info, Key, Lightbulb, Lock, Monitor, Moon, Plug, Send, Shield, Sparkles, Sun, Trash, Wrench } from '../components/icons.jsx'
 
 function Section({ icon, tone, title, description, comingIn, children }) {
   return (
@@ -2518,9 +2518,9 @@ export function ModelsPage() {
           </div>
         </header>
 
-        {/* 2-column body — see .models-body in styles.css for the
+        {/* 2-column body — see .settings-split in styles.css for the
             responsive grid (single column < 1080px, 1fr + 320px above). */}
-        <div className="models-body">
+        <div className="settings-split">
           {/* MAIN COLUMN */}
           <div style={modelsMain}>
             {/* API key card */}
@@ -2846,40 +2846,173 @@ const railIconDisc = {
 
 /* ---- /tools -------------------------------------------------------- */
 
+/* M14.5.d — ToolsPage rebuilt as a 2-column workspace layout matching
+ * the design replica: main column has 3 cards (Prompt templates,
+ * Few-shot examples, API tokens) with the same icon-disc + title +
+ * subtitle + body chrome as the Models page. Right rail has 3
+ * informational cards (When to use tools, Best practices, Tokens stored
+ * securely). Underlying section logic (PromptTemplatesSection,
+ * FewShotExamplesSection, ApiTokensSection) is unchanged — only the
+ * surrounding shells change.
+ */
 export function ToolsPage() {
   const { organization } = useOrganization()
   const orgId = organization?.id || null
   return (
-    <PageShell
-      title="Tools"
-      description="Power-user knobs that shape how Claude extracts and how external code can call Lucid."
-      icon={<FileText size={18} />}
-    >
-      <Section
-        icon={<FileText size={16} />}
-        tone="accent"
-        title="Prompt templates"
-        description="Save multiple named templates; activate one at a time. Append your own instructions to the system prompt — house style for stories, naming conventions, severity rules."
-      >
-        <PromptTemplatesSection orgId={orgId} />
-      </Section>
-      <Section
-        icon={<Sparkles size={16} />}
-        tone="accent"
-        title="Few-shot examples"
-        description="Saved input → expected-output pairs Claude sees on every extraction. Strong way to teach a custom story format or naming convention by example, not by description."
-      >
-        <FewShotExamplesSection />
-      </Section>
-      <Section
-        icon={<Key size={16} />}
-        tone="accent"
-        title="API tokens"
-        description="Programmatic access via Bearer tokens — for curl, Zapier, Make, custom scripts. Same scope as your account; tokens never expire but can be revoked any time."
-      >
-        <ApiTokensSection />
-      </Section>
-    </PageShell>
+    <div style={modelsShell}>
+      <div style={modelsContainer}>
+        <header style={modelsHeader}>
+          <IconTile tone="accent" size={44} style={{ flexShrink: 0 }}>
+            <Wrench size={20} />
+          </IconTile>
+          <div>
+            <h1 style={modelsTitle}>Tools</h1>
+            <p style={modelsSubtitle}>
+              Power-user controls that shape how Claude extracts and how external tools connect to Lucid.
+            </p>
+          </div>
+        </header>
+
+        <div className="settings-split">
+          <div style={modelsMain}>
+            <ToolsCard
+              icon={<FileText size={16} />}
+              title="Prompt templates"
+              subtitle="Save multiple named templates and activate one at a time. Append your own instructions to the system prompt — house style, naming conventions, severity rules, and more."
+            >
+              <PromptTemplatesSection orgId={orgId} />
+            </ToolsCard>
+
+            <ToolsCard
+              icon={<Sparkles size={16} />}
+              title="Few-shot examples"
+              subtitle="Show Claude input → expected-output pairs so it learns your preferred format and naming conventions by example."
+            >
+              <FewShotExamplesSection />
+            </ToolsCard>
+
+            <ToolsCard
+              icon={<Key size={16} />}
+              title="API tokens"
+              subtitle="Programmatic access via Bearer tokens for cURL, Zapier, Make, custom scripts, and more."
+            >
+              <ApiTokensSection />
+            </ToolsCard>
+          </div>
+
+          <aside style={modelsRail}>
+            <ToolsGuideRail />
+            <BestPracticesRail />
+            <TokensSecurityRail />
+          </aside>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ============================================================================
+// M14.5.d — Tools page card shell + right-rail components
+// ============================================================================
+
+function ToolsCard({ icon, title, subtitle, children }) {
+  return (
+    <div style={modelsCard}>
+      <div style={cardHeader}>
+        <IconTile tone="accent" size={36}>{icon}</IconTile>
+        <div>
+          <div style={cardTitle}>{title}</div>
+          <div style={cardSubtitle}>{subtitle}</div>
+        </div>
+      </div>
+      <div style={{ marginTop: 18 }}>{children}</div>
+    </div>
+  )
+}
+
+function ToolsGuideRail() {
+  const items = [
+    {
+      title: 'Prompt templates',
+      desc: 'Use to standardize instructions, rules, and house style across extractions.',
+    },
+    {
+      title: 'Few-shot examples',
+      desc: 'Use to teach Claude your preferred output format with real examples.',
+    },
+    {
+      title: 'API tokens',
+      desc: 'Use to connect external tools and automate extractions at scale.',
+    },
+  ]
+  return (
+    <div style={railCard}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+        <span style={railIconDisc}><Lightbulb size={14} /></span>
+        <div style={railTitle}>When to use tools</div>
+      </div>
+      <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 14 }}>
+        {items.map((it) => (
+          <li key={it.title} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+            <span
+              aria-hidden
+              style={{
+                width: 6, height: 6, borderRadius: 999,
+                background: 'var(--accent-strong)',
+                marginTop: 6, flexShrink: 0,
+              }}
+            />
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-strong)', marginBottom: 2 }}>
+                {it.title}
+              </div>
+              <p style={{ ...railDesc, marginTop: 2 }}>{it.desc}</p>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+function BestPracticesRail() {
+  const tips = [
+    'Keep templates concise and focused on rules and style.',
+    'Use examples to lock in format and edge cases.',
+    'Rotate tokens regularly and revoke unused ones.',
+  ]
+  return (
+    <div style={railCard}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+        <span style={railIconDisc}><Shield size={14} /></span>
+        <div style={railTitle}>Best practices</div>
+      </div>
+      <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {tips.map((t) => (
+          <li key={t} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+            <span style={{ color: 'var(--success)', marginTop: 1, flexShrink: 0 }}>
+              <CheckCircle size={14} />
+            </span>
+            <span style={{ fontSize: 12.5, color: 'var(--text-muted)', lineHeight: 1.55 }}>{t}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+function TokensSecurityRail() {
+  return (
+    <div style={{ ...railCard, background: 'var(--bg-subtle)' }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+        <span style={{ ...railIconDisc, background: 'transparent', color: 'var(--text-muted)' }}>
+          <Lock size={14} />
+        </span>
+        <p style={{ ...railDesc, marginTop: 0 }}>
+          Tokens are stored securely using industry-standard encryption and can be revoked at any time.
+        </p>
+      </div>
+    </div>
   )
 }
 
