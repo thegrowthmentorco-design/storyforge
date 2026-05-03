@@ -1,7 +1,7 @@
 import React, { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import { SignedIn, SignedOut, useAuth, useOrganization, useUser } from '@clerk/clerk-react'
-import { extract, extractStream, getMePlanApi, listCommentsApi, listProjectsApi, listVersionsApi, markExtractionSeenApi, patchExtractionApi, regenSectionApi, rerunExtractionApi, setTokenGetter } from './api.js'
+import { extractStream, getMePlanApi, listCommentsApi, listProjectsApi, listVersionsApi, markExtractionSeenApi, patchExtractionApi, regenSectionApi, rerunExtractionApi, setTokenGetter } from './api.js'
 import { getExtraction } from './lib/store.js'
 import { migrateLocalStorageOnce } from './lib/migrate.js'
 import { getSettings, setSettings } from './lib/settings.js'
@@ -530,19 +530,14 @@ function AuthedApp() {
     track('extraction_started', { input_chars: inputChars })
     const controller = new AbortController()
     extractAbortRef.current = controller
-    // M14.1.b — default new uploads to the dossier lens. The streaming
-    // backend route (/api/extract/stream) is still wired to the stories
-    // pipeline, so dossier uploads use the non-streaming /api/extract for
-    // now (M14.1.c will port streaming). Stories uploads keep the live
-    // progress card via extractStream.
+    // M14.1.c — both lenses now stream via /api/extract/stream (the
+    // backend route dispatches by lens). New uploads default to dossier.
     const lens = 'dossier'
     try {
-      const record = lens === 'dossier'
-        ? await extract({ file, text, filename, lens })
-        : await extractStream(
-            { file, text, filename, lens },
-            { onUsage: (u) => setStreamUsage(u), signal: controller.signal },
-          )
+      const record = await extractStream(
+        { file, text, filename, lens },
+        { onUsage: (u) => setStreamUsage(u), signal: controller.signal },
+      )
       setExtraction(record)
       setExtractionId(record?.id || null)
       refreshPlan()  // M3.5 — usage count just bumped; refresh sidebar bar

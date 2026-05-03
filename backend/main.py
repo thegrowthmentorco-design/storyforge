@@ -406,6 +406,8 @@ async def extract_stream(
     text: str | None = Form(default=None),
     filename: str | None = Form(default=None),
     project_id: str | None = Form(default=None),
+    # M14.1.c — lens dispatcher; default 'dossier' for new uploads.
+    lens: str | None = Form(default=None),
     x_anthropic_key: str | None = Header(default=None, alias="X-Anthropic-Key"),
     x_storyforge_model: str | None = Header(default=None, alias="X-Storyforge-Model"),
 ):
@@ -487,6 +489,10 @@ async def extract_stream(
     _org_id = user.org_id
     _project_id = project_id or None
 
+    # M14.1.c — normalise lens choice; pick the right streamer + persister.
+    from services.lenses import normalize as normalize_lens
+    effective_lens = normalize_lens(lens)
+
     # ----- the SSE generator ------------------------------------------------
     def event_gen():
         from db.session import engine as _engine  # local import to avoid main.py import-time cycle
@@ -494,14 +500,29 @@ async def extract_stream(
 
         yield _sse("start", {"id": extraction_id, "filename": source_name})
         try:
-            for ev in stream_extraction(
-                filename=source_name,
-                raw_text=raw_text,
-                api_key=effective_key,
-                model=effective_model,
-                prompt_suffix=effective_suffix,
-                few_shot_examples=effective_examples,
-            ):
+            # M14.1.c — branch the streamer by lens. Both yield identical SSE
+            # event shapes (start / usage / complete / error) so the client
+            # doesn't need to know which lens is running.
+            if effective_lens == "dossier":
+                from services.streaming_dossier import stream_dossier_extraction
+                stream_iter = stream_dossier_extraction(
+                    filename=source_name,
+                    raw_text=raw_text,
+                    api_key=effective_key,
+                    model=effective_model,
+                    prompt_suffix=effective_suffix,
+                )
+            else:
+                stream_iter = stream_extraction(
+                    filename=source_name,
+                    raw_text=raw_text,
+                    api_key=effective_key,
+                    model=effective_model,
+                    prompt_suffix=effective_suffix,
+                    few_shot_examples=effective_examples,
+                )
+
+            for ev in stream_iter:
                 etype = ev["type"]
                 if etype == "usage":
                     yield _sse("usage", {"input": ev["input"], "output": ev["output"], "max": ev["max"]})
@@ -514,17 +535,36 @@ async def extract_stream(
                     # scoped one is closed by now (see note at the top of the
                     # handler).
                     with _Session(_engine) as s:
-                        row = persist_extraction(
-                            s,
-                            result=ev["result"],
-                            model_used=ev["model_used"],
-                            user_id=_user_id,
-                            org_id=_org_id,
-                            project_id=_project_id,
-                            extraction_id=extraction_id,
-                            source_file_path=source_path,
-                            source_file_paths=source_paths,
-                        )
+                        if effective_lens == "dossier":
+                            from services.extractions import persist_dossier_extraction
+                            row = persist_dossier_extraction(
+                                s,
+                                filename=source_name,
+                                raw_text=raw_text,
+                                dossier=ev["result"],
+                                model_used=ev["model_used"],
+                                live=ev["usage"] is not None,
+                                user_id=_user_id,
+                                org_id=_org_id,
+                                project_id=_project_id,
+                                extraction_id=extraction_id,
+                                source_file_path=source_path,
+                                source_file_paths=source_paths,
+                            )
+                            live_flag = ev["usage"] is not None
+                        else:
+                            row = persist_extraction(
+                                s,
+                                result=ev["result"],
+                                model_used=ev["model_used"],
+                                user_id=_user_id,
+                                org_id=_org_id,
+                                project_id=_project_id,
+                                extraction_id=extraction_id,
+                                source_file_path=source_path,
+                                source_file_paths=source_paths,
+                            )
+                            live_flag = ev["result"].live
                         record_usage(
                             s,
                             user_id=_user_id,
@@ -532,7 +572,7 @@ async def extract_stream(
                             extraction_id=row.id,
                             action="extract",
                             model=ev["model_used"],
-                            live=ev["result"].live,
+                            live=live_flag,
                             usage=ev["usage"],
                         )
                         record = extraction_to_record(row)

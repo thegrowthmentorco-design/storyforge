@@ -28,10 +28,36 @@
  *   - Sticky nav scrollspy is one-way (anchor links scroll smoothly; no
  *     active-chapter highlighting yet — M14.1.c polish)
  */
-import React, { useMemo } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 
 export default function DossierPane({ extraction }) {
   const dossier = extraction?.lens_payload
+  // M14.1.c — scrollspy: track which chapter is currently in viewport so
+  // the sticky nav highlights it. The pane itself is the scroll container
+  // (paneShell has overflow:auto), so we observe relative to scrollerRef
+  // instead of the viewport. RootMargin pulls the trigger zone to the
+  // top-third of the scroller so a chapter activates as it scrolls past
+  // the sticky nav, not when it first peeks in from below.
+  const scrollerRef = useRef(null)
+  const [activeChapter, setActiveChapter] = useState('orient')
+  useEffect(() => {
+    if (!dossier || !scrollerRef.current) return
+    const ids = ['orient', 'structure', 'interrogate', 'act']
+    const els = ids.map((id) => document.getElementById(id)).filter(Boolean)
+    if (els.length === 0) return
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries
+          .filter((e) => e.isIntersecting)
+          .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)
+        if (visible.length > 0) setActiveChapter(visible[0].target.id)
+      },
+      { root: scrollerRef.current, rootMargin: '-30% 0px -60% 0px', threshold: 0 },
+    )
+    els.forEach((el) => observer.observe(el))
+    return () => observer.disconnect()
+  }, [dossier])
+
   if (!dossier) {
     return (
       <div style={emptyShell}>
@@ -43,8 +69,9 @@ export default function DossierPane({ extraction }) {
   }
 
   return (
-    <div style={paneShell}>
-      <ChapterNav />
+    <div style={paneShell} ref={scrollerRef}>
+      <ChapterNav active={activeChapter} />
+
       <div style={contentColumn}>
         <Overture text={dossier.overture} />
 
@@ -130,7 +157,7 @@ const emptyShell = {
 // Chapter nav (sticky)
 // ============================================================================
 
-function ChapterNav() {
+function ChapterNav({ active }) {
   const chapters = [
     { id: 'orient', roman: 'I', title: 'Orient' },
     { id: 'structure', roman: 'II', title: 'Structure' },
@@ -153,29 +180,38 @@ function ChapterNav() {
         backdropFilter: 'blur(6px)',
       }}
     >
-      {chapters.map((c) => (
-        <a
-          key={c.id}
-          href={`#${c.id}`}
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 6,
-            padding: '6px 14px',
-            borderRadius: 999,
-            fontSize: 13,
-            color: 'var(--text-muted)',
-            textDecoration: 'none',
-            border: '1px solid var(--border)',
-            background: 'var(--bg-elevated)',
-          }}
-        >
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--accent-strong)' }}>
-            {c.roman}.
-          </span>
-          {c.title}
-        </a>
-      ))}
+      {chapters.map((c) => {
+        const isActive = c.id === active
+        return (
+          <a
+            key={c.id}
+            href={`#${c.id}`}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '6px 14px',
+              borderRadius: 999,
+              fontSize: 13,
+              fontWeight: isActive ? 600 : 400,
+              color: isActive ? 'var(--accent-ink)' : 'var(--text-muted)',
+              textDecoration: 'none',
+              border: '1px solid ' + (isActive ? 'var(--accent)' : 'var(--border)'),
+              background: isActive ? 'var(--accent-soft)' : 'var(--bg-elevated)',
+              transition: 'background var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out)',
+            }}
+          >
+            <span style={{
+              fontFamily: 'var(--font-mono)',
+              fontSize: 11,
+              color: isActive ? 'var(--accent-ink)' : 'var(--accent-strong)',
+            }}>
+              {c.roman}.
+            </span>
+            {c.title}
+          </a>
+        )
+      })}
     </nav>
   )
 }
