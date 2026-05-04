@@ -20,28 +20,28 @@
   /* Borders — M14.5 cooler / lighter; less warm than the M10.1 sand. */
   --border: #ebebe7;
   --border-strong: #d8d8d3;
-  --border-focus: #6366f1;
+  --border-focus: #14b8a6;
 
-  /* Accents — M14.5.j: theme swap teal → indigo. Matches the design
-     replica's purple-violet palette + always-dark navy sidebar. */
-  --accent: #6366f1;          /* indigo-500 */
-  --accent-strong: #4f46e5;   /* indigo-600 — primary CTA bg */
-  --accent-soft: #eef2ff;     /* indigo-50 — chip backgrounds */
-  --accent-ink: #4338ca;      /* indigo-700 — text on accent-soft */
+  /* Accents — M14.5.k: light theme is TEAL (matches the in-app design
+     replicas). Dark theme overrides accent to indigo (the dark sidebar
+     screenshot). Two distinct visual modes for one product. */
+  --accent: #14b8a6;          /* teal-500 — light-theme primary */
+  --accent-strong: #0d9488;   /* teal-600 — primary CTA bg */
+  --accent-soft: #f0fdfa;     /* teal-50 — chip backgrounds */
+  --accent-ink: #0f766e;      /* teal-700 — text on accent-soft */
 
-  /* Sidebar — always dark navy regardless of light/dark theme. The
-     "dark sidebar + light main" pattern is brand identity (Anthropic
-     Console / Linear / Vercel dashboard). Sidebar vars don't get
-     overridden in the dark-theme block. */
-  --sidebar-bg: #0b1220;        /* deep navy */
-  --sidebar-bg-elev: #131c2f;   /* hover / active row */
-  --sidebar-bg-subtle: #131c2f; /* secondary surface */
-  --sidebar-border: #1e293b;    /* subtle dividers */
-  --sidebar-text-strong: #f1f5f9;
-  --sidebar-text: #cbd5e1;
-  --sidebar-text-muted: #94a3b8;
-  --sidebar-text-soft: #64748b;
-  --sidebar-active-bg: #6366f1;     /* indigo accent fill on active nav */
+  /* Sidebar tokens — defaults for LIGHT theme (sidebar inherits the
+     warm-cream main palette via .app-sidebar CSS rule below). Dark
+     theme overrides these to deep-navy in the [data-theme='dark']
+     block to produce the dark-sidebar look. */
+  --sidebar-bg: var(--bg-subtle);
+  --sidebar-bg-elev: var(--bg-elevated);
+  --sidebar-border: var(--border);
+  --sidebar-text-strong: var(--text-strong);
+  --sidebar-text: var(--text);
+  --sidebar-text-muted: var(--text-muted);
+  --sidebar-text-soft: var(--text-soft);
+  --sidebar-active-bg: var(--accent-strong);
   --sidebar-active-text: #ffffff;
 
   --success: #10b981;
@@ -69,7 +69,7 @@
   --pink-ink: #be185d;
 
   /* Hero gradient (text) — M13.4 swapped to teal → cyan → sky */
-  --gradient: linear-gradient(90deg, #4f46e5 0%, #6366f1 50%, #8b5cf6 100%);
+  --gradient: linear-gradient(90deg, #0d9488 0%, #06b6d4 50%, #0ea5e9 100%);
 
   /* Type */
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
@@ -83,7 +83,7 @@
   --shadow-sm: 0 1px 3px rgba(24, 24, 27, 0.04);
   --shadow-md: 0 2px 6px rgba(24, 24, 27, 0.05), 0 1px 2px rgba(24, 24, 27, 0.04);
   --shadow-lg: 0 8px 24px -8px rgba(24, 24, 27, 0.10);
-  --shadow-focus: 0 0 0 3px rgba(99, 102, 241, 0.20);
+  --shadow-focus: 0 0 0 3px rgba(20, 184, 166, 0.18);
 
   /* Radii */
   --radius-sm: 6px;
@@ -136,7 +136,7 @@
   /* Hero gradient — the only piece of the brand we let bloom large.
    * Reserve for: empty states, sign-in screen, the Logo. Never on
    * standard buttons or cards (would dilute the moment). */
-  --gradient-hero: linear-gradient(135deg, #4f46e5 0%, #6366f1 50%, #8b5cf6 100%);
+  --gradient-hero: linear-gradient(135deg, #0d9488 0%, #06b6d4 50%, #0ea5e9 100%);
   /* M14.5 — soft gradient pulled WAY down (was 0.06-0.08, now ~0.025).
      Used as a barely-there tint behind hero blocks; reads as ambient
      light rather than decoration. Marketing surfaces (Landing) keep the
@@ -199,6 +199,20 @@ html[data-theme='dark'] {
   --accent-strong: #6366f1;   /* indigo-500 */
   --accent-soft: #1e1b4b;     /* indigo-950 — chip backgrounds */
   --accent-ink: #c7d2fe;      /* indigo-200 — text on accent-soft */
+
+  /* M14.5.k — dark-theme sidebar overrides. In dark mode sidebar goes
+     deep navy (the RBAC-style screenshot); in light mode sidebar uses
+     the default --bg-subtle (warm cream) per the Documents screenshot.
+     Two-tier theme: light=teal+light-sidebar, dark=indigo+navy-sidebar. */
+  --sidebar-bg: #0b1220;
+  --sidebar-bg-elev: #131c2f;
+  --sidebar-border: #1e293b;
+  --sidebar-text-strong: #f1f5f9;
+  --sidebar-text: #cbd5e1;
+  --sidebar-text-muted: #94a3b8;
+  --sidebar-text-soft: #64748b;
+  --sidebar-active-bg: #6366f1;
+  --sidebar-active-text: #ffffff;
 
   --success-soft: #022c22;
   --success-ink: #a7f3d0;
