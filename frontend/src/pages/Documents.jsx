@@ -529,23 +529,19 @@ export default function Documents() {
 
   if (loading) {
     return (
-      <div style={{ flex: 1, overflow: 'auto', padding: '24px 28px 40px', background: 'var(--bg)' }}>
-        <div style={{ maxWidth: 960, margin: '0 auto' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-            <h1
-              style={{
-                fontFamily: 'var(--font-display)',
-                fontSize: 'var(--text-3xl)',
-                fontWeight: 600,
-                color: 'var(--text-strong)',
-                margin: 0,
-                letterSpacing: 'var(--tracking-tight)',
-              }}
-            >
-              Documents
-            </h1>
+      <div style={docsShell}>
+        <div style={docsContainer}>
+          <header style={docsHeaderRow}>
+            <IconTile tone="accent" size={44} style={{ flexShrink: 0 }}>
+              <FileText size={20} />
+            </IconTile>
+            <div>
+              <h1 style={docsTitle}>Documents</h1>
+              <p style={docsSubtitle}>All your requirement documents and extractions in one place.</p>
+            </div>
+            <div style={{ flex: 1 }} />
             <Spinner size={16} />
-          </div>
+          </header>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {[0, 1, 2, 3].map((i) => (
               <SkeletonRow key={i} delay={i * 60} />
@@ -567,8 +563,8 @@ export default function Documents() {
   }
 
   return (
-    <div style={{ flex: 1, overflow: 'auto', padding: '24px 28px 40px', background: 'var(--bg)' }}>
-      <div style={{ maxWidth: 960, margin: '0 auto' }}>
+    <div style={docsShell}>
+      <div style={docsContainer}>
       {/* Header — swaps to bulk-action mode when hasSelection (M11). */}
       {hasSelection ? (
         <div
@@ -638,69 +634,43 @@ export default function Documents() {
           </Button>
         </div>
       ) : (
-        <div style={{ marginBottom: 24 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 6 }}>
-            <h1
-              style={{
-                fontFamily: 'var(--font-display)',
-                fontSize: 'clamp(28px, 3vw, 36px)',
-                fontWeight: 600,
-                color: 'var(--text-strong)',
-                margin: 0,
-                letterSpacing: '-0.02em',
-                lineHeight: 1.1,
-              }}
-            >
-              Documents
-            </h1>
-            <span
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                minWidth: 26,
-                height: 22,
-                padding: '0 8px',
-                borderRadius: 999,
-                background: 'var(--bg-subtle)',
-                border: '1px solid var(--border)',
-                fontSize: 12,
-                fontWeight: 600,
-                color: 'var(--text-muted)',
-                fontFamily: 'var(--font-mono)',
-              }}
-            >
-              {query ? records.length : records.length}
-            </span>
-            {searching && <Spinner size={14} />}
-            <div style={{ flex: 1 }} />
-            <button
-              type="button"
-              onClick={() => navigate('/')}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 6,
-                padding: '9px 14px',
-                background: 'var(--accent-strong)',
-                color: '#fff',
-                border: 'none',
-                borderRadius: 'var(--radius)',
-                fontSize: 13,
-                fontWeight: 600,
-                cursor: 'pointer',
-                fontFamily: 'inherit',
-                boxShadow: '0 2px 8px -2px rgba(20, 184, 166, 0.30)',
-              }}
-            >
-              <Plus size={13} />
-              New extraction
-            </button>
+        <header style={docsHeaderRow}>
+          <IconTile tone="accent" size={44} style={{ flexShrink: 0 }}>
+            <FileText size={20} />
+          </IconTile>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <h1 style={docsTitle}>Documents</h1>
+              <span style={countPill}>{records.length}</span>
+              {searching && <Spinner size={14} />}
+            </div>
+            <p style={docsSubtitle}>All your requirement documents and extractions in one place.</p>
           </div>
-          <p style={{ margin: 0, fontSize: 14, color: 'var(--text-muted)', lineHeight: 1.55 }}>
-            All your requirement documents and extractions in one place.
-          </p>
-        </div>
+          <div style={{ flex: 1 }} />
+          <button
+            type="button"
+            onClick={() => navigate('/')}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '9px 14px',
+              background: 'var(--accent-strong)',
+              color: '#fff',
+              border: 'none',
+              borderRadius: 'var(--radius)',
+              fontSize: 13,
+              fontWeight: 600,
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+              boxShadow: '0 2px 8px -2px rgba(20, 184, 166, 0.30)',
+              flexShrink: 0,
+            }}
+          >
+            <Plus size={13} />
+            New extraction
+          </button>
+        </header>
       )}
 
       {/* M14.5.i — KPI summary strip. Computes totals across the loaded
@@ -1109,4 +1079,62 @@ const docKpiCard = {
   borderRadius: 'var(--radius-lg)',
   minWidth: 0,
   boxShadow: 'var(--shadow-xs)',
+}
+
+// M14.5.k.b — shared workspace shell styles. Mirrors modelsShell /
+// modelsContainer / modelsHeader from Settings.jsx so Documents aligns
+// with the rest of the workspace (1280 max-width, fluid clamp padding,
+// IconTile + serif title + subtitle header pattern).
+const docsShell = {
+  flex: 1,
+  overflow: 'auto',
+  background: 'var(--bg)',
+  minHeight: '100%',
+}
+
+const docsContainer = {
+  width: '100%',
+  maxWidth: 1280,
+  margin: '0 auto',
+  padding: 'clamp(28px, 4vw, 48px) clamp(20px, 3vw, 40px) 80px',
+}
+
+const docsHeaderRow = {
+  display: 'flex',
+  alignItems: 'flex-start',
+  gap: 14,
+  marginBottom: 32,
+}
+
+const docsTitle = {
+  margin: 0,
+  fontFamily: 'var(--font-display)',
+  fontSize: 'clamp(28px, 3vw, 36px)',
+  fontWeight: 600,
+  color: 'var(--text-strong)',
+  letterSpacing: '-0.02em',
+  lineHeight: 1.1,
+}
+
+const docsSubtitle = {
+  margin: '6px 0 0',
+  fontSize: 14,
+  color: 'var(--text-muted)',
+  lineHeight: 1.55,
+}
+
+const countPill = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  minWidth: 26,
+  height: 22,
+  padding: '0 8px',
+  borderRadius: 999,
+  background: 'var(--bg-subtle)',
+  border: '1px solid var(--border)',
+  fontSize: 12,
+  fontWeight: 600,
+  color: 'var(--text-muted)',
+  fontFamily: 'var(--font-mono)',
 }
