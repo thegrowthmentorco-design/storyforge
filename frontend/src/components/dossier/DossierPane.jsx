@@ -148,20 +148,18 @@ export default function DossierPane({ extraction, onUpdate }) {
   // M14.15 — when user clicks a card in Flow, jump back to Read and
   // scroll to that section (sections all have id={key} from the existing
   // chapter scrollspy infrastructure).
-  const handleJumpToSection = (sectionKey, _actKey) => {
+  const handleJumpToSection = (sectionKey, actKey) => {
     setViewMode('read')
     try { localStorage.setItem(VIEW_KEY, 'read') } catch { /* ignore */ }
-    // Wait one frame for Read view to mount, then scroll the section
-    // into view. Sections in DossierPane don't have ids on every wrapper
-    // (only Acts do via `<section id={chapterId}>`); use closest match.
+    // M14.16.e — prefer the section anchor (set by SectionShell) so we
+    // land precisely on the requested section. Fall back to the act
+    // anchor if the section wasn't id'd (defensive — every regen-able
+    // section should have one). Wait one frame for Read view to mount.
     requestAnimationFrame(() => {
-      // Sections aren't id'd individually; scroll to the act that owns
-      // the section. Each act's id matches ACT key (orient/structure/...).
-      const actKey = _actKey
-      if (!actKey) return
-      const el = document.getElementById(actKey)
-      if (el && scrollerRef.current) {
-        el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      const target = (sectionKey && document.getElementById(sectionKey))
+        || (actKey && document.getElementById(actKey))
+      if (target && scrollerRef.current) {
+        target.scrollIntoView({ behavior: 'smooth', block: 'start' })
       }
     })
   }
@@ -659,16 +657,33 @@ function Closing({ text }) {
 // Chapter wrapper — Roman numeral header + intro line
 // ============================================================================
 
+/* M14.16.e — per-act color stripe. Each chapter gets a tinted vertical
+   rule on the left of its header so Acts I-IV read distinctly while
+   scrolling. Subtle: 2px wide, accent-tinted, paired with a matching
+   eyebrow color. The full content area doesn't carry the stripe (would
+   feel boxy); only the header. */
+const ACT_TINTS = {
+  orient:      { rule: 'var(--accent-strong)', eyebrow: 'var(--accent-strong)' },
+  structure:   { rule: 'var(--info)',          eyebrow: 'var(--info-ink)' },
+  interrogate: { rule: 'var(--warn)',          eyebrow: 'var(--warn-ink)' },
+  act:         { rule: 'var(--success)',       eyebrow: 'var(--success-ink)' },
+}
+
 function Chapter({ id, roman, title, intro, children }) {
+  const tint = ACT_TINTS[id] || ACT_TINTS.orient
   return (
-    <section id={id} style={{ marginTop: 32 }}>
-      <header style={{ marginBottom: 20 }}>
+    <section id={id} style={{ marginTop: 32, scrollMarginTop: 80 }}>
+      <header style={{
+        marginBottom: 20,
+        paddingLeft: 14,
+        borderLeft: `3px solid ${tint.rule}`,
+      }}>
         <div
           style={{
             fontSize: 11,
             letterSpacing: '0.18em',
             textTransform: 'uppercase',
-            color: 'var(--accent-strong)',
+            color: tint.eyebrow,
             marginBottom: 8,
             fontWeight: 600,
           }}
@@ -735,8 +750,14 @@ function Bridge({ text }) {
    'full' fills the whole column for tables. */
 function SectionShell({ title, regenSection, width = 'prose', children }) {
   const innerMax = width === 'full' ? '100%' : width === 'wide' ? WIDE_WIDTH : PROSE_WIDTH
+  // M14.16.e — section anchor id derived from regenSection key (or
+  // slugified title fallback). Lets handleJumpToSection scroll to a
+  // specific section rather than just the act head.
+  const id = regenSection || (typeof title === 'string'
+    ? title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+    : undefined)
   return (
-    <section style={{ paddingTop: 4 }}>
+    <section id={id} style={{ paddingTop: 4, scrollMarginTop: 80 }}>
       <header style={{ marginBottom: 14, display: 'flex', alignItems: 'center', gap: 12, maxWidth: innerMax }}>
         <H2>{title}</H2>
         {regenSection && <RegenButton section={regenSection} />}
