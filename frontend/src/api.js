@@ -928,6 +928,20 @@ export async function deleteProjectApi(id) {
   return jsonOrThrow(res)
 }
 
+/**
+ * M14.12 — Run cross-doc synthesis on every dossier extraction in a
+ * project. Returns a new ExtractionRecord (lens='dossier') containing
+ * the merged dossier. Frontend should navigate to /extractions/{id} on
+ * success.
+ */
+export async function synthesizeProjectApi(projectId) {
+  const res = await apiFetch(
+    `/api/projects/${encodeURIComponent(projectId)}/synthesize`,
+    { method: 'POST' },
+  )
+  return jsonOrThrow(res)
+}
+
 // ---------- user settings (M3.4.4) ----------
 
 /** Returns `{anthropic_key_set, anthropic_key_preview, model_default, updated_at}`.
