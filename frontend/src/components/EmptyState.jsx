@@ -149,7 +149,13 @@ export default function EmptyState({ onSubmit, loading }) {
     })
   }
   const removeFile = (idx) => setFiles((prev) => prev.filter((_, i) => i !== idx))
-  const onFileChange = (e) => addFiles(e.target.files)
+  const onFileChange = (e) => {
+    addFiles(e.target.files)
+    // M14.15.c — reset input value so re-selecting the same file (after
+    // removing it from the list) re-fires onChange. Browsers de-dupe by
+    // value otherwise and the picker silently does nothing.
+    e.target.value = ''
+  }
   const onDrop = (e) => {
     e.preventDefault()
     setDragOver(false)
@@ -214,13 +220,26 @@ export default function EmptyState({ onSubmit, loading }) {
               onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
               onDragLeave={() => setDragOver(false)}
               onDrop={onDrop}
-              onClick={(e) => {
-                if (e.target === e.currentTarget && files.length === 0) pickFile()
+              // M14.15.c — fix: clicking the dropzone OR the "browse files"
+              // text now reliably opens the picker. Previous guard
+              // (target === currentTarget) only fired on padding clicks
+              // because the visible text is a child element. Remove-file
+              // buttons inside the file-list still stopPropagation, so
+              // they can't accidentally re-open the picker.
+              onClick={() => { if (files.length === 0) pickFile() }}
+              role={files.length === 0 ? 'button' : undefined}
+              tabIndex={files.length === 0 ? 0 : undefined}
+              onKeyDown={(e) => {
+                if (files.length === 0 && (e.key === 'Enter' || e.key === ' ')) {
+                  e.preventDefault()
+                  pickFile()
+                }
               }}
               style={{
                 ...dropZone,
                 background: dragOver ? 'var(--accent-soft)' : 'var(--bg-subtle)',
                 borderColor: dragOver ? 'var(--accent)' : 'var(--border-strong)',
+                cursor: files.length === 0 ? 'pointer' : 'default',
               }}
             >
               {files.length === 0 ? (
@@ -229,7 +248,7 @@ export default function EmptyState({ onSubmit, loading }) {
                     Drop a document here
                   </div>
                   <div style={{ fontSize: 12.5, color: 'var(--text-muted)' }}>
-                    or <span style={{ color: 'var(--accent-strong)', fontWeight: 600, cursor: 'pointer' }}>browse files</span> · PDF · .docx · .txt · .md · PNG · JPG · up to 10 MB · multi-doc OK
+                    or <span style={{ color: 'var(--accent-strong)', fontWeight: 600 }}>browse files</span> · PDF · .docx · .txt · .md · PNG · JPG · up to 10 MB · multi-doc OK
                   </div>
                 </>
               ) : (
