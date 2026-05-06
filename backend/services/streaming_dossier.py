@@ -26,6 +26,7 @@ from pydantic import ValidationError
 
 from services.cost import TokenUsage
 from services.lenses.dossier import DocumentDossier, DOSSIER_SYSTEM, _mock
+from services.streaming_json import StreamingTopLevelKeyExtractor
 
 log = logging.getLogger("storyforge.stream.dossier")
 
@@ -48,12 +49,28 @@ def stream_dossier_extraction(
     # ----- mock mode --------------------------------------------------------
     if not api_key:
         result = _mock(filename, raw_text)
-        # Fake a few usage ticks so the LoadingState progress card animates.
-        # Thresholds match the dossier's likely token shape (front-loaded
-        # bridges + smaller sections, then heavier interrogate / act sections).
-        for tokens in (300, 1500, 4500, 8500, 12000):
-            time.sleep(0.2)
-            yield {"type": "usage", "input": 0, "output": tokens, "max": MAX_OUTPUT_TOKENS}
+        result_dict = result.model_dump()
+        # Fake usage + section-ready ticks so the LoadingState progress card
+        # animates AND the DossierPane progressively mounts in dev mode.
+        # Section keys here are roughly the order Claude tends to emit
+        # DocumentDossier fields in (matches the schema field order).
+        progressive_keys = [
+            "overture", "orient_intro", "brief", "tldr_ladder",
+            "five_w_one_h", "structure_intro", "glossary", "mindmap",
+            "domain", "systems", "interrogate_intro", "five_whys",
+            "assumptions", "inversion", "better_questions",
+            "act_intro", "action_items", "decisions_made",
+            "decisions_open", "what_to_revisit", "user_stories", "closing",
+        ]
+        # Match token milestones to roughly even spacing across the keys.
+        per_key_tokens = MAX_OUTPUT_TOKENS // (len(progressive_keys) + 1)
+        for i, key in enumerate(progressive_keys, start=1):
+            time.sleep(0.08)
+            yield {"type": "usage", "input": 0,
+                   "output": per_key_tokens * i, "max": MAX_OUTPUT_TOKENS}
+            if key in result_dict:
+                yield {"type": "section_ready",
+                       "key": key, "value": result_dict[key]}
         yield {
             "type": "complete",
             "result": result,
@@ -98,8 +115,19 @@ def stream_dossier_extraction(
             tool_choice={"type": "tool", "name": "emit_dossier"},
         ) as stream:
             last_output = -1
+            partial_extractor = StreamingTopLevelKeyExtractor()
             for event in stream:
                 etype = getattr(event, "type", None)
+                # M14.14b — capture tool input deltas + emit section_ready
+                # events when top-level keys finish closing.
+                if etype == "content_block_delta":
+                    delta = getattr(event, "delta", None)
+                    dtype = getattr(delta, "type", None)
+                    if dtype == "input_json_delta":
+                        chunk = getattr(delta, "partial_json", "") or ""
+                        for key, value in partial_extractor.feed(chunk):
+                            yield {"type": "section_ready", "key": key, "value": value}
+                    continue
                 if etype == "message_delta":
                     u = getattr(event, "usage", None)
                     if u is not None:

@@ -61,13 +61,142 @@ const STAGES = [
   { key: 'gaps',    label: 'Identifying gaps + questions',   threshold: 5500 },
 ]
 
-function LoadingState({ filename, usage, onStop }) {
+// M14.14 — humanize DocumentDossier field keys for the progress label.
+const SECTION_LABELS = {
+  overture: 'Overture',
+  orient_intro: 'Act I intro',
+  brief: 'Brief',
+  numbers_extract: 'Numbers Extract',
+  tldr_ladder: 'TLDR Ladder',
+  five_w_one_h: '5W1H',
+  structure_intro: 'Act II intro',
+  glossary: 'Glossary',
+  mindmap: 'Mindmap',
+  domain: 'Domain Map',
+  timeline: 'Timeline',
+  systems: 'Systems View',
+  interrogate_intro: 'Act III intro',
+  five_whys: '5 Whys',
+  assumptions: 'Assumptions Audit',
+  inversion: 'Inversion',
+  negative_space: 'Negative Space',
+  better_questions: 'Better Questions',
+  act_intro: 'Act IV intro',
+  action_items: 'Action Items',
+  decisions_made: 'Decisions Made',
+  decisions_open: 'Open Decisions',
+  what_to_revisit: 'What to Revisit',
+  user_stories: 'User Stories',
+  closing: 'Closing',
+}
+function prettySectionName(key) {
+  return SECTION_LABELS[key] || key.replace(/_/g, ' ')
+}
+
+/**
+ * M14.14 — slim sticky progress strip rendered above a partially-mounted
+ * DossierPane while the extraction is still streaming. Replaces the heavy
+ * full-card LoadingState once any section has rendered, so the user sees
+ * real content + a thin progress signal rather than a "loading…" wall.
+ */
+function StreamingProgressStrip({ filename, usage, latestSection, sectionsReady, onStop }) {
+  const out = usage?.output ?? 0
+  const max = usage?.max ?? 16000
+  const pct = usage ? Math.min(100, Math.round((out / max) * 100)) : null
+  const friendly = latestSection ? prettySectionName(latestSection) : null
+  return (
+    <div
+      style={{
+        position: 'sticky',
+        top: 0,
+        zIndex: 6,
+        background: 'rgba(255, 255, 255, 0.92)',
+        borderBottom: '1px solid var(--border)',
+        padding: '10px 20px',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 14,
+        backdropFilter: 'blur(8px)',
+        WebkitBackdropFilter: 'blur(8px)',
+      }}
+    >
+      <Spinner size={14} />
+      <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0, gap: 4 }}>
+        <div style={{ fontSize: 12.5, color: 'var(--text)', display: 'flex', gap: 10, alignItems: 'baseline' }}>
+          <span style={{ fontWeight: 500, color: 'var(--text-strong)' }}>
+            Streaming {filename || 'document'}…
+          </span>
+          {friendly && (
+            <span style={{ color: 'var(--text-muted)' }}>
+              · just finished <strong style={{ color: 'var(--accent-ink)' }}>{friendly}</strong>
+            </span>
+          )}
+          {sectionsReady > 0 && (
+            <span style={{ color: 'var(--text-soft)', fontFamily: 'var(--font-mono)', fontSize: 11 }}>
+              · {sectionsReady} section{sectionsReady === 1 ? '' : 's'} ready
+            </span>
+          )}
+        </div>
+        <div style={{
+          height: 3,
+          borderRadius: 999,
+          background: 'var(--bg-hover)',
+          overflow: 'hidden',
+          position: 'relative',
+        }}>
+          {pct != null ? (
+            <div style={{
+              width: `${pct}%`,
+              height: '100%',
+              background: 'var(--accent)',
+              transition: 'width .25s ease-out',
+            }} />
+          ) : (
+            <div style={{
+              position: 'absolute',
+              left: '-30%',
+              width: '40%',
+              height: '100%',
+              background: 'linear-gradient(90deg, transparent, var(--accent), transparent)',
+              animation: 'slide 1.6s ease-in-out infinite',
+            }} />
+          )}
+        </div>
+      </div>
+      {typeof onStop === 'function' && (
+        <button
+          type="button"
+          onClick={onStop}
+          style={{
+            background: 'transparent',
+            border: '1px solid var(--border-strong)',
+            borderRadius: 'var(--radius-sm)',
+            color: 'var(--text-muted)',
+            cursor: 'pointer',
+            fontSize: 11.5,
+            fontWeight: 500,
+            padding: '4px 10px',
+            fontFamily: 'inherit',
+          }}
+        >
+          Stop
+        </button>
+      )}
+    </div>
+  )
+}
+
+function LoadingState({ filename, usage, latestSection, sectionsReady, onStop }) {
   const out = usage?.output ?? 0
   const inn = usage?.input ?? 0
   const max = usage?.max ?? 16000
   // Determinate progress when we have data; while null, fall back to the
   // indeterminate slide animation so the bar isn't stuck at 0%.
   const pct = usage ? Math.min(100, Math.round((out / max) * 100)) : null
+  // M14.14 — when section_ready events are streaming in, surface the most
+  // recent section name as a more honest progress signal than raw token
+  // counts (Claude doesn't emit sections at a uniform token rate).
+  const friendlySectionName = latestSection ? prettySectionName(latestSection) : null
 
   // For the stage list: every stage whose threshold is at or below the current
   // output is "done"; the next one above is "active"; everything above that is
@@ -109,7 +238,9 @@ function LoadingState({ filename, usage, onStop }) {
               Reading {filename || 'your document'}…
             </div>
             <div style={{ fontSize: 12.5, color: 'var(--text-muted)' }}>
-              {usage
+              {friendlySectionName
+                ? `Streaming · ${friendlySectionName}${sectionsReady ? ` · ${sectionsReady} section${sectionsReady === 1 ? '' : 's'} ready` : ''}`
+                : usage
                 ? `Claude is writing — ${out.toLocaleString()} of ${max.toLocaleString()} output tokens`
                 : 'Connecting to Claude…'}
             </div>
@@ -360,6 +491,12 @@ function AuthedApp() {
   // M5.3 — streaming progress for the in-flight extract. {input, output, max}
   // is updated as the SSE `usage` events arrive; cleared on done/error.
   const [streamUsage, setStreamUsage] = useState(null)
+  // M14.14 — partial dossier built up from `section_ready` SSE events.
+  // While loading, DossierPane mounts with this partial payload so the user
+  // sees sections appear progressively instead of waiting for the full reply.
+  // Reset to null at the start of each extraction; cleared on done/error.
+  const [partialDossier, setPartialDossier] = useState(null)
+  const [latestSectionKey, setLatestSectionKey] = useState(null)
   const [rerunning, setRerunning] = useState(false)
   const [showGaps, setShowGaps] = useState(true)
   // M5.2 — when a user clicks a source_quote on an artifact, this gets set
@@ -524,6 +661,8 @@ function AuthedApp() {
   const handleExtract = async ({ file, text, filename, lens: pickedLens }) => {
     setLoading(true)
     setStreamUsage(null)
+    setPartialDossier(null)
+    setLatestSectionKey(null)
     setPendingName(file ? file.name : filename)
     const inputChars = (text?.length) || (file?.size || 0)
     const startedAt = Date.now()
@@ -536,7 +675,16 @@ function AuthedApp() {
     try {
       const record = await extractStream(
         { file, text, filename, lens },
-        { onUsage: (u) => setStreamUsage(u), signal: controller.signal },
+        {
+          onUsage: (u) => setStreamUsage(u),
+          // M14.14 — accumulate sections into a partial dossier as they
+          // stream so the renderer can show them progressively.
+          onSection: ({ key, value }) => {
+            setPartialDossier((prev) => ({ ...(prev || {}), [key]: value }))
+            setLatestSectionKey(key)
+          },
+          signal: controller.signal,
+        },
       )
       setExtraction(record)
       setExtractionId(record?.id || null)
@@ -565,6 +713,8 @@ function AuthedApp() {
     } finally {
       setLoading(false)
       setStreamUsage(null)
+      setPartialDossier(null)
+      setLatestSectionKey(null)
       setPendingName('')
       extractAbortRef.current = null
     }
@@ -805,10 +955,36 @@ function AuthedApp() {
                 {!extraction && !loading && (
                   <EmptyState onSubmit={handleExtract} loading={loading} />
                 )}
-                {loading && (
+                {/* M14.14 — while loading: if any sections have streamed in
+                    yet, mount a partial DossierPane so the user can start
+                    reading immediately (with a slim sticky progress strip);
+                    otherwise show the full LoadingState card. */}
+                {loading && partialDossier && Object.keys(partialDossier).length > 0 && (
+                  <div className="body" style={{ flexDirection: 'column' }}>
+                    <StreamingProgressStrip
+                      filename={pendingName}
+                      usage={streamUsage}
+                      latestSection={latestSectionKey}
+                      sectionsReady={Object.keys(partialDossier).length}
+                      onStop={handleStopExtract}
+                    />
+                    <DossierPane
+                      extraction={{
+                        id: null,
+                        lens: 'dossier',
+                        lens_payload: partialDossier,
+                        filename: pendingName,
+                        dossier_revisions: [],
+                      }}
+                    />
+                  </div>
+                )}
+                {loading && (!partialDossier || Object.keys(partialDossier).length === 0) && (
                   <LoadingState
                     filename={pendingName}
                     usage={streamUsage}
+                    latestSection={latestSectionKey}
+                    sectionsReady={partialDossier ? Object.keys(partialDossier).length : 0}
                     onStop={handleStopExtract}
                   />
                 )}

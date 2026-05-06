@@ -127,7 +127,7 @@ export async function extract({ file, text, filename, projectId, lens } = {}) {
  */
 export async function extractStream(
   { file, text, filename, projectId, lens } = {},
-  { onStart, onUsage, signal } = {},
+  { onStart, onUsage, onSection, signal } = {},
 ) {
   const { readSSE } = await import('./lib/sse.js')
 
@@ -145,6 +145,11 @@ export async function extractStream(
     await readSSE(res, (name, data) => {
       if (name === 'start') onStart?.(data)
       else if (name === 'usage') onUsage?.(data)
+      // M14.14 — progressive section reveal. Backend emits one
+      // `section_ready` event per top-level dossier key as it finishes
+      // streaming. Caller passes onSection({key, value}) to mount sections
+      // before the full payload arrives.
+      else if (name === 'section_ready') onSection?.(data)
       else if (name === 'complete') finalRecord = data
       else if (name === 'error') streamError = data
     })

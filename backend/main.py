@@ -529,6 +529,11 @@ async def extract_stream(
                 etype = ev["type"]
                 if etype == "usage":
                     yield _sse("usage", {"input": ev["input"], "output": ev["output"], "max": ev["max"]})
+                elif etype == "section_ready":
+                    # M14.14 — progressive section reveal. Frontend uses these
+                    # to mount sections of the dossier as they finish streaming
+                    # rather than waiting for the full payload.
+                    yield _sse("section_ready", {"key": ev["key"], "value": ev["value"]})
                 elif etype == "error":
                     # Stream-time error — surface to client + stop. No persistence.
                     yield _sse("error", {"status": ev["status"], "detail": ev["detail"]})

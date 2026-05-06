@@ -115,6 +115,12 @@ export default function ChatPanel({ extractionId }) {
     { label: 'What if', prompt: 'What if we negotiated the proposed terms down by 20%? Walk through the likely impact section by section.' },
   ]
 
+  // M14.14 — during a partial / in-flight extraction the parent passes
+  // extractionId=null. Hide the chat trigger entirely so users don't try
+  // to chat with a row that doesn't exist yet. Placed after all hooks so
+  // we don't violate the rules-of-hooks.
+  if (!extractionId) return null
+
   if (!open) {
     return (
       <button
