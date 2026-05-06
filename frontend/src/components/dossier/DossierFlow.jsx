@@ -278,8 +278,24 @@ export default function DossierFlow({ dossier, onJumpToSection }) {
   // layout effect can read them all in one pass.
   const cardRefs = useRef({})
   const containerRef = useRef(null)
+  const innerRef = useRef(null)
   const [arrowPaths, setArrowPaths] = useState([])
   const [hoveredArrowIdx, setHoveredArrowIdx] = useState(null)
+  // M14.15.c — pinned card key. When non-null, that card's popover stays
+  // open (with pointer-events enabled so the user can copy text). Click
+  // anywhere outside the card or popover unpins. Esc unpins.
+  const [pinnedKey, setPinnedKey] = useState(null)
+  // M14.15.c — viewport transform {tx, ty, scale}. The inner-grid is
+  // rendered at its natural size and translated/scaled here. Pan = drag
+  // on background. Zoom = Cmd/Ctrl+wheel. Plain wheel falls through to
+  // native page scroll.
+  const MIN_SCALE = 0.3
+  const MAX_SCALE = 1.6
+  const [view, setView] = useState({ tx: 0, ty: 0, scale: 1 })
+  const dragStateRef = useRef(null)  // { startMouseX, startMouseY, startTx, startTy, moved }
+
+  // Reset view (centered + 100%).
+  const resetView = () => setView({ tx: 0, ty: 0, scale: 1 })
 
   // Group sections by act + filter to ones with content. Sections with
   // no content (e.g., empty user_stories on a non-requirements doc)
@@ -300,6 +316,101 @@ export default function DossierFlow({ dossier, onJumpToSection }) {
     acc[a.key] = presentSections.filter((s) => s.act === a.key)
     return acc
   }, {})
+
+  // M14.15.c — pan handlers. Drag on the canvas background; if it
+  // started on a card or interactive element, no pan. Movement < 4px is
+  // treated as a click (not a drag) so card click-to-pin still works.
+  const onCanvasMouseDown = (e) => {
+    // Only left-button. Skip if click started inside a card/button — let
+    // the card handle it.
+    if (e.button !== 0) return
+    if (e.target.closest('button, a, input, [data-popover-for]')) return
+    dragStateRef.current = {
+      startMouseX: e.clientX,
+      startMouseY: e.clientY,
+      startTx: view.tx,
+      startTy: view.ty,
+      moved: false,
+    }
+  }
+  useEffect(() => {
+    function onMove(e) {
+      const d = dragStateRef.current
+      if (!d) return
+      const dx = e.clientX - d.startMouseX
+      const dy = e.clientY - d.startMouseY
+      if (!d.moved && Math.hypot(dx, dy) < 4) return  // not a drag yet
+      d.moved = true
+      setView((v) => ({ ...v, tx: d.startTx + dx, ty: d.startTy + dy }))
+    }
+    function onUp() {
+      // Suppress the impending click if we actually dragged. Without this,
+      // releasing a drag on a card would trigger card click-to-pin.
+      if (dragStateRef.current?.moved) {
+        const cancelClick = (ev) => {
+          ev.stopPropagation()
+          ev.preventDefault()
+          window.removeEventListener('click', cancelClick, true)
+        }
+        window.addEventListener('click', cancelClick, true)
+      }
+      dragStateRef.current = null
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+    return () => {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+  }, [])
+
+  // M14.15.c — zoom handler. Cmd/Ctrl + wheel zooms (plain wheel scrolls
+  // the page natively, which is the right default for the document
+  // surrounding the canvas). Anchor at cursor: the point under the mouse
+  // stays fixed in screen space across the zoom.
+  const onCanvasWheel = (e) => {
+    if (!e.ctrlKey && !e.metaKey) return  // let native scroll happen
+    e.preventDefault()
+    if (!containerRef.current) return
+    const rect = containerRef.current.getBoundingClientRect()
+    const cursorX = e.clientX - rect.left
+    const cursorY = e.clientY - rect.top
+    setView((v) => {
+      const factor = Math.exp(-e.deltaY * 0.0015)
+      const newScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, v.scale * factor))
+      // Anchor: keep the inner-coordinate point under the cursor fixed.
+      // logical = (cursor - tx) / scale → solve for newTx so logical maps
+      // to the same cursor at newScale.
+      const logicalX = (cursorX - v.tx) / v.scale
+      const logicalY = (cursorY - v.ty) / v.scale
+      return {
+        tx: cursorX - logicalX * newScale,
+        ty: cursorY - logicalY * newScale,
+        scale: newScale,
+      }
+    })
+  }
+
+  // M14.15.c — outside-click + Esc to unpin.
+  useEffect(() => {
+    if (!pinnedKey) return
+    const onDocClick = (e) => {
+      const cardEl = cardRefs.current[pinnedKey]
+      const popoverEl = document.querySelector(`[data-popover-for="${pinnedKey}"]`)
+      if (cardEl?.contains(e.target)) return
+      if (popoverEl?.contains(e.target)) return
+      setPinnedKey(null)
+    }
+    const onKey = (e) => {
+      if (e.key === 'Escape') setPinnedKey(null)
+    }
+    document.addEventListener('mousedown', onDocClick)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDocClick)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [pinnedKey])
 
   // Recompute arrow paths whenever cards mount, the dossier changes, or
   // the window resizes. Reads each card's bounding box relative to the
@@ -363,7 +474,11 @@ export default function DossierFlow({ dossier, onJumpToSection }) {
       ro.disconnect()
       window.removeEventListener('resize', compute)
     }
-  }, [dossier])
+    // M14.15.c — view changes (pan/zoom) shift card positions on screen
+    // even though the cards themselves don't re-render. Recompute paths
+    // so arrows track. getBoundingClientRect already accounts for the
+    // ancestor transform, so no math beyond the existing logic.
+  }, [dossier, view])
 
   if (!dossier) {
     return (
@@ -374,7 +489,40 @@ export default function DossierFlow({ dossier, onJumpToSection }) {
   }
 
   return (
-    <div ref={containerRef} style={canvasStyle}>
+    <div
+      ref={containerRef}
+      style={{
+        ...canvasStyle,
+        cursor: dragStateRef.current ? 'grabbing' : 'grab',
+      }}
+      onMouseDown={onCanvasMouseDown}
+      onWheel={onCanvasWheel}
+    >
+      {/* M14.15.c — zoom controls overlay. Fixed bottom-left corner;
+          zIndex 6 so it sits above the canvas + arrows + cards. */}
+      <ZoomControls
+        scale={view.scale}
+        onZoomIn={() => setView((v) => ({ ...v, scale: Math.min(MAX_SCALE, v.scale * 1.2) }))}
+        onZoomOut={() => setView((v) => ({ ...v, scale: Math.max(MIN_SCALE, v.scale / 1.2) }))}
+        onReset={resetView}
+      />
+      {/* M14.15.c — mini-map. Bottom-right; click anywhere inside it to
+          recenter the canvas on that logical point. */}
+      <MiniMap
+        view={view}
+        innerRef={innerRef}
+        containerRef={containerRef}
+        cardRefs={cardRefs}
+        onRecenter={(logicalX, logicalY) => {
+          if (!containerRef.current) return
+          const rect = containerRef.current.getBoundingClientRect()
+          setView((v) => ({
+            ...v,
+            tx: rect.width / 2 - logicalX * v.scale,
+            ty: rect.height / 2 - logicalY * v.scale,
+          }))
+        }}
+      />
       {/* SVG arrow layer — sits behind the cards (zIndex 0) so it doesn't
           intercept clicks. Cards have zIndex 1. M14.15.b — arrows that
           carry a narrative bridge become hover targets that surface the
@@ -441,24 +589,162 @@ export default function DossierFlow({ dossier, onJumpToSection }) {
         </div>
       )}
 
-      <div style={gridStyle}>
-        {ACTS.map((act) => (
-          <FlowColumn
-            key={act.key}
-            act={act}
-            sections={sectionsByAct[act.key]}
-            dossier={dossier}
-            onJump={onJumpToSection}
-            cardRefs={cardRefs}
-          />
-        ))}
+      <div
+        ref={innerRef}
+        style={{
+          ...innerStyle,
+          transform: `translate(${view.tx}px, ${view.ty}px) scale(${view.scale})`,
+        }}
+      >
+        <div style={gridStyle}>
+          {ACTS.map((act) => (
+            <FlowColumn
+              key={act.key}
+              act={act}
+              sections={sectionsByAct[act.key]}
+              dossier={dossier}
+              onJump={onJumpToSection}
+              cardRefs={cardRefs}
+              pinnedKey={pinnedKey}
+              onPin={setPinnedKey}
+            />
+          ))}
+        </div>
       </div>
     </div>
   )
 }
 
+// M14.15.c — zoom controls overlay. Three buttons: +, %, −.
+function ZoomControls({ scale, onZoomIn, onZoomOut, onReset }) {
+  return (
+    <div style={zoomControlsStyle}>
+      <button type="button" onClick={onZoomOut} style={zoomBtn} aria-label="Zoom out" title="Zoom out">−</button>
+      <button type="button" onClick={onReset} style={{ ...zoomBtn, minWidth: 56, fontFamily: 'var(--font-mono)', fontSize: 11 }} title="Reset zoom">
+        {Math.round(scale * 100)}%
+      </button>
+      <button type="button" onClick={onZoomIn} style={zoomBtn} aria-label="Zoom in" title="Zoom in">+</button>
+    </div>
+  )
+}
 
-function FlowColumn({ act, sections, dossier, onJump, cardRefs }) {
+// M14.15.c — mini-map. Renders a scaled-down outline of every card +
+// the current viewport rectangle. Click inside to recenter. Computes
+// the world bounding box from card positions; if there are no cards,
+// renders an empty box.
+function MiniMap({ view, innerRef, containerRef, cardRefs, onRecenter }) {
+  const [layout, setLayout] = useState(null)
+  // Recompute on resize / view change. We measure cards in CSS-space
+  // (untransformed) by reading offsetLeft/offsetTop relative to the
+  // inner container — that gives us the world coordinate system the
+  // viewport maps INTO, regardless of current pan/zoom.
+  useLayoutEffect(() => {
+    function compute() {
+      if (!innerRef.current || !containerRef.current) return
+      // CSS-space card boxes — derived by reverse-applying the transform
+      // to the screen coords from getBoundingClientRect.
+      const innerScreen = innerRef.current.getBoundingClientRect()
+      const cards = []
+      for (const [key, el] of Object.entries(cardRefs.current)) {
+        if (!el) continue
+        const r = el.getBoundingClientRect()
+        // Logical (CSS-space) coordinates: undo the transform.
+        cards.push({
+          key,
+          x: (r.left - innerScreen.left) / view.scale,
+          y: (r.top - innerScreen.top) / view.scale,
+          w: r.width / view.scale,
+          h: r.height / view.scale,
+        })
+      }
+      if (cards.length === 0) {
+        setLayout(null)
+        return
+      }
+      // World bounding box (CSS-space).
+      const minX = Math.min(...cards.map((c) => c.x))
+      const minY = Math.min(...cards.map((c) => c.y))
+      const maxX = Math.max(...cards.map((c) => c.x + c.w))
+      const maxY = Math.max(...cards.map((c) => c.y + c.h))
+      const worldW = maxX - minX || 1
+      const worldH = maxY - minY || 1
+      // Viewport in CSS-space: the rectangle of (canvas) screen the user
+      // currently sees, mapped back through the transform.
+      const cnt = containerRef.current.getBoundingClientRect()
+      const viewportX = (-view.tx) / view.scale
+      const viewportY = (-view.ty) / view.scale
+      const viewportW = cnt.width / view.scale
+      const viewportH = cnt.height / view.scale
+      setLayout({
+        worldX: minX, worldY: minY, worldW, worldH,
+        viewportX, viewportY, viewportW, viewportH,
+        cards,
+      })
+    }
+    compute()
+    window.addEventListener('resize', compute)
+    return () => window.removeEventListener('resize', compute)
+  }, [view, cardRefs, innerRef, containerRef])
+
+  if (!layout) return null
+  const MAP_W = 180, MAP_H = 130
+  // Scale the world to fit inside the mini-map (preserve aspect).
+  const sx = MAP_W / layout.worldW
+  const sy = MAP_H / layout.worldH
+  const s = Math.min(sx, sy) * 0.9
+  // Center the world in the mini-map.
+  const offsetX = (MAP_W - layout.worldW * s) / 2 - layout.worldX * s
+  const offsetY = (MAP_H - layout.worldH * s) / 2 - layout.worldY * s
+  const W = (x) => offsetX + x * s
+  const H = (y) => offsetY + y * s
+
+  const onMapClick = (e) => {
+    const rect = e.currentTarget.getBoundingClientRect()
+    const mapX = e.clientX - rect.left
+    const mapY = e.clientY - rect.top
+    // Inverse: logical = (mapPoint - offset) / s
+    const logicalX = (mapX - offsetX) / s
+    const logicalY = (mapY - offsetY) / s
+    onRecenter(logicalX, logicalY)
+  }
+
+  return (
+    <div
+      style={{
+        ...miniMapStyle,
+        width: MAP_W, height: MAP_H,
+      }}
+      onClick={onMapClick}
+      onMouseDown={(e) => e.stopPropagation()}  // don't trigger pan
+      title="Mini-map · click to recenter"
+    >
+      <svg width={MAP_W} height={MAP_H} style={{ display: 'block' }}>
+        {/* Cards */}
+        {layout.cards.map((c) => (
+          <rect
+            key={c.key}
+            x={W(c.x)} y={H(c.y)}
+            width={Math.max(2, c.w * s)} height={Math.max(2, c.h * s)}
+            fill="var(--accent)" fillOpacity="0.45"
+            rx="2"
+          />
+        ))}
+        {/* Viewport rectangle */}
+        <rect
+          x={W(layout.viewportX)} y={H(layout.viewportY)}
+          width={Math.max(4, layout.viewportW * s)} height={Math.max(4, layout.viewportH * s)}
+          fill="none"
+          stroke="var(--text-strong)"
+          strokeWidth="1.5"
+          strokeOpacity="0.85"
+        />
+      </svg>
+    </div>
+  )
+}
+
+
+function FlowColumn({ act, sections, dossier, onJump, cardRefs, pinnedKey, onPin }) {
   return (
     <div style={columnStyle}>
       <div style={columnHeaderStyle}>
@@ -498,6 +784,8 @@ function FlowColumn({ act, sections, dossier, onJump, cardRefs }) {
               onJump={onJump}
               cardRefs={cardRefs}
               actAccent={act.accent}
+              isPinned={pinnedKey === s.key}
+              onPin={onPin}
             />
           ))
         )}
@@ -507,7 +795,7 @@ function FlowColumn({ act, sections, dossier, onJump, cardRefs }) {
 }
 
 
-function FlowCard({ section, dossier, onJump, cardRefs, actAccent }) {
+function FlowCard({ section, dossier, onJump, cardRefs, actAccent, isPinned, onPin }) {
   const Icon = section.icon
   const summary = section.summary?.(dossier)
   const metric = section.metric?.(dossier)
@@ -521,41 +809,62 @@ function FlowCard({ section, dossier, onJump, cardRefs, actAccent }) {
   // M14.15.b — hover popover with section preview. 350ms delay so quick
   // pointer-fly-throughs don't open it; cancelled if pointer leaves
   // before the timeout fires.
+  // M14.15.c — click pins the popover (pointer-events enabled so user can
+  // copy text). "Read in full →" button inside the pinned popover handles
+  // the jump-to-Read-view that click used to do directly.
   const preview = section.preview?.(dossier)
-  const [popoverOpen, setPopoverOpen] = React.useState(false)
+  const [hoverOpen, setHoverOpen] = React.useState(false)
   const hoverTimer = React.useRef(null)
-  const openPopover = () => {
+  const openHover = () => {
+    if (isPinned) return  // pinned takes precedence; don't fight with hover state
     if (hoverTimer.current) clearTimeout(hoverTimer.current)
-    hoverTimer.current = setTimeout(() => setPopoverOpen(true), 350)
+    hoverTimer.current = setTimeout(() => setHoverOpen(true), 350)
   }
-  const closePopover = () => {
+  const closeHover = () => {
     if (hoverTimer.current) {
       clearTimeout(hoverTimer.current)
       hoverTimer.current = null
     }
-    setPopoverOpen(false)
+    setHoverOpen(false)
   }
   React.useEffect(() => () => {
     if (hoverTimer.current) clearTimeout(hoverTimer.current)
   }, [])
+  // Show the popover whenever pinned OR hover-open (with content to show).
+  const popoverOpen = (isPinned || hoverOpen) && !!preview
+  const handleClick = () => {
+    closeHover()
+    // Toggle pin: click again on a pinned card unpins.
+    onPin?.(isPinned ? null : section.key)
+  }
   return (
     <div style={{ position: 'relative' }}>
     <button
       ref={(el) => { cardRefs.current[section.key] = el }}
       type="button"
-      onClick={() => onJump?.(section.key, section.act)}
-      style={cardStyle}
+      onClick={handleClick}
+      style={{
+        ...cardStyle,
+        ...(isPinned ? {
+          borderColor: `var(${actAccent})`,
+          boxShadow: 'var(--shadow-md)',
+        } : {}),
+      }}
       onMouseEnter={(e) => {
-        e.currentTarget.style.borderColor = `var(${actAccent})`
-        e.currentTarget.style.boxShadow = 'var(--shadow-md)'
-        e.currentTarget.style.transform = 'translateY(-1px)'
-        openPopover()
+        if (!isPinned) {
+          e.currentTarget.style.borderColor = `var(${actAccent})`
+          e.currentTarget.style.boxShadow = 'var(--shadow-md)'
+          e.currentTarget.style.transform = 'translateY(-1px)'
+        }
+        openHover()
       }}
       onMouseLeave={(e) => {
-        e.currentTarget.style.borderColor = 'var(--border)'
-        e.currentTarget.style.boxShadow = 'var(--shadow-xs)'
-        e.currentTarget.style.transform = 'translateY(0)'
-        closePopover()
+        if (!isPinned) {
+          e.currentTarget.style.borderColor = 'var(--border)'
+          e.currentTarget.style.boxShadow = 'var(--shadow-xs)'
+          e.currentTarget.style.transform = 'translateY(0)'
+        }
+        closeHover()
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
@@ -611,30 +920,62 @@ function FlowCard({ section, dossier, onJump, cardRefs, actAccent }) {
     </button>
     {popoverOpen && preview && (
       <CardPopover
+        sectionKey={section.key}
         title={section.title}
         actAccent={actAccent}
         preview={preview}
+        isPinned={isPinned}
+        onUnpin={() => onPin?.(null)}
+        onJump={() => { onPin?.(null); onJump?.(section.key, section.act) }}
       />
     )}
     </div>
   )
 }
 
-// M14.15.b — anchored hover popover. Sits above + slightly to the right
-// of the card. pointer-events: none so the user can mouse-out cleanly.
-function CardPopover({ title, actAccent, preview }) {
+// M14.15.b — anchored popover. Hover mode: pointer-events:none + auto-
+// dismiss on mouseleave. M14.15.c — pinned mode: pointer-events:auto so
+// the user can select + copy text, with a close ✕ + "Read in full →"
+// button. data-popover-for is used by the outside-click handler in
+// DossierFlow to know whether a click landed on the popover.
+function CardPopover({ sectionKey, title, actAccent, preview, isPinned, onUnpin, onJump }) {
   return (
-    <div style={popoverStyle}>
+    <div
+      data-popover-for={sectionKey}
+      style={{
+        ...popoverStyle,
+        pointerEvents: isPinned ? 'auto' : 'none',
+        // Slightly stronger shadow when pinned so it reads as "active"
+        boxShadow: isPinned ? 'var(--shadow-lg), 0 0 0 2px var(--accent-soft)' : 'var(--shadow-lg)',
+      }}
+    >
       <div style={{
-        fontFamily: 'var(--font-display)',
-        fontSize: 13,
-        fontWeight: 600,
-        color: 'var(--text-strong)',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
         marginBottom: 8,
         borderBottom: `2px solid var(${actAccent})`,
         paddingBottom: 6,
       }}>
-        {title}
+        <span style={{
+          flex: 1,
+          fontFamily: 'var(--font-display)',
+          fontSize: 13,
+          fontWeight: 600,
+          color: 'var(--text-strong)',
+        }}>
+          {title}
+        </span>
+        {isPinned && (
+          <button
+            type="button"
+            onClick={onUnpin}
+            aria-label="Close"
+            style={popoverCloseBtn}
+          >
+            ✕
+          </button>
+        )}
       </div>
       {preview.kind === 'chips' && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
@@ -669,8 +1010,47 @@ function CardPopover({ title, actAccent, preview }) {
           ))}
         </ul>
       )}
+      {isPinned && (
+        <div style={popoverFootStyle}>
+          <button type="button" onClick={onJump} style={popoverJumpBtn}>
+            Read in full →
+          </button>
+        </div>
+      )}
     </div>
   )
+}
+
+const popoverCloseBtn = {
+  background: 'transparent',
+  border: 'none',
+  cursor: 'pointer',
+  fontSize: 14,
+  lineHeight: 1,
+  color: 'var(--text-muted)',
+  padding: '2px 6px',
+  borderRadius: 4,
+  fontFamily: 'inherit',
+}
+
+const popoverFootStyle = {
+  marginTop: 10,
+  paddingTop: 10,
+  borderTop: '1px solid var(--border)',
+  display: 'flex',
+  justifyContent: 'flex-end',
+}
+
+const popoverJumpBtn = {
+  background: 'var(--accent-strong)',
+  color: '#fff',
+  border: 'none',
+  borderRadius: 6,
+  padding: '6px 12px',
+  fontSize: 12,
+  fontWeight: 600,
+  cursor: 'pointer',
+  fontFamily: 'inherit',
 }
 
 const popoverStyle = {
@@ -697,14 +1077,28 @@ const popoverStyle = {
 const canvasStyle = {
   position: 'relative',
   width: '100%',
-  minHeight: '100%',
-  padding: '32px clamp(20px, 4vw, 48px) 80px',
+  height: '100%',
+  minHeight: 'calc(100vh - 200px)',
   background: 'var(--bg)',
   // Backdrop hint that this is a canvas — faint dotted grid.
   backgroundImage: 'radial-gradient(circle, var(--border) 1px, transparent 1px)',
   backgroundSize: '24px 24px',
   backgroundPosition: '0 0',
-  overflow: 'auto',
+  overflow: 'hidden',  // M14.15.c — clip the transformed inner; pan/zoom replaces native scroll
+  userSelect: 'none',  // dragging shouldn't select text
+}
+
+// M14.15.c — transformed inner. The grid lives inside this; pan/zoom is
+// applied via the transform style. transform-origin top-left so the
+// math in onCanvasWheel (cursor-anchored zoom) works without a basis
+// shift. willChange:transform hints the browser to GPU-composite.
+const innerStyle = {
+  position: 'absolute',
+  top: 0,
+  left: 0,
+  padding: '32px clamp(20px, 4vw, 48px) 80px',
+  transformOrigin: '0 0',
+  willChange: 'transform',
 }
 
 const svgLayerStyle = {
@@ -776,6 +1170,52 @@ const cardStyle = {
   fontFamily: 'inherit',
   textAlign: 'left',
   transition: 'border-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-out)',
+}
+
+// M14.15.c — zoom controls overlay (bottom-left).
+const zoomControlsStyle = {
+  position: 'absolute',
+  bottom: 16,
+  left: 16,
+  zIndex: 6,
+  display: 'flex',
+  gap: 2,
+  padding: 3,
+  background: 'var(--bg-elevated)',
+  border: '1px solid var(--border)',
+  borderRadius: 8,
+  boxShadow: 'var(--shadow-md)',
+}
+const zoomBtn = {
+  minWidth: 28,
+  height: 26,
+  border: 'none',
+  background: 'transparent',
+  borderRadius: 5,
+  cursor: 'pointer',
+  fontSize: 14,
+  fontWeight: 600,
+  color: 'var(--text-strong)',
+  fontFamily: 'inherit',
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  padding: '0 8px',
+}
+
+// M14.15.c — mini-map (bottom-right).
+const miniMapStyle = {
+  position: 'absolute',
+  bottom: 16,
+  right: 16,
+  zIndex: 6,
+  background: 'var(--bg-elevated)',
+  border: '1px solid var(--border)',
+  borderRadius: 8,
+  boxShadow: 'var(--shadow-md)',
+  overflow: 'hidden',
+  cursor: 'pointer',
+  padding: 0,
 }
 
 const emptyColumnStyle = {
