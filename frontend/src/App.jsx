@@ -53,13 +53,24 @@ import { Sparkles, Check } from './components/icons.jsx'
  * eyeballed thresholds — not perfectly accurate (model writes sections in
  * a slightly different order on different inputs) but accurate enough that
  * users see real progress, not theatre. */
-const STAGES = [
+// M14.14 — STAGES are lens-shaped. The legacy stories pipeline emits 5
+// JSON columns (brief / actors / stories / nfrs / gaps) at known token
+// thresholds; dossier emits 22+ sections so we group them into the four
+// narrative acts the UI already knows about.
+const STORIES_STAGES = [
   { key: 'brief',   label: 'Reading source + drafting brief', threshold: 0 },
   { key: 'actors',  label: 'Extracting actors',              threshold: 200 },
   { key: 'stories', label: 'Composing user stories',         threshold: 500 },
   { key: 'nfrs',    label: 'Capturing non-functional reqs',  threshold: 4000 },
   { key: 'gaps',    label: 'Identifying gaps + questions',   threshold: 5500 },
 ]
+const DOSSIER_STAGES = [
+  { key: 'orient',     label: 'Act I · Orient (brief, TLDR, 5W1H)',          threshold: 0 },
+  { key: 'structure',  label: 'Act II · Structure (glossary, mindmap, systems)', threshold: 3500 },
+  { key: 'interrogate',label: 'Act III · Interrogate (5 whys, assumptions, gaps)', threshold: 8500 },
+  { key: 'act',        label: 'Act IV · Act (action items, decisions, revisits)', threshold: 12500 },
+]
+const STAGES = STORIES_STAGES  // back-compat alias for legacy call sites
 
 // M14.14 — humanize DocumentDossier field keys for the progress label.
 const SECTION_LABELS = {
@@ -186,7 +197,7 @@ function StreamingProgressStrip({ filename, usage, latestSection, sectionsReady,
   )
 }
 
-function LoadingState({ filename, usage, latestSection, sectionsReady, onStop }) {
+function LoadingState({ filename, usage, latestSection, sectionsReady, lens, onStop }) {
   const out = usage?.output ?? 0
   const inn = usage?.input ?? 0
   const max = usage?.max ?? 16000
@@ -198,16 +209,21 @@ function LoadingState({ filename, usage, latestSection, sectionsReady, onStop })
   // counts (Claude doesn't emit sections at a uniform token rate).
   const friendlySectionName = latestSection ? prettySectionName(latestSection) : null
 
+  // M14.14 — pick the stage list that matches the lens being extracted.
+  // Default to dossier (the M14.5.b default) so a missing prop doesn't show
+  // the legacy stories steps for a dossier extraction.
+  const stages = lens === 'stories' ? STORIES_STAGES : DOSSIER_STAGES
+
   // For the stage list: every stage whose threshold is at or below the current
   // output is "done"; the next one above is "active"; everything above that is
   // pending. Once everything is done (out > last threshold), show the last one
   // as still active — we don't know exactly when the response finishes from the
   // client's POV until `complete` arrives.
-  const lastDoneIdx = STAGES.reduce(
+  const lastDoneIdx = stages.reduce(
     (acc, s, i) => (out > s.threshold ? i : acc),
     -1,
   )
-  const activeIdx = Math.min(lastDoneIdx + 1, STAGES.length - 1)
+  const activeIdx = Math.min(lastDoneIdx + 1, stages.length - 1)
 
   return (
     <div
@@ -248,7 +264,7 @@ function LoadingState({ filename, usage, latestSection, sectionsReady, onStop })
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 18 }}>
-          {STAGES.map((s, i) => {
+          {stages.map((s, i) => {
             const state = i < activeIdx ? 'done' : i === activeIdx ? 'active' : 'pending'
             return (
               <div
@@ -497,6 +513,9 @@ function AuthedApp() {
   // Reset to null at the start of each extraction; cleared on done/error.
   const [partialDossier, setPartialDossier] = useState(null)
   const [latestSectionKey, setLatestSectionKey] = useState(null)
+  // Track which lens the in-flight extraction is using so LoadingState can
+  // render the correct stage labels (dossier vs stories).
+  const [pendingLens, setPendingLens] = useState('dossier')
   const [rerunning, setRerunning] = useState(false)
   const [showGaps, setShowGaps] = useState(true)
   // M5.2 — when a user clicks a source_quote on an artifact, this gets set
@@ -672,6 +691,7 @@ function AuthedApp() {
     // M14.5.b — lens comes from the EmptyState mode dropdown; default
     // 'dossier' for any caller that doesn't pick one.
     const lens = pickedLens || 'dossier'
+    setPendingLens(lens)
     try {
       const record = await extractStream(
         { file, text, filename, lens },
@@ -985,6 +1005,7 @@ function AuthedApp() {
                     usage={streamUsage}
                     latestSection={latestSectionKey}
                     sectionsReady={partialDossier ? Object.keys(partialDossier).length : 0}
+                    lens={pendingLens}
                     onStop={handleStopExtract}
                   />
                 )}
