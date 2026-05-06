@@ -32,6 +32,8 @@ import React, { useEffect, useRef, useState } from 'react'
 import { ConfidenceBadge, GlossaryTermified, SourceQuote } from './annotations.jsx'
 import ChatPanel from './ChatPanel.jsx'
 import { H2, H3, P, UL, LI, OL, OLI } from './markdown.jsx'
+import { dossierToMarkdown, downloadFile, suggestExportFilename } from './exportMarkdown.js'
+import { Download, Copy } from '../icons.jsx'
 
 export default function DossierPane({ extraction }) {
   const dossier = extraction?.lens_payload
@@ -76,7 +78,7 @@ export default function DossierPane({ extraction }) {
 
   return (
     <div style={paneShell} ref={scrollerRef}>
-      <ChapterNav active={activeChapter} />
+      <ChapterNav active={activeChapter} extraction={extraction} />
 
       <div style={contentColumn}>
         <Overture text={dossier.overture} />
@@ -200,7 +202,7 @@ const emptyShell = {
 // Chapter nav (sticky)
 // ============================================================================
 
-function ChapterNav({ active }) {
+function ChapterNav({ active, extraction }) {
   const chapters = [
     { id: 'orient', roman: 'I', title: 'Orient' },
     { id: 'structure', roman: 'II', title: 'Structure' },
@@ -216,14 +218,16 @@ function ChapterNav({ active }) {
         background: 'rgba(255, 255, 255, 0.85)',
         borderBottom: '1px solid var(--border)',
         padding: '14px 24px',
-        display: 'flex',
-        gap: 6,
-        justifyContent: 'center',
-        flexWrap: 'wrap',
+        display: 'grid',
+        gridTemplateColumns: '1fr auto 1fr',
+        alignItems: 'center',
+        gap: 12,
         backdropFilter: 'blur(8px)',
         WebkitBackdropFilter: 'blur(8px)',
       }}
     >
+      <span />
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'center' }}>
       {chapters.map((c) => {
         const isActive = c.id === active
         return (
@@ -257,8 +261,67 @@ function ChapterNav({ active }) {
           </a>
         )
       })}
+      </div>
+      <div style={{ justifySelf: 'end' }}>
+        <ExportActions extraction={extraction} />
+      </div>
     </nav>
   )
+}
+
+// ============================================================================
+// M14.6 — Export actions: download dossier as .md, copy to clipboard
+// ============================================================================
+
+function ExportActions({ extraction }) {
+  const [copied, setCopied] = useState(false)
+  if (!extraction?.lens_payload) return null
+
+  const onDownload = () => {
+    const md = dossierToMarkdown(extraction)
+    downloadFile(md, suggestExportFilename(extraction, 'md'), 'text/markdown')
+  }
+
+  const onCopy = async () => {
+    const md = dossierToMarkdown(extraction)
+    try {
+      await navigator.clipboard.writeText(md)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1600)
+    } catch {
+      // Clipboard API can fail on insecure contexts; fall back to download.
+      downloadFile(md, suggestExportFilename(extraction, 'md'), 'text/markdown')
+    }
+  }
+
+  return (
+    <div style={{ display: 'flex', gap: 4 }}>
+      <button type="button" onClick={onCopy} style={navActionBtn} title="Copy as Markdown">
+        <Copy size={13} />
+        {copied ? 'Copied' : 'Copy'}
+      </button>
+      <button type="button" onClick={onDownload} style={navActionBtn} title="Download .md">
+        <Download size={13} />
+        Export
+      </button>
+    </div>
+  )
+}
+
+const navActionBtn = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 6,
+  padding: '5px 10px',
+  borderRadius: 6,
+  fontSize: 12,
+  fontWeight: 500,
+  color: 'var(--text-muted)',
+  background: 'transparent',
+  border: '1px solid var(--border)',
+  cursor: 'pointer',
+  fontFamily: 'inherit',
+  transition: 'background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out)',
 }
 
 // ============================================================================
