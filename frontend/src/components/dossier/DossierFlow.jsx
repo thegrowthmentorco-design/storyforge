@@ -53,6 +53,10 @@ const SECTIONS = [
     key: 'brief', act: 'orient', title: 'Brief', icon: FileText,
     summary: (d) => d.brief?.summary,
     metric: (d) => (d.brief?.tags?.length ? `${d.brief.tags.length} tags` : null),
+    preview: (d) => {
+      const tags = d.brief?.tags || []
+      return tags.length ? { kind: 'chips', items: tags } : null
+    },
   },
   {
     key: 'numbers_extract', act: 'orient', title: 'Numbers', icon: Sparkles,
@@ -69,6 +73,15 @@ const SECTIONS = [
     key: 'tldr_ladder', act: 'orient', title: 'TLDR Ladder', icon: LayoutTemplate,
     summary: (d) => d.tldr_ladder?.one_line,
     metric: () => '3 depths',
+    preview: (d) => {
+      const l = d.tldr_ladder
+      if (!l) return null
+      const items = [
+        l.one_line && { label: '1 line', text: l.one_line },
+        l.one_paragraph && { label: '1 paragraph', text: l.one_paragraph },
+      ].filter(Boolean)
+      return items.length ? { kind: 'labeled', items } : null
+    },
   },
   {
     key: 'five_w_one_h', act: 'orient', title: '5W1H', icon: HelpCircle,
@@ -121,6 +134,12 @@ const SECTIONS = [
     key: 'five_whys', act: 'interrogate', title: '5 Whys', icon: Search,
     summary: (d) => d.five_whys?.[0]?.question,
     metric: (d) => (d.five_whys?.length ? `${d.five_whys.length} steps` : null),
+    preview: (d) => {
+      const items = (d.five_whys || []).slice(0, 3).map((s, i) => ({
+        label: `Why ${i + 1}`, text: s.question,
+      }))
+      return items.length ? { kind: 'labeled', items } : null
+    },
   },
   {
     key: 'assumptions', act: 'interrogate', title: 'Assumptions', icon: Lightbulb,
@@ -131,12 +150,27 @@ const SECTIONS = [
       return items.length ? `${items.length} (${high} high)` : null
     },
     metricTone: 'warn',
+    preview: (d) => {
+      const order = { high: 0, medium: 1, low: 2 }
+      const items = (d.assumptions || [])
+        .slice()
+        .sort((a, b) => (order[a.risk_level] ?? 9) - (order[b.risk_level] ?? 9))
+        .slice(0, 4)
+        .map((a) => ({ label: (a.risk_level || 'risk').toUpperCase(), text: a.assumption }))
+      return items.length ? { kind: 'labeled', items } : null
+    },
   },
   {
     key: 'inversion', act: 'interrogate', title: 'Inversion', icon: AlertTriangle,
     summary: (d) => d.inversion?.[0]?.scenario,
     metric: (d) => (d.inversion?.length ? `${d.inversion.length} risks` : null),
     metricTone: 'danger',
+    preview: (d) => {
+      const items = (d.inversion || []).slice(0, 4).map((f) => ({
+        label: '×', text: f.scenario,
+      }))
+      return items.length ? { kind: 'labeled', items } : null
+    },
   },
   {
     key: 'negative_space', act: 'interrogate', title: 'Negative Space', icon: AlertTriangle,
@@ -151,6 +185,12 @@ const SECTIONS = [
     key: 'better_questions', act: 'interrogate', title: 'Better Questions', icon: Search,
     summary: (d) => d.better_questions?.[0]?.question,
     metric: (d) => (d.better_questions?.length ? `${d.better_questions.length} questions` : null),
+    preview: (d) => {
+      const items = (d.better_questions || []).slice(0, 4).map((q, i) => ({
+        label: `${i + 1}.`, text: q.question,
+      }))
+      return items.length ? { kind: 'labeled', items } : null
+    },
   },
   // --- Act IV — Act ---
   {
@@ -158,6 +198,12 @@ const SECTIONS = [
     summary: (d) => d.action_items?.[0]?.action,
     metric: (d) => (d.action_items?.length ? `${d.action_items.length} actions` : null),
     metricTone: 'success',
+    preview: (d) => {
+      const items = (d.action_items || []).slice(0, 4).map((a) => ({
+        label: a.owner || 'TBD', text: a.action,
+      }))
+      return items.length ? { kind: 'labeled', items } : null
+    },
   },
   {
     key: 'decisions_made', act: 'act', title: 'Decisions Made', icon: Check,
@@ -194,6 +240,38 @@ const SECTIONS = [
 // payload (so partial dossiers still render a sensible chain).
 const NARRATIVE_ORDER = SECTIONS.map((s) => s.key)
 
+// M14.15.b — bridge field lookup. Maps (fromKey, toKey) to the dossier
+// field holding the narrator-bridge text that connects them in Read view.
+// Where two consecutive sections have multiple possible bridges (e.g.
+// brief → tldr_ladder has both bridge_brief_to_numbers AND the legacy
+// bridge_brief_to_tldr depending on which sections are present), we pick
+// the one that matches the actual chain.
+const BRIDGE_FIELDS = {
+  'brief|numbers_extract': 'bridge_brief_to_numbers',
+  'numbers_extract|tldr_ladder': 'bridge_numbers_to_tldr',
+  'brief|tldr_ladder': 'bridge_brief_to_tldr',
+  'tldr_ladder|five_w_one_h': 'bridge_tldr_to_5w1h',
+  'five_w_one_h|glossary': 'bridge_5w1h_to_structure',
+  'glossary|mindmap': 'bridge_glossary_to_mindmap',
+  'mindmap|domain': 'bridge_mindmap_to_domain',
+  'domain|timeline': 'bridge_domain_to_timeline',
+  'timeline|systems': 'bridge_timeline_to_systems',
+  'domain|systems': 'bridge_domain_to_systems',
+  'systems|five_whys': 'bridge_systems_to_interrogate',
+  'five_whys|assumptions': 'bridge_whys_to_assumptions',
+  'assumptions|inversion': 'bridge_assumptions_to_inversion',
+  'inversion|negative_space': 'bridge_inversion_to_negative_space',
+  'negative_space|better_questions': 'bridge_negative_space_to_questions',
+  'inversion|better_questions': 'bridge_inversion_to_questions',
+  'better_questions|action_items': 'bridge_questions_to_act',
+}
+function bridgeText(dossier, fromKey, toKey) {
+  const field = BRIDGE_FIELDS[`${fromKey}|${toKey}`]
+  if (!field) return null
+  const t = dossier?.[field]
+  return t && t.trim() ? t : null
+}
+
 
 export default function DossierFlow({ dossier, onJumpToSection }) {
   // Section refs for arrow positioning. Stored in a single map so the
@@ -201,6 +279,7 @@ export default function DossierFlow({ dossier, onJumpToSection }) {
   const cardRefs = useRef({})
   const containerRef = useRef(null)
   const [arrowPaths, setArrowPaths] = useState([])
+  const [hoveredArrowIdx, setHoveredArrowIdx] = useState(null)
 
   // Group sections by act + filter to ones with content. Sections with
   // no content (e.g., empty user_stories on a non-requirements doc)
@@ -262,10 +341,16 @@ export default function DossierFlow({ dossier, onJumpToSection }) {
         const cy1 = fromY + (sameAct ? Math.max(20, dy / 3) : 0)
         const cx2 = toX - (sameAct ? 0 : Math.max(40, dx / 3))
         const cy2 = toY - (sameAct ? Math.max(20, dy / 3) : 0)
+        // Approximate path midpoint via bezier formula at t=0.5.
+        // For C(P0, P1, P2, P3) at t=0.5: B = (P0 + 3P1 + 3P2 + P3) / 8.
+        const midX = (fromX + 3 * cx1 + 3 * cx2 + toX) / 8
+        const midY = (fromY + 3 * cy1 + 3 * cy2 + toY) / 8
         paths.push({
           d: `M ${fromX} ${fromY} C ${cx1} ${cy1}, ${cx2} ${cy2}, ${toX} ${toY}`,
           fromKey: order[i],
           toKey: order[i + 1],
+          midX, midY,
+          bridge: bridgeText(dossier, order[i], order[i + 1]),
         })
       }
       setArrowPaths(paths)
@@ -291,8 +376,10 @@ export default function DossierFlow({ dossier, onJumpToSection }) {
   return (
     <div ref={containerRef} style={canvasStyle}>
       {/* SVG arrow layer — sits behind the cards (zIndex 0) so it doesn't
-          intercept clicks. Cards have zIndex 1. */}
-      <svg style={svgLayerStyle} aria-hidden>
+          intercept clicks. Cards have zIndex 1. M14.15.b — arrows that
+          carry a narrative bridge become hover targets that surface the
+          bridge text as a floating tooltip. */}
+      <svg style={svgLayerStyle} aria-hidden={hoveredArrowIdx == null}>
         <defs>
           <marker
             id="flow-arrowhead"
@@ -304,18 +391,55 @@ export default function DossierFlow({ dossier, onJumpToSection }) {
             <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--accent-strong)" />
           </marker>
         </defs>
-        {arrowPaths.map((p, i) => (
-          <path
-            key={i}
-            d={p.d}
-            fill="none"
-            stroke="var(--accent-strong)"
-            strokeWidth="1.5"
-            strokeOpacity="0.45"
-            markerEnd="url(#flow-arrowhead)"
-          />
-        ))}
+        {arrowPaths.map((p, i) => {
+          const hasBridge = !!p.bridge
+          const isHovered = hoveredArrowIdx === i
+          return (
+            <g key={i}>
+              {/* Visible stroke — pointerEvents none so clicks pass to cards */}
+              <path
+                d={p.d}
+                fill="none"
+                stroke="var(--accent-strong)"
+                strokeWidth={isHovered ? '2.5' : '1.5'}
+                strokeOpacity={isHovered ? '0.8' : '0.45'}
+                markerEnd="url(#flow-arrowhead)"
+                pointerEvents="none"
+                style={{ transition: 'stroke-width var(--dur-fast), stroke-opacity var(--dur-fast)' }}
+              />
+              {/* Wider invisible hit area for hover detection. Only when
+                  the arrow has a bridge to show; otherwise no need to
+                  capture pointer events. */}
+              {hasBridge && (
+                <path
+                  d={p.d}
+                  fill="none"
+                  stroke="transparent"
+                  strokeWidth="14"
+                  pointerEvents="stroke"
+                  style={{ cursor: 'help' }}
+                  onMouseEnter={() => setHoveredArrowIdx(i)}
+                  onMouseLeave={() => setHoveredArrowIdx((cur) => (cur === i ? null : cur))}
+                />
+              )}
+            </g>
+          )
+        })}
       </svg>
+      {/* M14.15.b — floating bridge-text tooltip. Rendered as HTML (not
+          SVG) so it can use proper text wrapping + theme tokens. */}
+      {hoveredArrowIdx != null && arrowPaths[hoveredArrowIdx]?.bridge && (
+        <div
+          style={{
+            ...bridgeTooltipStyle,
+            left: arrowPaths[hoveredArrowIdx].midX,
+            top: arrowPaths[hoveredArrowIdx].midY,
+          }}
+          role="tooltip"
+        >
+          {arrowPaths[hoveredArrowIdx].bridge}
+        </div>
+      )}
 
       <div style={gridStyle}>
         {ACTS.map((act) => (
@@ -394,7 +518,28 @@ function FlowCard({ section, dossier, onJump, cardRefs, actAccent }) {
     warn:    { bg: 'var(--warn-soft)',    fg: 'var(--warn-ink)' },
     danger:  { bg: 'var(--danger-soft)',  fg: 'var(--danger-ink)' },
   }[tone]
+  // M14.15.b — hover popover with section preview. 350ms delay so quick
+  // pointer-fly-throughs don't open it; cancelled if pointer leaves
+  // before the timeout fires.
+  const preview = section.preview?.(dossier)
+  const [popoverOpen, setPopoverOpen] = React.useState(false)
+  const hoverTimer = React.useRef(null)
+  const openPopover = () => {
+    if (hoverTimer.current) clearTimeout(hoverTimer.current)
+    hoverTimer.current = setTimeout(() => setPopoverOpen(true), 350)
+  }
+  const closePopover = () => {
+    if (hoverTimer.current) {
+      clearTimeout(hoverTimer.current)
+      hoverTimer.current = null
+    }
+    setPopoverOpen(false)
+  }
+  React.useEffect(() => () => {
+    if (hoverTimer.current) clearTimeout(hoverTimer.current)
+  }, [])
   return (
+    <div style={{ position: 'relative' }}>
     <button
       ref={(el) => { cardRefs.current[section.key] = el }}
       type="button"
@@ -404,11 +549,13 @@ function FlowCard({ section, dossier, onJump, cardRefs, actAccent }) {
         e.currentTarget.style.borderColor = `var(${actAccent})`
         e.currentTarget.style.boxShadow = 'var(--shadow-md)'
         e.currentTarget.style.transform = 'translateY(-1px)'
+        openPopover()
       }}
       onMouseLeave={(e) => {
         e.currentTarget.style.borderColor = 'var(--border)'
         e.currentTarget.style.boxShadow = 'var(--shadow-xs)'
         e.currentTarget.style.transform = 'translateY(0)'
+        closePopover()
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
@@ -462,7 +609,84 @@ function FlowCard({ section, dossier, onJump, cardRefs, actAccent }) {
         </p>
       )}
     </button>
+    {popoverOpen && preview && (
+      <CardPopover
+        title={section.title}
+        actAccent={actAccent}
+        preview={preview}
+      />
+    )}
+    </div>
   )
+}
+
+// M14.15.b — anchored hover popover. Sits above + slightly to the right
+// of the card. pointer-events: none so the user can mouse-out cleanly.
+function CardPopover({ title, actAccent, preview }) {
+  return (
+    <div style={popoverStyle}>
+      <div style={{
+        fontFamily: 'var(--font-display)',
+        fontSize: 13,
+        fontWeight: 600,
+        color: 'var(--text-strong)',
+        marginBottom: 8,
+        borderBottom: `2px solid var(${actAccent})`,
+        paddingBottom: 6,
+      }}>
+        {title}
+      </div>
+      {preview.kind === 'chips' && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+          {preview.items.map((c, i) => (
+            <span key={i} style={{
+              fontSize: 11, fontFamily: 'var(--font-mono)',
+              padding: '2px 8px', borderRadius: 999,
+              background: 'var(--accent-soft)', color: 'var(--accent-ink)',
+            }}>
+              {c}
+            </span>
+          ))}
+        </div>
+      )}
+      {preview.kind === 'labeled' && (
+        <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {preview.items.map((it, i) => (
+            <li key={i} style={{ display: 'flex', gap: 8 }}>
+              <span style={{
+                flexShrink: 0,
+                minWidth: 50,
+                fontSize: 10, fontWeight: 700,
+                letterSpacing: '0.06em', textTransform: 'uppercase',
+                color: 'var(--text-soft)',
+                fontFamily: 'var(--font-mono)',
+                paddingTop: 2,
+              }}>{it.label}</span>
+              <span style={{
+                flex: 1, fontSize: 12.5, lineHeight: 1.5, color: 'var(--text)',
+              }}>{it.text}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
+const popoverStyle = {
+  position: 'absolute',
+  top: -8,
+  left: 'calc(100% + 12px)',
+  width: 320,
+  zIndex: 5,
+  background: 'var(--bg-elevated)',
+  border: '1px solid var(--border)',
+  borderRadius: 'var(--radius)',
+  padding: '12px 14px',
+  boxShadow: 'var(--shadow-lg)',
+  pointerEvents: 'none',
+  // Fade in.
+  animation: 'popoverIn 160ms var(--ease-out)',
 }
 
 
@@ -489,8 +713,30 @@ const svgLayerStyle = {
   left: 0,
   width: '100%',
   height: '100%',
-  pointerEvents: 'none',
+  // Pointer-events live on individual <path> elements: visible strokes
+  // get pointerEvents='none' so clicks pass through to cards beneath;
+  // invisible hit-area strokes get pointerEvents='stroke' so they can
+  // capture hover for the bridge-text tooltip.
   zIndex: 0,
+}
+
+const bridgeTooltipStyle = {
+  position: 'absolute',
+  zIndex: 4,
+  transform: 'translate(-50%, -100%) translateY(-10px)',
+  background: 'var(--text-strong)',
+  color: 'var(--bg-elevated)',
+  padding: '8px 12px',
+  borderRadius: 6,
+  fontSize: 12.5,
+  lineHeight: 1.5,
+  fontStyle: 'italic',
+  fontFamily: 'var(--font-display)',
+  maxWidth: 320,
+  textAlign: 'center',
+  boxShadow: 'var(--shadow-lg)',
+  pointerEvents: 'none',
+  whiteSpace: 'normal',
 }
 
 const gridStyle = {

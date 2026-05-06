@@ -234,6 +234,7 @@ export default function DossierPane({ extraction, onUpdate }) {
       />
       {diffOpen && <DossierDiff extraction={extraction} onClose={() => setDiffOpen(false)} />}
 
+      <div key={viewMode} style={viewSwapStyle}>
       {viewMode === 'flow' ? (
         <DossierFlow dossier={dossier} onJumpToSection={handleJumpToSection} />
       ) : (
@@ -317,12 +318,24 @@ export default function DossierPane({ extraction, onUpdate }) {
         <Closing text={dossier.closing} />
       </div>
       )}
+      </div>
       {/* M14.4 — Chat panel as a fixed-position overlay; doesn't affect
           the scroll layout of the dossier itself. */}
       <ChatPanel extractionId={extraction?.id} />
     </div>
     </EditCtx.Provider>
   )
+}
+
+// M14.15.b — view-swap container animates a soft fade-up on every
+// viewMode change (Read↔Flow). React remounts when `key={viewMode}`
+// flips so the keyframe restarts.
+const viewSwapStyle = {
+  display: 'flex',
+  flex: 1,
+  flexDirection: 'column',
+  minHeight: 0,
+  animation: 'viewSwapIn 220ms var(--ease-out)',
 }
 
 const editErrorBanner = {

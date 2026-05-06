@@ -352,6 +352,18 @@ a:hover {
   }
 }
 
+/* M14.15.b — popover fade-in for the Flow card hover preview. */
+@keyframes popoverIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* M14.15.b — Read ⇄ Flow view crossfade. */
+@keyframes viewSwapIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
 @keyframes fade-in {
   from {
     opacity: 0;
