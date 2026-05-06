@@ -261,6 +261,17 @@ export async function patchExtractionApi(id, patch) {
 }
 
 /**
+ * M14.10 — Diff two dossier extractions. Returns
+ * {before_id, after_id, sections: [...], summary: {...}}.
+ */
+export async function diffDossierApi(afterId, priorId) {
+  const res = await apiFetch(
+    `/api/extractions/${encodeURIComponent(afterId)}/diff/${encodeURIComponent(priorId)}`,
+  )
+  return jsonOrThrow(res)
+}
+
+/**
  * M14.8 — Re-run Claude against ONE dossier section. Returns the full
  * updated ExtractionRecord with the new lens_payload + a new revision
  * entry tagged kind: 'regen'.

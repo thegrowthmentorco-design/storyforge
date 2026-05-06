@@ -35,6 +35,7 @@ import { H2, H3, P, UL, LI, OL, OLI } from './markdown.jsx'
 import { dossierToMarkdown, downloadFile, suggestExportFilename } from './exportMarkdown.js'
 import { Download, Copy, RefreshCw } from '../icons.jsx'
 import { patchDossierApi, regenDossierSectionApi } from '../../api.js'
+import DossierDiff from './DossierDiff.jsx'
 
 // ============================================================================
 // M14.7 — Edit context: passes the extraction id + a save callback down to
@@ -121,6 +122,7 @@ function Editable({ path, children }) {
 export default function DossierPane({ extraction, onUpdate }) {
   const dossier = extraction?.lens_payload
   const [editError, setEditError] = useState(null)
+  const [diffOpen, setDiffOpen] = useState(false)
   const editCtxValue = React.useMemo(() => {
     if (!extraction?.id || !onUpdate) return null
     return {
@@ -182,7 +184,8 @@ export default function DossierPane({ extraction, onUpdate }) {
           {editError} <span style={{ opacity: 0.7, marginLeft: 8 }}>(click to dismiss)</span>
         </div>
       )}
-      <ChapterNav active={activeChapter} extraction={extraction} />
+      <ChapterNav active={activeChapter} extraction={extraction} onOpenDiff={() => setDiffOpen(true)} />
+      {diffOpen && <DossierDiff extraction={extraction} onClose={() => setDiffOpen(false)} />}
 
       <div style={contentColumn}>
         <Overture text={dossier.overture} />
@@ -320,7 +323,7 @@ const emptyShell = {
 // Chapter nav (sticky)
 // ============================================================================
 
-function ChapterNav({ active, extraction }) {
+function ChapterNav({ active, extraction, onOpenDiff }) {
   const chapters = [
     { id: 'orient', roman: 'I', title: 'Orient' },
     { id: 'structure', roman: 'II', title: 'Structure' },
@@ -382,6 +385,11 @@ function ChapterNav({ active, extraction }) {
       </div>
       <div style={{ justifySelf: 'end', display: 'flex', alignItems: 'center', gap: 8 }}>
         <RevisionBadge revisions={extraction?.dossier_revisions || []} />
+        {onOpenDiff && (
+          <button type="button" onClick={onOpenDiff} style={navActionBtn} title="Diff this dossier against a prior version">
+            Diff
+          </button>
+        )}
         <ExportActions extraction={extraction} />
       </div>
     </nav>

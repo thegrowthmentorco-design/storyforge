@@ -618,6 +618,42 @@ def regen_dossier_section(
     return extraction_to_record(row)
 
 
+# ---------------- M14.10 — diff two dossier versions ----------------
+
+
+@router.get("/{extraction_id}/diff/{prior_id}")
+def diff_dossier(
+    extraction_id: str, prior_id: str, session: SessionDep, user: UserDep,
+):
+    """Section-by-section diff between two dossier extractions.
+
+    `extraction_id` = the "after" (newer) version. `prior_id` = the "before"
+    (older). Both must belong to the caller and both must have lens='dossier'.
+    Versioning is loose: callers don't have to be on the same root_id chain
+    (e.g. a manually re-uploaded v2 of the same doc lands as a separate row
+    without auto-link), so we don't enforce the relationship — just that the
+    user owns both.
+    """
+    after = _owned_extraction(session, extraction_id, user)
+    before = _owned_extraction(session, prior_id, user)
+    if after.lens != "dossier" or before.lens != "dossier":
+        raise HTTPException(status_code=400, detail="diff requires two dossier extractions")
+    if after.lens_payload is None or before.lens_payload is None:
+        raise HTTPException(status_code=400, detail="one or both extractions are missing dossier payload")
+
+    from services.dossier_diff import diff_dossiers
+    result = diff_dossiers(before.lens_payload, after.lens_payload)
+    return {
+        "before_id": before.id,
+        "before_filename": before.filename,
+        "before_created_at": before.created_at.isoformat(),
+        "after_id": after.id,
+        "after_filename": after.filename,
+        "after_created_at": after.created_at.isoformat(),
+        **result,
+    }
+
+
 # ---------------- import (M2.4.5 migration) ----------------
 
 
