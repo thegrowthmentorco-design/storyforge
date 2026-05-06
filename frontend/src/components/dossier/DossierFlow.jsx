@@ -135,8 +135,9 @@ const SECTIONS = [
     summary: (d) => d.five_whys?.[0]?.question,
     metric: (d) => (d.five_whys?.length ? `${d.five_whys.length} steps` : null),
     preview: (d) => {
-      const items = (d.five_whys || []).slice(0, 3).map((s, i) => ({
-        label: `Why ${i + 1}`, text: s.question,
+      const arr = Array.isArray(d.five_whys) ? d.five_whys : []
+      const items = arr.slice(0, 3).map((s, i) => ({
+        label: `Why ${i + 1}`, text: s?.question || '',
       }))
       return items.length ? { kind: 'labeled', items } : null
     },
@@ -151,12 +152,13 @@ const SECTIONS = [
     },
     metricTone: 'warn',
     preview: (d) => {
+      const arr = Array.isArray(d.assumptions) ? d.assumptions : []
       const order = { high: 0, medium: 1, low: 2 }
-      const items = (d.assumptions || [])
+      const items = arr
         .slice()
-        .sort((a, b) => (order[a.risk_level] ?? 9) - (order[b.risk_level] ?? 9))
+        .sort((a, b) => (order[a?.risk_level] ?? 9) - (order[b?.risk_level] ?? 9))
         .slice(0, 4)
-        .map((a) => ({ label: (a.risk_level || 'risk').toUpperCase(), text: a.assumption }))
+        .map((a) => ({ label: (a?.risk_level || 'risk').toUpperCase(), text: a?.assumption || '' }))
       return items.length ? { kind: 'labeled', items } : null
     },
   },
@@ -166,8 +168,9 @@ const SECTIONS = [
     metric: (d) => (d.inversion?.length ? `${d.inversion.length} risks` : null),
     metricTone: 'danger',
     preview: (d) => {
-      const items = (d.inversion || []).slice(0, 4).map((f) => ({
-        label: '×', text: f.scenario,
+      const arr = Array.isArray(d.inversion) ? d.inversion : []
+      const items = arr.slice(0, 4).map((f) => ({
+        label: '×', text: f?.scenario || '',
       }))
       return items.length ? { kind: 'labeled', items } : null
     },
@@ -186,8 +189,9 @@ const SECTIONS = [
     summary: (d) => d.better_questions?.[0]?.question,
     metric: (d) => (d.better_questions?.length ? `${d.better_questions.length} questions` : null),
     preview: (d) => {
-      const items = (d.better_questions || []).slice(0, 4).map((q, i) => ({
-        label: `${i + 1}.`, text: q.question,
+      const arr = Array.isArray(d.better_questions) ? d.better_questions : []
+      const items = arr.slice(0, 4).map((q, i) => ({
+        label: `${i + 1}.`, text: q?.question || '',
       }))
       return items.length ? { kind: 'labeled', items } : null
     },
@@ -199,8 +203,9 @@ const SECTIONS = [
     metric: (d) => (d.action_items?.length ? `${d.action_items.length} actions` : null),
     metricTone: 'success',
     preview: (d) => {
-      const items = (d.action_items || []).slice(0, 4).map((a) => ({
-        label: a.owner || 'TBD', text: a.action,
+      const arr = Array.isArray(d.action_items) ? d.action_items : []
+      const items = arr.slice(0, 4).map((a) => ({
+        label: a?.owner || 'TBD', text: a?.action || '',
       }))
       return items.length ? { kind: 'labeled', items } : null
     },
@@ -299,17 +304,32 @@ export default function DossierFlow({ dossier, onJumpToSection }) {
 
   // Group sections by act + filter to ones with content. Sections with
   // no content (e.g., empty user_stories on a non-requirements doc)
-  // don't render as cards or as arrow waypoints.
+  // don't render as cards or as arrow waypoints. Also defensively
+  // shape-check — if a section comes back as the wrong type (corrupted
+  // legacy row, partial-stream race), drop it rather than crash later.
+  const ARRAY_KEYS = new Set([
+    'glossary', 'five_whys', 'assumptions', 'inversion',
+    'better_questions', 'action_items', 'decisions_made',
+    'decisions_open', 'what_to_revisit', 'user_stories',
+  ])
+  const NESTED_ARRAY_KEYS = {
+    numbers_extract: 'facts',
+    timeline: 'phases',
+    negative_space: 'items',
+  }
   const presentSections = SECTIONS.filter((s) => {
     const v = dossier?.[s.key]
     if (v == null) return false
-    if (Array.isArray(v) && v.length === 0) return false
-    if (typeof v === 'object' && Object.keys(v).length === 0) return false
-    // Sub-list checks for nested-list sections.
-    if (s.key === 'numbers_extract' && !v.facts?.length) return false
-    if (s.key === 'timeline' && !v.phases?.length) return false
-    if (s.key === 'negative_space' && !v.items?.length) return false
-    return true
+    if (ARRAY_KEYS.has(s.key)) {
+      return Array.isArray(v) && v.length > 0
+    }
+    if (s.key in NESTED_ARRAY_KEYS) {
+      const innerKey = NESTED_ARRAY_KEYS[s.key]
+      return v && typeof v === 'object' && Array.isArray(v[innerKey]) && v[innerKey].length > 0
+    }
+    // Object-shaped (brief, tldr_ladder, five_w_one_h, mindmap, domain, systems).
+    if (typeof v !== 'object' || Array.isArray(v)) return false
+    return Object.keys(v).length > 0
   })
 
   const sectionsByAct = ACTS.reduce((acc, a) => {
