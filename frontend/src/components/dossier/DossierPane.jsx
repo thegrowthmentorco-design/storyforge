@@ -33,8 +33,8 @@ import { ConfidenceBadge, GlossaryTermified, SourceQuote } from './annotations.j
 import ChatPanel from './ChatPanel.jsx'
 import { H2, H3, P, UL, LI, OL, OLI } from './markdown.jsx'
 import { dossierToMarkdown, downloadFile, suggestExportFilename } from './exportMarkdown.js'
-import { Download, Copy } from '../icons.jsx'
-import { patchDossierApi } from '../../api.js'
+import { Download, Copy, RefreshCw } from '../icons.jsx'
+import { patchDossierApi, regenDossierSectionApi } from '../../api.js'
 
 // ============================================================================
 // M14.7 — Edit context: passes the extraction id + a save callback down to
@@ -126,6 +126,10 @@ export default function DossierPane({ extraction, onUpdate }) {
     return {
       save: async (path, value) => {
         const next = await patchDossierApi(extraction.id, path, value)
+        onUpdate(next)
+      },
+      regen: async (section) => {
+        const next = await regenDossierSectionApi(extraction.id, section)
         onUpdate(next)
       },
       onError: (e) => setEditError(e?.message || 'Could not save edit'),
@@ -591,22 +595,68 @@ function Bridge({ text }) {
 
 /* M14.5.l — section shell uses the markdown H2 primitive (one canonical
    heading scale across the dossier). The 14px header→content gap matches
-   the markdown vertical-rhythm spec. */
-function SectionShell({ title, children }) {
+   the markdown vertical-rhythm spec. M14.8 — optional regenSection key
+   surfaces a "Regenerate" button next to the title. */
+function SectionShell({ title, regenSection, children }) {
   return (
     <section style={{ paddingTop: 4 }}>
-      <header style={{ marginBottom: 14 }}>
+      <header style={{ marginBottom: 14, display: 'flex', alignItems: 'center', gap: 12 }}>
         <H2>{title}</H2>
+        {regenSection && <RegenButton section={regenSection} />}
       </header>
       {children}
     </section>
   )
 }
 
+function RegenButton({ section }) {
+  const ctx = useContext(EditCtx)
+  const [busy, setBusy] = useState(false)
+  if (!ctx?.regen) return null
+  const onClick = async () => {
+    if (busy) return
+    setBusy(true)
+    try {
+      await ctx.regen(section)
+    } catch (e) {
+      ctx.onError?.(e)
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={busy}
+      title="Re-run Claude on just this section"
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 5,
+        padding: '3px 9px',
+        borderRadius: 999,
+        fontSize: 11.5,
+        fontWeight: 500,
+        color: busy ? 'var(--text-soft)' : 'var(--text-muted)',
+        background: 'transparent',
+        border: '1px solid var(--border)',
+        cursor: busy ? 'wait' : 'pointer',
+        fontFamily: 'inherit',
+        opacity: busy ? 0.7 : 1,
+        transition: 'background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out)',
+      }}
+    >
+      <RefreshCw size={11} style={{ animation: busy ? 'spin 1s linear infinite' : 'none' }} />
+      {busy ? 'Regenerating…' : 'Regenerate'}
+    </button>
+  )
+}
+
 function BriefSection({ brief, terms }) {
   if (!brief) return null
   return (
-    <SectionShell title="Brief">
+    <SectionShell title="Brief" regenSection="brief">
       <P>
         <Editable path="brief.summary">{brief.summary}</Editable>
       </P>
@@ -645,7 +695,7 @@ function TLDRLadder({ ladder, terms }) {
     { label: '1 page', text: ladder.one_page, path: 'tldr_ladder.one_page' },
   ]
   return (
-    <SectionShell title="TLDR Ladder">
+    <SectionShell title="TLDR Ladder" regenSection="tldr_ladder">
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         {rows.map((r) => (
           <div key={r.label} style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
@@ -688,7 +738,7 @@ function FiveW1H({ w, terms }) {
     { k: 'HOW', v: w.how, p: 'five_w_one_h.how' },
   ]
   return (
-    <SectionShell title="5W1H">
+    <SectionShell title="5W1H" regenSection="five_w_one_h">
       <div
         style={{
           display: 'grid',
@@ -735,7 +785,7 @@ function FiveW1H({ w, terms }) {
 function Glossary({ terms }) {
   if (!terms || terms.length === 0) return null
   return (
-    <SectionShell title="Glossary">
+    <SectionShell title="Glossary" regenSection="glossary">
       <dl style={{ margin: 0, display: 'grid', gridTemplateColumns: 'auto 1fr', columnGap: 18, rowGap: 10 }}>
         {terms.map((t) => (
           <React.Fragment key={t.term}>
@@ -939,7 +989,7 @@ function SubsectionHeader({ children }) {
 function FiveWhys({ steps, terms }) {
   if (!steps || steps.length === 0) return null
   return (
-    <SectionShell title="5 Whys">
+    <SectionShell title="5 Whys" regenSection="five_whys">
       <OL>
         {steps.map((s, i) => (
           <OLI key={i} n={i + 1}>
@@ -974,7 +1024,7 @@ function AssumptionsAudit({ items, terms }) {
   }[lvl] || { bg: 'var(--bg-subtle)', fg: 'var(--text-muted)' })
 
   return (
-    <SectionShell title="Assumptions Audit">
+    <SectionShell title="Assumptions Audit" regenSection="assumptions">
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         {items.map((a, i) => {
           const tone = toneFor(a.risk_level)
@@ -1026,7 +1076,7 @@ function AssumptionsAudit({ items, terms }) {
 function InversionList({ items, terms }) {
   if (!items || items.length === 0) return null
   return (
-    <SectionShell title="Inversion · what could go catastrophically wrong">
+    <SectionShell title="Inversion · what could go catastrophically wrong" regenSection="inversion">
       <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 10 }}>
         {items.map((f, i) => (
           <li key={i} style={{ display: 'flex', gap: 12, alignItems: 'flex-start', fontSize: 15, lineHeight: 1.65 }}>
@@ -1078,7 +1128,7 @@ function InversionList({ items, terms }) {
 function BetterQuestions({ items, terms }) {
   if (!items || items.length === 0) return null
   return (
-    <SectionShell title="Better Questions">
+    <SectionShell title="Better Questions" regenSection="better_questions">
       <OL>
         {items.map((q, i) => (
           <OLI key={i} n={i + 1}>
@@ -1104,7 +1154,7 @@ function BetterQuestions({ items, terms }) {
 function ActionItems({ items, terms }) {
   if (!items || items.length === 0) return null
   return (
-    <SectionShell title="Action Items">
+    <SectionShell title="Action Items" regenSection="action_items">
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13.5 }}>
         <thead>
           <tr>

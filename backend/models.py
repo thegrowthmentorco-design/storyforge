@@ -169,6 +169,17 @@ class ExtractionPatch(BaseModel):
     gaps: list[Gap] | None = None
 
 
+class DossierRegenRequest(BaseModel):
+    """POST /api/extractions/{id}/dossier/regen body (M14.8).
+
+    Re-runs Claude against ONE section of the dossier and replaces it
+    in lens_payload. Whole-dossier rerun is the existing /api/extract
+    flow; this is the cheaper per-section variant.
+    """
+    model_config = ConfigDict(extra="forbid")
+    section: str  # one of regen_section.REGEN_REGISTRY keys
+
+
 class DossierEditPatch(BaseModel):
     """PATCH /api/extractions/{id}/dossier body (M14.7).
 

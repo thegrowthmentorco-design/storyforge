@@ -18,6 +18,7 @@ from db.models import Extraction, GapState, Project
 from db.session import get_session
 from models import (
     DossierEditPatch,
+    DossierRegenRequest,
     ExtractionImport,
     ExtractionPatch,
     ExtractionRecord,
@@ -528,6 +529,89 @@ def regen_extraction_section(
         extraction_id=row.id,
         action=f"regen_{payload.section}",
         model=model_used,
+        live=usage is not None,
+        usage=usage,
+    )
+    return extraction_to_record(row)
+
+
+# ---------------- M14.8 — dossier section regen ----------------
+
+
+@router.post("/{extraction_id}/dossier/regen", response_model=ExtractionRecord)
+def regen_dossier_section(
+    extraction_id: str,
+    payload: DossierRegenRequest,
+    session: SessionDep,
+    user: UserDep,
+    x_anthropic_key: str | None = Header(default=None, alias="X-Anthropic-Key"),
+    x_storyforge_model: str | None = Header(default=None, alias="X-Storyforge-Model"),
+) -> ExtractionRecord:
+    """Re-run Claude against ONE section of a dossier and swap it in place.
+
+    Cheaper than a full /rerun (one section's worth of tokens vs all 14+).
+    Counts as one Claude call against the user's quota. Updates lens_payload
+    in place and appends a revision entry tagged 'regen' so the edit log
+    shows where AI-rewrites happened vs human edits (M14.7).
+    """
+    row = _owned_extraction(session, extraction_id, user)
+    if row.lens != "dossier" or row.lens_payload is None:
+        raise HTTPException(status_code=400, detail="extraction is not a dossier")
+
+    from services.lenses.regen_section import REGEN_REGISTRY, regen_section
+    if payload.section not in REGEN_REGISTRY:
+        raise HTTPException(
+            status_code=400,
+            detail=f"unknown section '{payload.section}'; valid: {list(REGEN_REGISTRY.keys())}",
+        )
+
+    effective_key, stored_model = resolve_user_byok(session, user.user_id, x_anthropic_key)
+    effective_model = x_storyforge_model or stored_model
+    enforce_limits(session, user, raw_text=row.raw_text, model=effective_model)
+
+    suffix = resolve_prompt_suffix(session, user.user_id, user.org_id)
+
+    new_value, usage = regen_section(
+        section_key=payload.section,
+        filename=row.filename,
+        raw_text=row.raw_text,
+        current_dossier=row.lens_payload,
+        api_key=effective_key,
+        model=effective_model,
+        prompt_suffix=suffix,
+    )
+
+    import copy
+    payload_dict = copy.deepcopy(row.lens_payload)
+    _, _, _, dump_path = REGEN_REGISTRY[payload.section]
+    before = copy.deepcopy(payload_dict.get(dump_path))
+    payload_dict[dump_path] = new_value
+
+    revisions = list(row.dossier_revisions or [])
+    revisions.append({
+        "ts": datetime.now(timezone.utc).isoformat(),
+        "user_id": user.user_id,
+        "path": dump_path,
+        "before": before,
+        "after": new_value,
+        "kind": "regen",
+    })
+    if len(revisions) > _REVISION_CAP:
+        revisions = revisions[-_REVISION_CAP:]
+
+    row.lens_payload = payload_dict
+    row.dossier_revisions = revisions
+    session.add(row)
+    session.commit()
+    session.refresh(row)
+
+    record_usage(
+        session,
+        user_id=user.user_id,
+        org_id=user.org_id,
+        extraction_id=row.id,
+        action=f"regen_dossier_{payload.section}",
+        model=effective_model or row.model_used,
         live=usage is not None,
         usage=usage,
     )

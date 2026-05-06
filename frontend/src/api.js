@@ -261,6 +261,20 @@ export async function patchExtractionApi(id, patch) {
 }
 
 /**
+ * M14.8 — Re-run Claude against ONE dossier section. Returns the full
+ * updated ExtractionRecord with the new lens_payload + a new revision
+ * entry tagged kind: 'regen'.
+ */
+export async function regenDossierSectionApi(id, section) {
+  const res = await apiFetch(`/api/extractions/${encodeURIComponent(id)}/dossier/regen`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ section }),
+  })
+  return jsonOrThrow(res)
+}
+
+/**
  * M14.7 — Patch one node in a dossier's lens_payload.
  *
  * `path` is a dot-walk through the JSON ("brief.summary",
