@@ -39,6 +39,7 @@ import PaywallModal from './components/PaywallModal.jsx'
 import Sidebar from './components/Sidebar.jsx'
 import TopBar from './components/TopBar.jsx'
 import EmptyState from './components/EmptyState.jsx'
+import ExtractionProgress from './components/ExtractionProgress.jsx'
 import SourcePane from './components/SourcePane.jsx'
 import ArtifactsPane from './components/ArtifactsPane.jsx'
 import GapsRail from './components/GapsRail.jsx'
@@ -975,31 +976,22 @@ function AuthedApp() {
                 {!extraction && !loading && (
                   <EmptyState onSubmit={handleExtract} loading={loading} />
                 )}
-                {/* M14.14 — while loading: if any sections have streamed in
-                    yet, mount a partial DossierPane so the user can start
-                    reading immediately (with a slim sticky progress strip);
-                    otherwise show the full LoadingState card. */}
-                {loading && partialDossier && Object.keys(partialDossier).length > 0 && (
-                  <div className="body" style={{ flexDirection: 'column' }}>
-                    <StreamingProgressStrip
-                      filename={pendingName}
-                      usage={streamUsage}
-                      latestSection={latestSectionKey}
-                      sectionsReady={Object.keys(partialDossier).length}
-                      onStop={handleStopExtract}
-                    />
-                    <DossierPane
-                      extraction={{
-                        id: null,
-                        lens: 'dossier',
-                        lens_payload: partialDossier,
-                        filename: pendingName,
-                        dossier_revisions: [],
-                      }}
-                    />
-                  </div>
+                {/* M14.14.c — loading dispatch.
+                    Dossier-lens: rich document-aware ExtractionProgress
+                    card that shows current Act + section strip + next acts.
+                    Stays visible throughout streaming (we don't flip to
+                    partial DossierPane mid-stream — the rich card is more
+                    informative than a half-rendered dossier).
+                    Stories-lens: legacy LoadingState (different stages). */}
+                {loading && pendingLens === 'dossier' && (
+                  <ExtractionProgress
+                    filename={pendingName}
+                    partialDossier={partialDossier}
+                    latestSectionKey={latestSectionKey}
+                    onStop={handleStopExtract}
+                  />
                 )}
-                {loading && (!partialDossier || Object.keys(partialDossier).length === 0) && (
+                {loading && pendingLens !== 'dossier' && (
                   <LoadingState
                     filename={pendingName}
                     usage={streamUsage}
