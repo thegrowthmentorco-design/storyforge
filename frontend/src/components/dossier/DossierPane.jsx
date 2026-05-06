@@ -36,6 +36,20 @@ import { dossierToMarkdown, downloadFile, suggestExportFilename } from './export
 import { Download, Copy, RefreshCw } from '../icons.jsx'
 import { patchDossierApi, regenDossierSectionApi } from '../../api.js'
 import DossierDiff from './DossierDiff.jsx'
+import DossierFlow from './DossierFlow.jsx'
+
+// M14.15 — view-mode toggle. localStorage key persists user's choice
+// across sessions / extractions. Read once on mount; falls back to
+// 'read' on SSR or when the key is absent.
+const VIEW_KEY = 'lucid:dossier-view'
+function readSavedView() {
+  try {
+    const v = localStorage.getItem(VIEW_KEY)
+    return v === 'flow' ? 'flow' : 'read'
+  } catch {
+    return 'read'
+  }
+}
 
 // ============================================================================
 // M14.7 — Edit context: passes the extraction id + a save callback down to
@@ -123,6 +137,33 @@ export default function DossierPane({ extraction, onUpdate }) {
   const dossier = extraction?.lens_payload
   const [editError, setEditError] = useState(null)
   const [diffOpen, setDiffOpen] = useState(false)
+  // M14.15 — Read vs Flow view toggle. Persisted to localStorage so the
+  // user's choice carries across extractions.
+  const [viewMode, setViewMode] = useState(readSavedView)
+  const switchView = (next) => {
+    setViewMode(next)
+    try { localStorage.setItem(VIEW_KEY, next) } catch { /* private mode */ }
+  }
+  // M14.15 — when user clicks a card in Flow, jump back to Read and
+  // scroll to that section (sections all have id={key} from the existing
+  // chapter scrollspy infrastructure).
+  const handleJumpToSection = (sectionKey, _actKey) => {
+    setViewMode('read')
+    try { localStorage.setItem(VIEW_KEY, 'read') } catch { /* ignore */ }
+    // Wait one frame for Read view to mount, then scroll the section
+    // into view. Sections in DossierPane don't have ids on every wrapper
+    // (only Acts do via `<section id={chapterId}>`); use closest match.
+    requestAnimationFrame(() => {
+      // Sections aren't id'd individually; scroll to the act that owns
+      // the section. Each act's id matches ACT key (orient/structure/...).
+      const actKey = _actKey
+      if (!actKey) return
+      const el = document.getElementById(actKey)
+      if (el && scrollerRef.current) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      }
+    })
+  }
   const editCtxValue = React.useMemo(() => {
     if (!extraction?.id || !onUpdate) return null
     return {
@@ -184,9 +225,18 @@ export default function DossierPane({ extraction, onUpdate }) {
           {editError} <span style={{ opacity: 0.7, marginLeft: 8 }}>(click to dismiss)</span>
         </div>
       )}
-      <ChapterNav active={activeChapter} extraction={extraction} onOpenDiff={() => setDiffOpen(true)} />
+      <ChapterNav
+        active={activeChapter}
+        extraction={extraction}
+        onOpenDiff={() => setDiffOpen(true)}
+        viewMode={viewMode}
+        onSwitchView={switchView}
+      />
       {diffOpen && <DossierDiff extraction={extraction} onClose={() => setDiffOpen(false)} />}
 
+      {viewMode === 'flow' ? (
+        <DossierFlow dossier={dossier} onJumpToSection={handleJumpToSection} />
+      ) : (
       <div style={contentColumn}>
         <Overture text={dossier.overture} />
 
@@ -266,6 +316,7 @@ export default function DossierPane({ extraction, onUpdate }) {
 
         <Closing text={dossier.closing} />
       </div>
+      )}
       {/* M14.4 — Chat panel as a fixed-position overlay; doesn't affect
           the scroll layout of the dossier itself. */}
       <ChatPanel extractionId={extraction?.id} />
@@ -323,7 +374,7 @@ const emptyShell = {
 // Chapter nav (sticky)
 // ============================================================================
 
-function ChapterNav({ active, extraction, onOpenDiff }) {
+function ChapterNav({ active, extraction, onOpenDiff, viewMode, onSwitchView }) {
   const chapters = [
     { id: 'orient', roman: 'I', title: 'Orient' },
     { id: 'structure', roman: 'II', title: 'Structure' },
@@ -347,7 +398,9 @@ function ChapterNav({ active, extraction, onOpenDiff }) {
         WebkitBackdropFilter: 'blur(8px)',
       }}
     >
-      <span />
+      <div style={{ justifySelf: 'start' }}>
+        {onSwitchView && <ViewToggle mode={viewMode} onChange={onSwitchView} />}
+      </div>
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'center' }}>
       {chapters.map((c) => {
         const isActive = c.id === active
@@ -394,6 +447,56 @@ function ChapterNav({ active, extraction, onOpenDiff }) {
       </div>
     </nav>
   )
+}
+
+// M14.15 — Read | Flow segmented toggle in the chapter nav.
+function ViewToggle({ mode, onChange }) {
+  const opts = [
+    { key: 'read', label: 'Read' },
+    { key: 'flow', label: 'Flow' },
+  ]
+  return (
+    <div style={viewToggleWrap} role="group" aria-label="Dossier view mode">
+      {opts.map((o) => {
+        const active = o.key === mode
+        return (
+          <button
+            key={o.key}
+            type="button"
+            onClick={() => onChange(o.key)}
+            aria-pressed={active}
+            style={{
+              ...viewToggleBtn,
+              background: active ? 'var(--bg-elevated)' : 'transparent',
+              color: active ? 'var(--text-strong)' : 'var(--text-muted)',
+              fontWeight: active ? 600 : 500,
+              boxShadow: active ? 'var(--shadow-xs)' : 'none',
+            }}
+          >
+            {o.label}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+const viewToggleWrap = {
+  display: 'inline-flex',
+  gap: 2,
+  padding: 2,
+  background: 'var(--bg-subtle)',
+  border: '1px solid var(--border)',
+  borderRadius: 8,
+}
+const viewToggleBtn = {
+  border: 'none',
+  borderRadius: 6,
+  padding: '4px 12px',
+  fontSize: 12,
+  cursor: 'pointer',
+  fontFamily: 'inherit',
+  transition: 'background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out)',
 }
 
 function RevisionBadge({ revisions }) {
