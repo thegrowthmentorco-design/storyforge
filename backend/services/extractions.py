@@ -307,6 +307,67 @@ def persist_dossier_extraction(
     return row
 
 
+def persist_pipeline_extraction(
+    session: Session,
+    *,
+    filename: str,
+    raw_text: str,
+    pipeline_result,  # services.lenses.pipeline.PipelineResult
+    model_used: str,
+    live: bool,
+    user_id: str = "local",
+    org_id: str | None = None,
+    project_id: str | None = None,
+    extraction_id: str | None = None,
+    created_at: datetime | None = None,
+    source_file_path: str | None = None,
+    source_file_paths: list[str] | None = None,
+    root_id: str | None = None,
+) -> Extraction:
+    """Insert one Extraction row from a PipelineResult (M14.17).
+
+    Stories-shape columns (brief / actors / stories / nfrs / gaps) get
+    empty defaults — the pipeline doesn't produce those. The full
+    PipelineResult JSON lives in lens_payload; lens='pipeline' tells
+    the frontend which renderer to mount.
+    """
+    payload = pipeline_result.model_dump(mode="json")
+    # Mirror a minimal brief into the legacy column so any stories-shape
+    # back-compat code path doesn't choke on an empty brief — the pipeline's
+    # synthesizer "summary" (when present) makes a reasonable proxy.
+    synth_sections = payload.get("synthesizer", {}).get("sections", {}) or {}
+    summary_proxy = (
+        synth_sections.get("summary")
+        or (payload.get("router", {}) or {}).get("rationale")
+        or "Pipeline extraction."
+    )
+    row = Extraction(
+        id=extraction_id or mint_extraction_id(),
+        filename=filename,
+        raw_text=raw_text,
+        model_used=model_used,
+        live=live,
+        user_id=user_id,
+        org_id=org_id,
+        project_id=project_id,
+        source_file_path=source_file_path,
+        source_file_paths=list(source_file_paths or []),
+        root_id=root_id,
+        created_at=created_at or datetime.now(timezone.utc),
+        brief={"summary": summary_proxy, "tags": []},
+        actors=[],
+        stories=[],
+        nfrs=[],
+        gaps=[],
+        lens="pipeline",
+        lens_payload=payload,
+    )
+    session.add(row)
+    session.commit()
+    session.refresh(row)
+    return row
+
+
 # ---------- versioning (M2.6) ----------
 
 
@@ -522,7 +583,18 @@ def call_claude(
     lens = normalize_lens(lens)
 
     try:
-        if lens == "dossier":
+        if lens == "pipeline":
+            # M14.17 — multi-agent pipeline. Returns a PipelineResult that
+            # gets stored as-is in lens_payload. Live always (mock path
+            # inside the orchestrator just returns placeholder content).
+            from services.lenses.pipeline import run_pipeline
+            result, usage = run_pipeline(
+                filename=filename, raw_text=raw_text,
+                user_query=None,  # M14.17.future-work — pass user prompt through
+                api_key=api_key, model=model,
+            )
+            live = api_key is not None
+        elif lens == "dossier":
             from services.lenses.dossier import extract_dossier
             result, usage = extract_dossier(
                 filename, raw_text,

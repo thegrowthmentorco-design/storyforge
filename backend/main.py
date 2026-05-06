@@ -332,7 +332,27 @@ async def extract(
     # persist_extraction (existing path); dossier rows go through
     # persist_dossier_extraction which writes lens_payload + folds the
     # user_stories list back into the legacy stories column.
-    if effective_lens == "dossier":
+    if effective_lens == "pipeline":
+        # M14.17 — pipeline result stored as-is in lens_payload. Stories-shape
+        # columns (brief / actors / stories / nfrs / gaps) get empty defaults
+        # since the pipeline doesn't produce those.
+        from services.extractions import persist_pipeline_extraction
+        row = persist_pipeline_extraction(
+            session,
+            filename=source_name,
+            raw_text=raw_text,
+            pipeline_result=result,
+            model_used=model_used,
+            live=usage is not None,
+            user_id=user.user_id,
+            org_id=user.org_id,
+            project_id=project_id or None,
+            extraction_id=extraction_id,
+            source_file_path=source_path,
+            source_file_paths=source_paths,
+        )
+        live_flag = usage is not None
+    elif effective_lens == "dossier":
         from services.extractions import persist_dossier_extraction
         row = persist_dossier_extraction(
             session,
@@ -506,7 +526,18 @@ async def extract_stream(
             # M14.1.c — branch the streamer by lens. Both yield identical SSE
             # event shapes (start / usage / complete / error) so the client
             # doesn't need to know which lens is running.
-            if effective_lens == "dossier":
+            if effective_lens == "pipeline":
+                # M14.17 — multi-agent pipeline; runs blocking but emits
+                # `stage` events as each agent finishes.
+                from services.streaming_pipeline import stream_pipeline_extraction
+                stream_iter = stream_pipeline_extraction(
+                    filename=source_name,
+                    raw_text=raw_text,
+                    api_key=effective_key,
+                    model=effective_model,
+                    prompt_suffix=effective_suffix,
+                )
+            elif effective_lens == "dossier":
                 from services.streaming_dossier import stream_dossier_extraction
                 stream_iter = stream_dossier_extraction(
                     filename=source_name,
@@ -534,6 +565,11 @@ async def extract_stream(
                     # to mount sections of the dossier as they finish streaming
                     # rather than waiting for the full payload.
                     yield _sse("section_ready", {"key": ev["key"], "value": ev["value"]})
+                elif etype == "stage":
+                    # M14.17 — pipeline stage events (router done, specialist X
+                    # finished, critic verdict, etc.). Frontend ExtractionProgress
+                    # uses them to render live agent-by-agent progress.
+                    yield _sse("stage", {"name": ev["name"], "detail": ev.get("detail") or {}})
                 elif etype == "error":
                     # Stream-time error — surface to client + stop. No persistence.
                     yield _sse("error", {"status": ev["status"], "detail": ev["detail"]})
@@ -543,7 +579,24 @@ async def extract_stream(
                     # scoped one is closed by now (see note at the top of the
                     # handler).
                     with _Session(_engine) as s:
-                        if effective_lens == "dossier":
+                        if effective_lens == "pipeline":
+                            from services.extractions import persist_pipeline_extraction
+                            row = persist_pipeline_extraction(
+                                s,
+                                filename=source_name,
+                                raw_text=raw_text,
+                                pipeline_result=ev["result"],
+                                model_used=ev["model_used"],
+                                live=ev["usage"] is not None,
+                                user_id=_user_id,
+                                org_id=_org_id,
+                                project_id=_project_id,
+                                extraction_id=extraction_id,
+                                source_file_path=source_path,
+                                source_file_paths=source_paths,
+                            )
+                            live_flag = ev["usage"] is not None
+                        elif effective_lens == "dossier":
                             from services.extractions import persist_dossier_extraction
                             row = persist_dossier_extraction(
                                 s,

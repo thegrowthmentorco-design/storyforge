@@ -127,7 +127,7 @@ export async function extract({ file, text, filename, projectId, lens } = {}) {
  */
 export async function extractStream(
   { file, text, filename, projectId, lens } = {},
-  { onStart, onUsage, onSection, signal, stallTimeoutMs = 60_000 } = {},
+  { onStart, onUsage, onSection, onStage, signal, stallTimeoutMs = 60_000 } = {},
 ) {
   const { readSSE } = await import('./lib/sse.js')
 
@@ -182,6 +182,9 @@ export async function extractStream(
       // streaming. Caller passes onSection({key, value}) to mount sections
       // before the full payload arrives.
       else if (name === 'section_ready') onSection?.(data)
+      // M14.17 — pipeline stage events ({name: 'router'|'extractor'|...,
+      // detail: {...}}). Only fired for lens='pipeline'.
+      else if (name === 'stage') onStage?.(data)
       else if (name === 'complete') finalRecord = data
       else if (name === 'error') streamError = data
     })

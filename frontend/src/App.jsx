@@ -40,6 +40,8 @@ import Sidebar from './components/Sidebar.jsx'
 import TopBar from './components/TopBar.jsx'
 import EmptyState from './components/EmptyState.jsx'
 import ExtractionProgress from './components/ExtractionProgress.jsx'
+import PipelineProgress from './components/PipelineProgress.jsx'
+const PipelinePane = lazy(() => import('./components/pipeline/PipelinePane.jsx'))
 import SourcePane from './components/SourcePane.jsx'
 import ArtifactsPane from './components/ArtifactsPane.jsx'
 import GapsRail from './components/GapsRail.jsx'
@@ -517,6 +519,9 @@ function AuthedApp() {
   // Track which lens the in-flight extraction is using so LoadingState can
   // render the correct stage labels (dossier vs stories).
   const [pendingLens, setPendingLens] = useState('dossier')
+  // M14.17 — pipeline lens emits `stage` SSE events as each agent finishes.
+  // Accumulated here so PipelineProgress can render the live agent state.
+  const [stageEvents, setStageEvents] = useState([])
   const [rerunning, setRerunning] = useState(false)
   const [showGaps, setShowGaps] = useState(true)
   // M5.2 — when a user clicks a source_quote on an artifact, this gets set
@@ -683,6 +688,7 @@ function AuthedApp() {
     setStreamUsage(null)
     setPartialDossier(null)
     setLatestSectionKey(null)
+    setStageEvents([])
     setPendingName(file ? file.name : filename)
     const inputChars = (text?.length) || (file?.size || 0)
     const startedAt = Date.now()
@@ -704,6 +710,8 @@ function AuthedApp() {
             setPartialDossier((prev) => ({ ...(prev || {}), [key]: value }))
             setLatestSectionKey(key)
           },
+          // M14.17 — pipeline stage events drive PipelineProgress.
+          onStage: (ev) => setStageEvents((prev) => [...prev, ev]),
           signal: controller.signal,
         },
       )
@@ -736,6 +744,7 @@ function AuthedApp() {
       setStreamUsage(null)
       setPartialDossier(null)
       setLatestSectionKey(null)
+      setStageEvents([])
       setPendingName('')
       extractAbortRef.current = null
     }
@@ -983,6 +992,13 @@ function AuthedApp() {
                     partial DossierPane mid-stream — the rich card is more
                     informative than a half-rendered dossier).
                     Stories-lens: legacy LoadingState (different stages). */}
+                {loading && pendingLens === 'pipeline' && (
+                  <PipelineProgress
+                    filename={pendingName}
+                    stageEvents={stageEvents}
+                    onStop={handleStopExtract}
+                  />
+                )}
                 {loading && pendingLens === 'dossier' && (
                   <ExtractionProgress
                     filename={pendingName}
@@ -991,7 +1007,7 @@ function AuthedApp() {
                     onStop={handleStopExtract}
                   />
                 )}
-                {loading && pendingLens !== 'dossier' && (
+                {loading && pendingLens !== 'dossier' && pendingLens !== 'pipeline' && (
                   <LoadingState
                     filename={pendingName}
                     usage={streamUsage}
@@ -1001,7 +1017,13 @@ function AuthedApp() {
                     onStop={handleStopExtract}
                   />
                 )}
-                {extraction && !loading && extraction.lens === 'dossier' ? (
+                {extraction && !loading && extraction.lens === 'pipeline' ? (
+                  /* M14.17 — pipeline lens. Template-aware renderer dispatches
+                     on synthesizer.template (agenda_act, contract_decide, etc). */
+                  <div className="body" ref={studioBodyRef} style={{ flexDirection: 'column' }}>
+                    <PipelinePane extraction={extraction} />
+                  </div>
+                ) : extraction && !loading && extraction.lens === 'dossier' ? (
                   /* M14.1.b — dossier lens uses a single full-width pane.
                      SourcePane / ResizeHandle / GapsRail are stories-only
                      concepts (artifacts → source linking, gap drilldown).
