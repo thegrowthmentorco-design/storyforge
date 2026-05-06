@@ -18,6 +18,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { clearChatApi, listChatMessagesApi, sendChatMessageStream } from '../../api.js'
 import { useToast } from '../Toast.jsx'
+import MarkdownText from '../MarkdownText.jsx'
 
 export default function ChatPanel({ extractionId }) {
   const { toast } = useToast()
@@ -296,12 +297,15 @@ function MessageBubble({ role, content, isStreaming }) {
           color: isUser ? '#fff' : 'var(--text-strong)',
           fontSize: 13.5,
           lineHeight: 1.55,
-          whiteSpace: 'pre-wrap',
+          // M14.16.a — assistant messages get markdown rendering (Claude
+          // emits headings, bullets, bold). User messages stay raw text
+          // (they typed it themselves; rendering markdown there is noisy).
+          whiteSpace: isUser ? 'pre-wrap' : 'normal',
           wordWrap: 'break-word',
           border: isUser ? 'none' : '1px solid var(--border)',
         }}
       >
-        {content}
+        {isUser ? content : <MarkdownText text={content} />}
         {isStreaming && (
           <span
             aria-hidden

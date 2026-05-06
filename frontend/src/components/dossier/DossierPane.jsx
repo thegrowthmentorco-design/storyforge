@@ -34,6 +34,7 @@ import ChatPanel from './ChatPanel.jsx'
 import { H2, H3, P, UL, LI, OL, OLI } from './markdown.jsx'
 import { dossierToMarkdown, downloadFile, suggestExportFilename } from './exportMarkdown.js'
 import { Download, Copy, RefreshCw } from '../icons.jsx'
+import MarkdownText from '../MarkdownText.jsx'
 import { patchDossierApi, regenDossierSectionApi } from '../../api.js'
 import DossierDiff from './DossierDiff.jsx'
 import DossierFlow from './DossierFlow.jsx'
@@ -363,18 +364,27 @@ const paneShell = {
   flexDirection: 'column',
 }
 
+/* M14.16.d — outer column widened from 800 → 1180. Prose blocks still
+   read at ~70ch (SectionShell width='prose' centers their content
+   inside an inner ~720px column); grid + table sections fill the new
+   wider canvas. Eliminates the dead margins on wide screens flagged
+   by the user without making prose lines uncomfortable to scan. */
 const contentColumn = {
   width: '100%',
-  /* M14.5.l — narrowed to the markdown sweet spot (~70ch). Card-grids
-     opt out via their own width. Long-document feel rather than
-     stacked-widget feel. */
-  maxWidth: 'min(800px, 92vw)',
+  maxWidth: 'min(1180px, 96vw)',
   margin: '0 auto',
   padding: 'clamp(32px, 5vw, 64px) clamp(20px, 4vw, 48px) 120px',
   display: 'flex',
   flexDirection: 'column',
   gap: 40,
 }
+
+/* M14.16.d — per-section width caps. Prose sections center their content
+   inside the wider canvas so reading lines stay short. Grid/data
+   sections opt out by passing width='wide' (or 'full' for tables that
+   want every pixel). */
+const PROSE_WIDTH = 'min(720px, 100%)'
+const WIDE_WIDTH = 'min(1080px, 100%)'
 
 const emptyShell = {
   flex: 1,
@@ -718,17 +728,22 @@ function Bridge({ text }) {
 // ============================================================================
 
 /* M14.5.l — section shell uses the markdown H2 primitive (one canonical
-   heading scale across the dossier). The 14px header→content gap matches
-   the markdown vertical-rhythm spec. M14.8 — optional regenSection key
-   surfaces a "Regenerate" button next to the title. */
-function SectionShell({ title, regenSection, children }) {
+   heading scale across the dossier). M14.8 — optional regenSection key
+   surfaces a "Regenerate" button next to the title. M14.16.d — `width`
+   prop controls the inner column: 'prose' (default) caps at 720px so
+   reading lines stay short; 'wide' lets card grids breathe to ~1080px;
+   'full' fills the whole column for tables. */
+function SectionShell({ title, regenSection, width = 'prose', children }) {
+  const innerMax = width === 'full' ? '100%' : width === 'wide' ? WIDE_WIDTH : PROSE_WIDTH
   return (
     <section style={{ paddingTop: 4 }}>
-      <header style={{ marginBottom: 14, display: 'flex', alignItems: 'center', gap: 12 }}>
+      <header style={{ marginBottom: 14, display: 'flex', alignItems: 'center', gap: 12, maxWidth: innerMax }}>
         <H2>{title}</H2>
         {regenSection && <RegenButton section={regenSection} />}
       </header>
-      {children}
+      <div style={{ maxWidth: innerMax }}>
+        {children}
+      </div>
     </section>
   )
 }
@@ -811,40 +826,93 @@ function BriefSection({ brief, terms }) {
 // Section: TLDR Ladder
 // ============================================================================
 
+/* M14.16.b — TLDR Ladder redesigned with visual depth.
+   one_line is the headline (large serif, accent-tinted left rule).
+   one_paragraph is a body block.
+   one_page is a denser block with subtle background tint, intended to
+   read as the "deeper dive". All three render markdown — Claude
+   sometimes uses bold/lists in the longer rungs. */
 function TLDRLadder({ ladder, terms }) {
   if (!ladder) return null
-  const rows = [
-    { label: '1 line', text: ladder.one_line, path: 'tldr_ladder.one_line' },
-    { label: '1 paragraph', text: ladder.one_paragraph, path: 'tldr_ladder.one_paragraph' },
-    { label: '1 page', text: ladder.one_page, path: 'tldr_ladder.one_page' },
-  ]
   return (
     <SectionShell title="TLDR Ladder" regenSection="tldr_ladder">
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-        {rows.map((r) => (
-          <div key={r.label} style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
-            <span
-              style={{
-                flexShrink: 0,
-                width: 90,
-                fontSize: 11,
-                letterSpacing: '0.08em',
-                textTransform: 'uppercase',
-                color: 'var(--text-soft)',
-                fontFamily: 'var(--font-mono)',
-                paddingTop: 3,
-              }}
-            >
-              {r.label}
-            </span>
-            <p style={{ margin: 0, fontSize: 14, lineHeight: 1.55, color: 'var(--text)', flex: 1 }}>
-              <Editable path={r.path}>{r.text}</Editable>
-            </p>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+        {ladder.one_line && (
+          <div style={tldrOneLine}>
+            <RungLabel>1 line</RungLabel>
+            <div style={tldrOneLineText}>
+              <Editable path="tldr_ladder.one_line">{ladder.one_line}</Editable>
+            </div>
           </div>
-        ))}
+        )}
+        {ladder.one_paragraph && (
+          <div style={tldrParagraph}>
+            <RungLabel>1 paragraph</RungLabel>
+            <div style={tldrParagraphText}>
+              <MarkdownText text={ladder.one_paragraph} />
+            </div>
+          </div>
+        )}
+        {ladder.one_page && (
+          <div style={tldrPage}>
+            <RungLabel>1 page</RungLabel>
+            <div style={tldrPageText}>
+              <MarkdownText text={ladder.one_page} />
+            </div>
+          </div>
+        )}
       </div>
     </SectionShell>
   )
+}
+
+function RungLabel({ children }) {
+  return (
+    <div style={{
+      fontSize: 10.5,
+      letterSpacing: '0.12em',
+      textTransform: 'uppercase',
+      fontWeight: 700,
+      color: 'var(--accent-strong)',
+      fontFamily: 'var(--font-mono)',
+      marginBottom: 6,
+    }}>
+      {children}
+    </div>
+  )
+}
+
+const tldrOneLine = {
+  paddingLeft: 16,
+  borderLeft: '3px solid var(--accent)',
+}
+const tldrOneLineText = {
+  fontFamily: 'var(--font-display)',
+  fontSize: 'clamp(18px, 2.2vw, 22px)',
+  fontWeight: 500,
+  lineHeight: 1.4,
+  color: 'var(--text-strong)',
+  letterSpacing: '-0.01em',
+}
+const tldrParagraph = {
+  paddingLeft: 16,
+  borderLeft: '2px solid var(--border-strong)',
+}
+const tldrParagraphText = {
+  fontSize: 15,
+  lineHeight: 1.65,
+  color: 'var(--text)',
+}
+const tldrPage = {
+  padding: '14px 18px',
+  background: 'var(--bg-subtle)',
+  borderRadius: 'var(--radius)',
+  borderLeft: '2px solid var(--border)',
+}
+const tldrPageText = {
+  fontSize: 14,
+  lineHeight: 1.6,
+  color: 'var(--text)',
 }
 
 // ============================================================================
@@ -862,7 +930,7 @@ function FiveW1H({ w, terms }) {
     { k: 'HOW', v: w.how, p: 'five_w_one_h.how' },
   ]
   return (
-    <SectionShell title="5W1H" regenSection="five_w_one_h">
+    <SectionShell title="5W1H" regenSection="five_w_one_h" width="wide">
       <div
         style={{
           display: 'grid',
@@ -909,7 +977,7 @@ function FiveW1H({ w, terms }) {
 function Glossary({ terms }) {
   if (!terms || terms.length === 0) return null
   return (
-    <SectionShell title="Glossary" regenSection="glossary">
+    <SectionShell title="Glossary" regenSection="glossary" width="wide">
       <dl style={{ margin: 0, display: 'grid', gridTemplateColumns: 'auto 1fr', columnGap: 18, rowGap: 10 }}>
         {terms.map((t) => (
           <React.Fragment key={t.term}>
@@ -1003,7 +1071,7 @@ function DomainGrid({ domain, terms }) {
     { k: 'Problems / Opportunities', v: domain.problems_opportunities },
   ]
   return (
-    <SectionShell title="Domain Map">
+    <SectionShell title="Domain Map" width="wide">
       <div
         style={{
           display: 'grid',
@@ -1055,7 +1123,7 @@ function SystemsView({ systems, terms }) {
   if (!entities.length && !flows.length && !feedback_loops.length) return null
 
   return (
-    <SectionShell title="Systems View">
+    <SectionShell title="Systems View" width="wide">
       {entities.length > 0 && (
         <SubsectionHeader>Entities</SubsectionHeader>
       )}
@@ -1278,7 +1346,7 @@ function BetterQuestions({ items, terms }) {
 function ActionItems({ items, terms }) {
   if (!items || items.length === 0) return null
   return (
-    <SectionShell title="Action Items" regenSection="action_items">
+    <SectionShell title="Action Items" regenSection="action_items" width="wide">
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13.5 }}>
         <thead>
           <tr>
@@ -1470,7 +1538,7 @@ function NumbersExtractSection({ extract, terms }) {
   }
 
   return (
-    <SectionShell title="Numbers Extract">
+    <SectionShell title="Numbers Extract" width="wide">
       <P muted style={{ marginBottom: 14, fontSize: 13 }}>
         Every discrete number from the document, in one place. Click any "View source" to verify.
       </P>
@@ -1532,90 +1600,163 @@ const numSourceTd = {
 // M14.3 — Section: Timeline (horizontal phase sequence)
 // ============================================================================
 
+/* M14.16.c — Timeline redesigned as a vertical phase stack. The previous
+   horizontal CSS-grid strip overflowed beyond the canvas for any timeline
+   with more than ~6 phases. Now: one row per phase, a numbered dot in the
+   gutter, a 1px line connecting the dots top-to-bottom. Wraps the long
+   description text naturally; safe at any phase count.
+   The header carries a tiny phase-pill row so users still get the
+   at-a-glance "how many phases" signal — but it's flex-wrapping, not a
+   fixed grid, so it never overflows either. */
 function TimelineGantt({ timeline, terms }) {
   if (!timeline?.phases || timeline.phases.length === 0) return null
   const phases = timeline.phases
   return (
-    <SectionShell title="Timeline">
-      <P muted style={{ marginBottom: 16, fontSize: 13 }}>
-        Phase sequence extracted from the document. Bars are equal-width — they show order, not duration.
+    <SectionShell title="Timeline" width="wide">
+      <P muted style={{ marginBottom: 14, fontSize: 13 }}>
+        {phases.length} phase{phases.length === 1 ? '' : 's'} in narrative order.
       </P>
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: `repeat(${phases.length}, 1fr)`,
-          gap: 4,
-          marginBottom: 16,
-        }}
-      >
+      {/* Tiny phase-pill summary — wraps freely on narrow viewports. */}
+      <div style={timelinePillRow}>
         {phases.map((p, i) => (
-          <div
-            key={i}
-            style={{
-              padding: '8px 10px',
-              borderRadius: 'var(--radius-sm)',
-              background: i % 2 === 0 ? 'var(--accent-soft)' : 'var(--bg-subtle)',
-              borderTop: '3px solid ' + (i % 2 === 0 ? 'var(--accent)' : 'var(--accent-strong)'),
-              fontFamily: 'var(--font-mono)',
-              fontSize: 10.5,
-              fontWeight: 600,
-              letterSpacing: '0.04em',
-              color: i % 2 === 0 ? 'var(--accent-ink)' : 'var(--text-muted)',
-              textAlign: 'center',
-              textTransform: 'uppercase',
-            }}
-          >
+          <span key={i} style={timelinePill}>
+            <span style={timelinePillIdx}>{i + 1}</span>
             {p.when}
-          </div>
+          </span>
         ))}
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        {phases.map((p, i) => (
-          <div key={i} style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
-            <div
-              style={{
-                flexShrink: 0,
-                width: 28,
-                height: 28,
-                borderRadius: 999,
-                background: 'var(--accent-soft)',
-                color: 'var(--accent-ink)',
-                fontFamily: 'var(--font-mono)',
-                fontSize: 12,
-                fontWeight: 700,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              {i + 1}
-            </div>
-            <div style={{ flex: 1 }}>
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
-                <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-strong)' }}>
-                  {p.label}
-                </span>
-                <span
-                  style={{
-                    fontSize: 11.5,
-                    color: 'var(--text-muted)',
-                    fontFamily: 'var(--font-mono)',
-                  }}
-                >
-                  {p.when}
-                </span>
+      {/* Vertical phase stack — one row each, dots connected by a line. */}
+      <ol style={timelineList}>
+        {phases.map((p, i) => {
+          const isLast = i === phases.length - 1
+          return (
+            <li key={i} style={timelineRow}>
+              <div style={timelineGutter}>
+                <span style={timelineDot}>{i + 1}</span>
+                {!isLast && <span style={timelineConnector} aria-hidden />}
               </div>
-              {p.description && (
-                <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.5 }}>
-                  <GlossaryTermified text={p.description} terms={terms} />
-                </p>
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
+              <div style={timelineBody}>
+                <div style={timelineHeader}>
+                  <span style={timelinePhaseLabel}>{p.label}</span>
+                  <span style={timelineWhen}>{p.when}</span>
+                </div>
+                {p.description && (
+                  <p style={timelineDescription}>
+                    <GlossaryTermified text={p.description} terms={terms} />
+                  </p>
+                )}
+              </div>
+            </li>
+          )
+        })}
+      </ol>
     </SectionShell>
   )
+}
+
+const timelinePillRow = {
+  display: 'flex',
+  flexWrap: 'wrap',
+  gap: 6,
+  marginBottom: 18,
+}
+const timelinePill = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 6,
+  padding: '4px 10px 4px 4px',
+  background: 'var(--accent-soft)',
+  color: 'var(--accent-ink)',
+  borderRadius: 999,
+  fontSize: 11,
+  fontFamily: 'var(--font-mono)',
+  fontWeight: 600,
+  letterSpacing: '0.02em',
+}
+const timelinePillIdx = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  width: 18, height: 18,
+  borderRadius: 999,
+  background: 'var(--accent-strong)',
+  color: '#fff',
+  fontSize: 10,
+  fontWeight: 700,
+}
+const timelineList = {
+  margin: 0,
+  padding: 0,
+  listStyle: 'none',
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 0,
+}
+const timelineRow = {
+  display: 'flex',
+  gap: 16,
+  alignItems: 'flex-start',
+  paddingBottom: 18,
+}
+const timelineGutter = {
+  position: 'relative',
+  flexShrink: 0,
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  width: 28,
+}
+const timelineDot = {
+  width: 28, height: 28,
+  borderRadius: 999,
+  background: 'var(--accent-soft)',
+  color: 'var(--accent-ink)',
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  fontFamily: 'var(--font-mono)',
+  fontSize: 12,
+  fontWeight: 700,
+  flexShrink: 0,
+  zIndex: 1,
+}
+const timelineConnector = {
+  position: 'absolute',
+  top: 28,
+  bottom: -18,
+  left: '50%',
+  width: 1,
+  background: 'var(--border-strong)',
+  transform: 'translateX(-50%)',
+}
+const timelineBody = {
+  flex: 1,
+  minWidth: 0,
+  paddingTop: 3,
+}
+const timelineHeader = {
+  display: 'flex',
+  alignItems: 'baseline',
+  gap: 10,
+  flexWrap: 'wrap',
+  marginBottom: 4,
+}
+const timelinePhaseLabel = {
+  fontSize: 15,
+  fontWeight: 600,
+  color: 'var(--text-strong)',
+}
+const timelineWhen = {
+  fontSize: 11.5,
+  color: 'var(--text-muted)',
+  fontFamily: 'var(--font-mono)',
+  letterSpacing: '0.02em',
+}
+const timelineDescription = {
+  margin: 0,
+  fontSize: 13.5,
+  color: 'var(--text-muted)',
+  lineHeight: 1.55,
 }
 
 // ============================================================================
