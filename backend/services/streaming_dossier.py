@@ -116,6 +116,8 @@ def stream_dossier_extraction(
         ) as stream:
             last_output = -1
             partial_extractor = StreamingTopLevelKeyExtractor()
+            section_ready_count = 0
+            partial_parser_failed = False
             for event in stream:
                 etype = getattr(event, "type", None)
                 # M14.14b — capture tool input deltas + emit section_ready
@@ -123,10 +125,21 @@ def stream_dossier_extraction(
                 if etype == "content_block_delta":
                     delta = getattr(event, "delta", None)
                     dtype = getattr(delta, "type", None)
-                    if dtype == "input_json_delta":
+                    if dtype == "input_json_delta" and not partial_parser_failed:
                         chunk = getattr(delta, "partial_json", "") or ""
-                        for key, value in partial_extractor.feed(chunk):
-                            yield {"type": "section_ready", "key": key, "value": value}
+                        # M14.14.d — defensive: a parser bug should NEVER crash
+                        # the live stream. Disable progressive emits if it fails;
+                        # the final validated dossier still arrives via complete.
+                        try:
+                            for key, value in partial_extractor.feed(chunk):
+                                section_ready_count += 1
+                                yield {"type": "section_ready", "key": key, "value": value}
+                        except Exception as e:  # noqa: BLE001
+                            log.warning(
+                                "partial-json parser failed mid-stream — disabling "
+                                "progressive emits for this run: %s", e,
+                            )
+                            partial_parser_failed = True
                     continue
                 if etype == "message_delta":
                     u = getattr(event, "usage", None)
@@ -140,6 +153,10 @@ def stream_dossier_extraction(
                                 "output": out,
                                 "max": MAX_OUTPUT_TOKENS,
                             }
+            log.info(
+                "dossier stream finished: %d section_ready emits, partial_parser_failed=%s",
+                section_ready_count, partial_parser_failed,
+            )
             final_message = stream.get_final_message()
     except anthropic.AuthenticationError:
         log.warning("anthropic auth failed during dossier stream")

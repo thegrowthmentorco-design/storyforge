@@ -127,22 +127,54 @@ export async function extract({ file, text, filename, projectId, lens } = {}) {
  */
 export async function extractStream(
   { file, text, filename, projectId, lens } = {},
-  { onStart, onUsage, onSection, signal } = {},
+  { onStart, onUsage, onSection, signal, stallTimeoutMs = 60_000 } = {},
 ) {
   const { readSSE } = await import('./lib/sse.js')
 
   const form = buildExtractForm({ file, text, filename, projectId, lens })
-  const res = await apiFetch('/api/extract/stream', { method: 'POST', body: form, signal })
+
+  // M14.14.d — stall detector. Some failure modes (Render proxy idle
+  // timeout, transient Anthropic hang) cut the stream silently — no
+  // `error`, no `complete`, just dead air. Without this the user is
+  // stuck on the loading screen forever. We own an AbortController whose
+  // signal is what we hand to apiFetch; we forward the caller's `signal`
+  // (user Stop) AND a reset-on-event watchdog timer into it. Either path
+  // can abort the fetch.
+  const ownController = new AbortController()
+  let stalled = false
+  if (signal) {
+    if (signal.aborted) ownController.abort()
+    else signal.addEventListener('abort', () => ownController.abort(), { once: true })
+  }
+  let stallTimer = null
+  const armStallTimer = () => {
+    if (!stallTimeoutMs) return
+    clearTimeout(stallTimer)
+    stallTimer = setTimeout(() => {
+      stalled = true
+      ownController.abort()
+    }, stallTimeoutMs)
+  }
+  armStallTimer()
+
+  const res = await apiFetch('/api/extract/stream', {
+    method: 'POST',
+    body: form,
+    signal: ownController.signal,
+  })
   if (!res.ok) {
-    // Pre-flight error — let jsonOrThrow build the (possibly paywall) Error.
+    clearTimeout(stallTimer)
     return jsonOrThrow(res)
   }
 
   let finalRecord = null
   let streamError = null
+  let lastEventName = null
 
   try {
     await readSSE(res, (name, data) => {
+      armStallTimer()  // any event resets the watchdog
+      lastEventName = name
       if (name === 'start') onStart?.(data)
       else if (name === 'usage') onUsage?.(data)
       // M14.14 — progressive section reveal. Backend emits one
@@ -154,10 +186,23 @@ export async function extractStream(
       else if (name === 'error') streamError = data
     })
   } catch (err) {
-    // Abort flows through here as a DOMException with name "AbortError".
-    // Re-throw with the standard contract so the caller can branch.
+    // Abort flows through here as a DOMException. Distinguish:
+    //   - user-initiated abort → re-throw as AbortError (caller toasts "cancelled")
+    //   - stall watchdog abort → throw a typed StallError so the caller
+    //     can surface a different message
+    if (err?.name === 'AbortError' && stalled) {
+      const e = new Error(
+        `Extraction stalled — no progress for ${Math.round(stallTimeoutMs / 1000)}s. `
+        + `Last event was "${lastEventName || 'none'}". Please try again.`,
+      )
+      e.status = 504
+      e.stalled = true
+      throw e
+    }
     if (err?.name === 'AbortError') throw err
     throw err
+  } finally {
+    clearTimeout(stallTimer)
   }
 
   if (streamError) {
