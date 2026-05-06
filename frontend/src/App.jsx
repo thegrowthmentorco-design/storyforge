@@ -818,7 +818,7 @@ function AuthedApp() {
                      concepts (artifacts → source linking, gap drilldown).
                      The DossierPane reads extraction.lens_payload directly. */
                   <div className="body" ref={studioBodyRef} style={{ flexDirection: 'column' }}>
-                    <DossierPane extraction={extraction} />
+                    <DossierPane extraction={extraction} onUpdate={setExtraction} />
                   </div>
                 ) : extraction && !loading && (
                   isNarrow ? (

@@ -98,6 +98,7 @@ def extraction_to_record(
         # the right renderer (DossierPane vs StoriesView).
         lens=getattr(row, "lens", None) or "stories",
         lens_payload=getattr(row, "lens_payload", None),
+        dossier_revisions=list(getattr(row, "dossier_revisions", None) or []),
         unread_comment_count=(
             count_unread_comments(session, row.id, user_id)
             if session is not None and user_id else 0

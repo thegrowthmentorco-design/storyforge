@@ -17,6 +17,7 @@ from auth.deps import CurrentUser, current_user
 from db.models import Extraction, GapState, Project
 from db.session import get_session
 from models import (
+    DossierEditPatch,
     ExtractionImport,
     ExtractionPatch,
     ExtractionRecord,
@@ -175,6 +176,95 @@ def patch_extraction(
     if patch.gaps is not None:
         row.gaps = [g.model_dump() for g in patch.gaps]
 
+    session.add(row)
+    session.commit()
+    session.refresh(row)
+    return extraction_to_record(row)
+
+
+# ---------------- M14.7 — dossier edit-in-place ----------------
+
+
+_REVISION_CAP = 50
+
+
+def _walk_dossier_path(payload: dict, path: str):
+    """Walk a dotted path through `payload`, returning (parent, last_key).
+
+    Raises HTTPException(400) if the path doesn't resolve. Numeric segments
+    are interpreted as list indices; everything else is dict keys. We split
+    only on '.' — the schema doesn't use dotted keys so this is unambiguous.
+    """
+    parts = path.split(".")
+    if not parts or parts == [""]:
+        raise HTTPException(status_code=400, detail="path cannot be empty")
+    cur = payload
+    for seg in parts[:-1]:
+        if isinstance(cur, list):
+            try:
+                idx = int(seg)
+            except ValueError:
+                raise HTTPException(status_code=400, detail=f"path expects index, got {seg!r}")
+            if idx < 0 or idx >= len(cur):
+                raise HTTPException(status_code=400, detail=f"index out of range: {seg}")
+            cur = cur[idx]
+        elif isinstance(cur, dict):
+            if seg not in cur:
+                raise HTTPException(status_code=400, detail=f"unknown segment: {seg}")
+            cur = cur[seg]
+        else:
+            raise HTTPException(status_code=400, detail=f"cannot descend into scalar at {seg}")
+    last = parts[-1]
+    if isinstance(cur, list):
+        try:
+            idx = int(last)
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"path expects index, got {last!r}")
+        if idx < 0 or idx >= len(cur):
+            raise HTTPException(status_code=400, detail=f"index out of range: {last}")
+        return cur, idx
+    if isinstance(cur, dict):
+        if last not in cur:
+            raise HTTPException(status_code=400, detail=f"unknown segment: {last}")
+        return cur, last
+    raise HTTPException(status_code=400, detail="terminal path is not addressable")
+
+
+@router.patch("/{extraction_id}/dossier", response_model=ExtractionRecord)
+def patch_dossier(
+    extraction_id: str, patch: DossierEditPatch, session: SessionDep, user: UserDep
+) -> ExtractionRecord:
+    """Edit one node in a dossier's lens_payload (M14.7).
+
+    Walks the dotted `path`, swaps the value, appends a revision entry.
+    Only valid for rows with lens='dossier' and a non-null lens_payload.
+    """
+    row = _owned_extraction(session, extraction_id, user)
+    if row.lens != "dossier" or row.lens_payload is None:
+        raise HTTPException(status_code=400, detail="extraction has no editable dossier payload")
+
+    # Deep-copy so we don't mutate the SQLModel attribute in place — JSON
+    # columns won't always detect in-place dict mutation as dirty.
+    import copy
+    payload = copy.deepcopy(row.lens_payload)
+
+    parent, key = _walk_dossier_path(payload, patch.path)
+    before = copy.deepcopy(parent[key])
+    parent[key] = patch.value
+
+    revisions = list(row.dossier_revisions or [])
+    revisions.append({
+        "ts": datetime.now(timezone.utc).isoformat(),
+        "user_id": user.user_id,
+        "path": patch.path,
+        "before": before,
+        "after": patch.value,
+    })
+    if len(revisions) > _REVISION_CAP:
+        revisions = revisions[-_REVISION_CAP:]
+
+    row.lens_payload = payload
+    row.dossier_revisions = revisions
     session.add(row)
     session.commit()
     session.refresh(row)

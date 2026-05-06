@@ -28,15 +28,109 @@
  *   - Sticky nav scrollspy is one-way (anchor links scroll smoothly; no
  *     active-chapter highlighting yet — M14.1.c polish)
  */
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useCallback, useContext, useEffect, useRef, useState } from 'react'
 import { ConfidenceBadge, GlossaryTermified, SourceQuote } from './annotations.jsx'
 import ChatPanel from './ChatPanel.jsx'
 import { H2, H3, P, UL, LI, OL, OLI } from './markdown.jsx'
 import { dossierToMarkdown, downloadFile, suggestExportFilename } from './exportMarkdown.js'
 import { Download, Copy } from '../icons.jsx'
+import { patchDossierApi } from '../../api.js'
 
-export default function DossierPane({ extraction }) {
+// ============================================================================
+// M14.7 — Edit context: passes the extraction id + a save callback down to
+// every Editable node so they don't have to know about App-level state.
+// ============================================================================
+
+const EditCtx = React.createContext(null)
+
+/**
+ * <Editable path="brief.summary">{text}</Editable>
+ *
+ * Renders text. Click → contentEditable. Blur or Cmd+Enter → save via
+ * patchDossierApi. Escape cancels and reverts. Quietly no-ops when the
+ * EditCtx isn't installed (e.g. during share-view rendering).
+ */
+function Editable({ path, children }) {
+  const ctx = useContext(EditCtx)
+  const [editing, setEditing] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const ref = useRef(null)
+  const original = typeof children === 'string' ? children : ''
+
+  // Plain string content only — wrappers like <GlossaryTermified> render
+  // mark elements which break naive textContent saves. Callers wrapping
+  // rich content should pass the raw text string here and render the
+  // tooltip-decorated version separately when not editing.
+  const display = original
+
+  const save = useCallback(async () => {
+    if (!ctx || !ref.current) return
+    const next = ref.current.textContent || ''
+    if (next === original) {
+      setEditing(false)
+      return
+    }
+    setBusy(true)
+    try {
+      await ctx.save(path, next)
+    } catch (e) {
+      // Revert on failure.
+      if (ref.current) ref.current.textContent = original
+      ctx.onError?.(e)
+    } finally {
+      setBusy(false)
+      setEditing(false)
+    }
+  }, [ctx, path, original])
+
+  if (!ctx) return display
+
+  return (
+    <span
+      ref={ref}
+      contentEditable={editing}
+      suppressContentEditableWarning
+      onClick={() => !editing && setEditing(true)}
+      onBlur={save}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') {
+          if (ref.current) ref.current.textContent = original
+          setEditing(false)
+          ref.current?.blur()
+        } else if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+          e.preventDefault()
+          ref.current?.blur()
+        }
+      }}
+      style={{
+        outline: editing ? '2px solid var(--accent)' : 'none',
+        outlineOffset: 2,
+        borderRadius: 3,
+        cursor: editing ? 'text' : 'pointer',
+        opacity: busy ? 0.6 : 1,
+        transition: 'outline-color var(--dur-fast) var(--ease-out)',
+      }}
+      title={editing ? 'Press Esc to cancel, Cmd+Enter to save' : 'Click to edit'}
+    >
+      {display}
+    </span>
+  )
+}
+
+
+export default function DossierPane({ extraction, onUpdate }) {
   const dossier = extraction?.lens_payload
+  const [editError, setEditError] = useState(null)
+  const editCtxValue = React.useMemo(() => {
+    if (!extraction?.id || !onUpdate) return null
+    return {
+      save: async (path, value) => {
+        const next = await patchDossierApi(extraction.id, path, value)
+        onUpdate(next)
+      },
+      onError: (e) => setEditError(e?.message || 'Could not save edit'),
+    }
+  }, [extraction?.id, onUpdate])
   // M14.2 — glossary terms feed the GlossaryTermified component everywhere
   // text renders. Pulled once so every section uses the same list.
   const glossaryTerms = dossier?.glossary || []
@@ -77,7 +171,13 @@ export default function DossierPane({ extraction }) {
   }
 
   return (
+    <EditCtx.Provider value={editCtxValue}>
     <div style={paneShell} ref={scrollerRef}>
+      {editError && (
+        <div style={editErrorBanner} onClick={() => setEditError(null)} role="status">
+          {editError} <span style={{ opacity: 0.7, marginLeft: 8 }}>(click to dismiss)</span>
+        </div>
+      )}
       <ChapterNav active={activeChapter} extraction={extraction} />
 
       <div style={contentColumn}>
@@ -163,7 +263,21 @@ export default function DossierPane({ extraction }) {
           the scroll layout of the dossier itself. */}
       <ChatPanel extractionId={extraction?.id} />
     </div>
+    </EditCtx.Provider>
   )
+}
+
+const editErrorBanner = {
+  position: 'sticky',
+  top: 0,
+  zIndex: 6,
+  background: 'var(--danger-soft)',
+  color: 'var(--danger-ink)',
+  padding: '8px 16px',
+  fontSize: 13,
+  textAlign: 'center',
+  cursor: 'pointer',
+  borderBottom: '1px solid var(--danger-ink)',
 }
 
 // ============================================================================
@@ -262,10 +376,32 @@ function ChapterNav({ active, extraction }) {
         )
       })}
       </div>
-      <div style={{ justifySelf: 'end' }}>
+      <div style={{ justifySelf: 'end', display: 'flex', alignItems: 'center', gap: 8 }}>
+        <RevisionBadge revisions={extraction?.dossier_revisions || []} />
         <ExportActions extraction={extraction} />
       </div>
     </nav>
+  )
+}
+
+function RevisionBadge({ revisions }) {
+  if (!revisions || revisions.length === 0) return null
+  return (
+    <span
+      title={`${revisions.length} edit${revisions.length === 1 ? '' : 's'} applied to this dossier`}
+      style={{
+        fontSize: 11,
+        fontFamily: 'var(--font-mono)',
+        color: 'var(--accent-ink)',
+        background: 'var(--accent-soft)',
+        padding: '3px 8px',
+        borderRadius: 999,
+        fontWeight: 600,
+        letterSpacing: '0.04em',
+      }}
+    >
+      {revisions.length} edit{revisions.length === 1 ? '' : 's'}
+    </span>
   )
 }
 
@@ -472,7 +608,7 @@ function BriefSection({ brief, terms }) {
   return (
     <SectionShell title="Brief">
       <P>
-        <GlossaryTermified text={brief.summary} terms={terms} />
+        <Editable path="brief.summary">{brief.summary}</Editable>
       </P>
       {brief.tags && brief.tags.length > 0 && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 14 }}>
@@ -504,9 +640,9 @@ function BriefSection({ brief, terms }) {
 function TLDRLadder({ ladder, terms }) {
   if (!ladder) return null
   const rows = [
-    { label: '1 line', text: ladder.one_line },
-    { label: '1 paragraph', text: ladder.one_paragraph },
-    { label: '1 page', text: ladder.one_page },
+    { label: '1 line', text: ladder.one_line, path: 'tldr_ladder.one_line' },
+    { label: '1 paragraph', text: ladder.one_paragraph, path: 'tldr_ladder.one_paragraph' },
+    { label: '1 page', text: ladder.one_page, path: 'tldr_ladder.one_page' },
   ]
   return (
     <SectionShell title="TLDR Ladder">
@@ -528,7 +664,7 @@ function TLDRLadder({ ladder, terms }) {
               {r.label}
             </span>
             <p style={{ margin: 0, fontSize: 14, lineHeight: 1.55, color: 'var(--text)', flex: 1 }}>
-              <GlossaryTermified text={r.text} terms={terms} />
+              <Editable path={r.path}>{r.text}</Editable>
             </p>
           </div>
         ))}
@@ -544,12 +680,12 @@ function TLDRLadder({ ladder, terms }) {
 function FiveW1H({ w, terms }) {
   if (!w) return null
   const cells = [
-    { k: 'WHO', v: w.who },
-    { k: 'WHAT', v: w.what },
-    { k: 'WHEN', v: w.when },
-    { k: 'WHERE', v: w.where },
-    { k: 'WHY', v: w.why },
-    { k: 'HOW', v: w.how },
+    { k: 'WHO', v: w.who, p: 'five_w_one_h.who' },
+    { k: 'WHAT', v: w.what, p: 'five_w_one_h.what' },
+    { k: 'WHEN', v: w.when, p: 'five_w_one_h.when' },
+    { k: 'WHERE', v: w.where, p: 'five_w_one_h.where' },
+    { k: 'WHY', v: w.why, p: 'five_w_one_h.why' },
+    { k: 'HOW', v: w.how, p: 'five_w_one_h.how' },
   ]
   return (
     <SectionShell title="5W1H">
@@ -583,7 +719,7 @@ function FiveW1H({ w, terms }) {
               {c.k}
             </div>
             <p style={{ margin: 0, fontSize: 13.5, lineHeight: 1.5, color: 'var(--text)' }}>
-              <GlossaryTermified text={c.v} terms={terms} />
+              <Editable path={c.p}>{c.v}</Editable>
             </p>
           </div>
         ))}

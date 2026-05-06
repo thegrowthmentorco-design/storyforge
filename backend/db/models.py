@@ -106,6 +106,16 @@ class Extraction(SQLModel, table=True):
         default=None, sa_column=Column(JSON, nullable=True),
     )
 
+    # M14.7 — edit-in-place revision log. Each entry is a record of one
+    # edit applied to lens_payload via PATCH /api/extractions/{id}/dossier:
+    # {"ts": iso, "user_id": str, "path": str, "before": any, "after": any}.
+    # Capped at the last 50 entries on write so the column doesn't grow
+    # unbounded. Used to render an "Edited" badge + revert option.
+    dossier_revisions: list[dict[str, Any]] = Field(
+        default_factory=list,
+        sa_column=Column(JSON, nullable=False, server_default="[]"),
+    )
+
 
 class ChatMessage(SQLModel, table=True):
     """One message in the chat thread for an extraction (M14.4).

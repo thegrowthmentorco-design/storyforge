@@ -127,6 +127,12 @@ def _apply_soft_migrations() -> None:
             log.info("migrating: adding extraction.lens_payload (M14.1)")
             conn.exec_driver_sql("ALTER TABLE extraction ADD COLUMN lens_payload JSON")
             conn.commit()
+        if "dossier_revisions" not in ext_cols:
+            log.info("migrating: adding extraction.dossier_revisions (M14.7)")
+            conn.exec_driver_sql(
+                "ALTER TABLE extraction ADD COLUMN dossier_revisions JSON DEFAULT '[]'"
+            )
+            conn.commit()
 
         # ---- project ----
         proj_cols = _columns("project")

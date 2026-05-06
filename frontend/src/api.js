@@ -260,6 +260,23 @@ export async function patchExtractionApi(id, patch) {
   return jsonOrThrow(res)
 }
 
+/**
+ * M14.7 — Patch one node in a dossier's lens_payload.
+ *
+ * `path` is a dot-walk through the JSON ("brief.summary",
+ * "tldr_ladder.one_line", "glossary.0.definition"). `value` replaces
+ * the node at that path. Returns the full updated ExtractionRecord with
+ * the new lens_payload + dossier_revisions log.
+ */
+export async function patchDossierApi(id, path, value) {
+  const res = await apiFetch(`/api/extractions/${encodeURIComponent(id)}/dossier`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path, value }),
+  })
+  return jsonOrThrow(res)
+}
+
 /** Bulk-import a localStorage record. Idempotent on the same id. */
 export async function importExtractionApi(record) {
   const res = await apiFetch('/api/extractions/import', {

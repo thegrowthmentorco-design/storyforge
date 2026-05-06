@@ -5,7 +5,7 @@ Kept separate from `db/models.py` (SQLModel storage). Conversion happens in
 """
 
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -122,6 +122,10 @@ class ExtractionRecord(ExtractionPayload):
     # the structured payload from `lens_payload`.
     lens: str = "stories"
     lens_payload: dict | None = None
+    # M14.7 — append-only edit log. Each entry: {ts, user_id, path, before,
+    # after}. Capped at 50 on write server-side; UI uses the count for an
+    # "Edited" badge and can render the timeline if needed.
+    dossier_revisions: list[dict] = Field(default_factory=list)
 
 
 class ExtractionSummary(BaseModel):
@@ -163,6 +167,23 @@ class ExtractionPatch(BaseModel):
     stories: list[UserStory] | None = None
     nfrs: list[NonFunctional] | None = None
     gaps: list[Gap] | None = None
+
+
+class DossierEditPatch(BaseModel):
+    """PATCH /api/extractions/{id}/dossier body (M14.7).
+
+    Partial update against extraction.lens_payload. `path` is a dot-and-
+    index walk through the JSON (e.g. "brief.summary", "tldr_ladder.one_line",
+    "glossary.0.definition"). `value` replaces whatever is at that path.
+    The route walks lens_payload, validates the path resolves, swaps in the
+    new value, and appends one entry to dossier_revisions.
+
+    No structural mutations (no creating/deleting array elements) — keep
+    the contract narrow so the column stays Pydantic-validatable on read.
+    """
+    model_config = ConfigDict(extra="forbid")
+    path: str
+    value: Any
 
 
 class ExtractionImport(BaseModel):
