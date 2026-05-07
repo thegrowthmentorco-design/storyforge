@@ -44,12 +44,19 @@ def explain_document(
 
     from extract import resolve_model
     eff_model = resolve_model(model)
-    client = anthropic.Anthropic(api_key=api_key)
+    # M14.18.fix — explicit 4-minute client timeout so a stuck Claude
+    # call surfaces an error instead of spinning forever (saw a 320s+
+    # silent hang on a long PDF with adaptive thinking enabled).
+    client = anthropic.Anthropic(api_key=api_key, timeout=240.0)
 
     system_text = EXPLAINER_SYSTEM
     if prompt_suffix:
         system_text = system_text + f"\n\nAdditional house-style instructions: {prompt_suffix}"
 
+    # M14.18.fix — adaptive thinking + 16k output cap is overkill for
+    # structured extraction. Disable thinking; the schema does the
+    # constraint work. Plus output_config.effort=low encourages
+    # terser, faster output.
     response = client.messages.parse(
         model=eff_model,
         max_tokens=MAX_OUTPUT_TOKENS,
@@ -60,7 +67,8 @@ def explain_document(
         }],
         messages=[{"role": "user", "content": build_user_message(filename, raw_text)}],
         output_format=ExplainerOutput,
-        thinking={"type": "adaptive"},
+        output_config={"effort": "low"},
+        thinking={"type": "disabled"},
     )
     output = response.parsed_output
     raw_usage = response.usage
