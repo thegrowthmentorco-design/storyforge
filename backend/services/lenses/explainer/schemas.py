@@ -82,6 +82,19 @@ class ExplainerMetadata(BaseModel):
     word_count: int = 0
 
 
+class ExplainerDiagram(BaseModel):
+    """Optional Mermaid diagram when the document describes a process,
+    pipeline, or set of interacting components.
+
+    `source` is raw Mermaid syntax (flowchart / sequenceDiagram / stateDiagram
+    / etc.) — the frontend renders it via mermaid.js. `caption` is a short
+    one-line label shown above the diagram.
+    """
+    model_config = ConfigDict(extra="forbid")
+    caption: str = Field(description="Short one-line caption shown above the diagram.")
+    source: str = Field(description="Raw Mermaid source. Must start with a valid diagram type keyword (flowchart, sequenceDiagram, stateDiagram, etc.).")
+
+
 class ExplainerOutput(BaseModel):
     """Full explainer payload — what gets stored in lens_payload.
 
@@ -94,3 +107,7 @@ class ExplainerOutput(BaseModel):
     metadata: ExplainerMetadata
     plain_english: PlainEnglishExplanation
     management_pitch: ManagementPitch
+    diagram: ExplainerDiagram | None = Field(
+        default=None,
+        description="Optional Mermaid flow/sequence/state diagram. Populated when the document describes a process, pipeline, or interacting components; null otherwise.",
+    )

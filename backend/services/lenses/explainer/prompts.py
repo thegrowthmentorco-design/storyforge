@@ -118,6 +118,39 @@ TONE FOR THE MANAGEMENT PITCH:
     thing directly.
 
 ================================================================
+OPTIONAL DIAGRAM
+================================================================
+
+If — and ONLY if — the document describes a process, pipeline,
+workflow, set of interacting modules/components, lifecycle, or
+sequence of API/system calls, emit a Mermaid diagram in the
+`diagram` field. Otherwise leave `diagram` null.
+
+When you do emit a diagram:
+  - Pick the diagram type that best fits:
+      * `flowchart TD` (top-down) for module pipelines, data flows,
+        decision trees, system architectures.
+      * `sequenceDiagram` for ordered interactions between actors
+        or services (API call sequences, message flows).
+      * `stateDiagram-v2` for lifecycles or state machines.
+  - Use real names from the document for nodes — not generic labels.
+  - Keep it readable: 5-15 nodes is usually right; if the document
+    has more, group related items into subgraphs.
+  - Use short edge labels for conditions or data being passed
+    (e.g., `-->|invoice PDF|`).
+  - Mermaid is strict about syntax. Common gotchas:
+      * Node IDs must be alphanumeric + underscores; quote labels
+        with parentheses or special chars: `A["Vendor (external)"]`.
+      * `flowchart` graphs need `-->` arrows, not `->`.
+      * No trailing semicolons after the last line.
+  - The `caption` is one short line ABOVE the diagram, e.g.
+    "End-to-end PayFlow processing — 12 modules in sequence".
+
+DO NOT emit a diagram for documents that are purely textual
+(rules-only, narrative reports, contracts without explicit flows,
+budgets). A bad diagram is worse than no diagram.
+
+================================================================
 GAPS, QUESTIONS, AMBIGUITIES
 ================================================================
 

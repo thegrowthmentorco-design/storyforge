@@ -10,13 +10,15 @@
  * tables, lists, code blocks, and bold/italic in the model's output
  * render correctly.
  */
-import React from 'react'
+import React, { lazy, Suspense } from 'react'
 import MarkdownText from '../MarkdownText.jsx'
 import ChatPanel from './ChatPanel.jsx'
 import {
   AlertTriangle, BookOpen, CheckCircle, FileText, HelpCircle,
-  Lightbulb, Sparkles, Zap,
+  Lightbulb, Share2, Sparkles, Zap,
 } from '../icons.jsx'
+
+const MermaidDiagram = lazy(() => import('./MermaidDiagram.jsx'))
 
 const DOC_TYPE_LABELS = {
   rules_policy: 'Rules / Policy',
@@ -91,6 +93,20 @@ export default function ExplainerPane({ extraction }) {
             ))}
           </div>
         </section>
+
+        {/* Optional: Mermaid diagram when the document describes a
+            process, pipeline, or interacting components. The model
+            decides whether to emit one — null otherwise. */}
+        {data.diagram?.source && (
+          <section>
+            <SectionEyebrow icon={Share2} accent="--success">
+              Visual flow
+            </SectionEyebrow>
+            <Suspense fallback={<div style={{ marginTop: 16, fontSize: 13, color: 'var(--text-muted)' }}>Rendering diagram…</div>}>
+              <MermaidDiagram caption={data.diagram.caption} source={data.diagram.source} />
+            </Suspense>
+          </section>
+        )}
 
         {/* Section 2: Management Pitch */}
         <section>
