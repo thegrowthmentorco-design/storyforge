@@ -43,6 +43,22 @@ export default function ExplainerPane({ extraction }) {
   const plain = data.plain_english || {}
   const pitch = data.management_pitch || {}
 
+  // Filter out any "Gaps & questions" / "Open questions" / "Caveats" /
+  // "What's missing" sections so legacy extractions (generated before
+  // the prompt update that bans these) also render cleanly. The chat
+  // panel covers follow-up questions; we don't want a static gaps
+  // block bleeding through. Headings are matched case-insensitively
+  // against a small set of substrings.
+  const SECTION_HIDE_PATTERNS = [
+    /gaps?/i, /open questions?/i, /caveats?/i, /missing/i,
+    /things? to clarify/i, /unclear/i, /ambiguit/i,
+  ]
+  const visibleSections = (plain.sections || []).filter((s) => {
+    const h = (s?.heading || '').trim()
+    if (!h) return true
+    return !SECTION_HIDE_PATTERNS.some((re) => re.test(h))
+  })
+
   return (
     <div style={paneShell}>
       <div style={contentColumn}>
@@ -57,8 +73,8 @@ export default function ExplainerPane({ extraction }) {
           {meta.word_count > 0 && (
             <div style={metaLine}>
               {meta.word_count.toLocaleString()} words
-              {plain.sections?.length > 0 && (
-                <> · {plain.sections.length} sections</>
+              {visibleSections.length > 0 && (
+                <> · {visibleSections.length} sections</>
               )}
             </div>
           )}
@@ -70,7 +86,7 @@ export default function ExplainerPane({ extraction }) {
             Plain-English Explanation
           </SectionEyebrow>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 24, marginTop: 16 }}>
-            {(plain.sections || []).map((s, i) => (
+            {visibleSections.map((s, i) => (
               <ExplainerSection key={i} heading={s.heading} body={s.body} />
             ))}
           </div>
