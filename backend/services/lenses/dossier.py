@@ -497,7 +497,7 @@ def extract_dossier(
         max_tokens=16000,
         system=system_blocks,
         messages=[{"role": "user", "content": _build_user_msg(filename, raw_text)}],
-        response_format=DocumentDossier,
+        output_format=DocumentDossier,
         thinking={"type": "adaptive"},
     )
 

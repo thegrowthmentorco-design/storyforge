@@ -215,7 +215,7 @@ def regen_section(
         messages=[{"role": "user", "content": _build_user_msg(
             filename, raw_text, current_dossier, label, instruction,
         )}],
-        response_format=schema,
+        output_format=schema,
         thinking={"type": "adaptive"},
     )
 

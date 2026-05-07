@@ -123,7 +123,7 @@ def synthesize_project(
         max_tokens=16000,
         system=system_blocks,
         messages=[{"role": "user", "content": user_msg}],
-        response_format=DocumentDossier,
+        output_format=DocumentDossier,
         thinking={"type": "adaptive"},
     )
 

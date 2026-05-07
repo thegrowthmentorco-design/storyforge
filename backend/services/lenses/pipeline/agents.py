@@ -62,12 +62,16 @@ def _call(
     max_tokens: int = 4000,
 ) -> tuple[Any, TokenUsage]:
     """Run one agent call. Returns (parsed_output, usage)."""
+    # Anthropic SDK 0.96+ renamed `response_format` → `output_format` on
+    # messages.parse(). Keeping the kwarg name in this function's signature
+    # (response_format) since callers throughout the codebase use that
+    # vocabulary; only the SDK call uses output_format.
     response = client.messages.parse(
         model=model,
         max_tokens=max_tokens,
         system=[{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
         messages=[{"role": "user", "content": user}],
-        response_format=response_format,
+        output_format=response_format,
         thinking={"type": "adaptive"},
     )
     usage = TokenUsage(
