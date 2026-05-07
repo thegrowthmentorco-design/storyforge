@@ -11,17 +11,18 @@ Plus metadata + flagged_issues for ambiguities/conflicts/missing info.
 
 from __future__ import annotations
 
-from typing import Literal
-
 from pydantic import BaseModel, ConfigDict, Field
 
 
-# Doc types — narrower than the pipeline router's set; just enough to tell
-# the renderer which heading style to use.
-ExplainerDocType = Literal[
-    "rules_policy", "report_research", "contract_agreement",
-    "technical_spec", "financial_budget", "other",
-]
+# Doc-type / kind / priority enums are passed as plain `str` rather than
+# `Literal[...]`. Anthropic's structured-output grammar compiler rejects
+# the combined schema as "too large" when many Literal-constrained fields
+# coexist (M14.18.fix2). The prompt enumerates the allowed values; the
+# frontend tolerates unknowns via lookup-with-fallback so a stray value
+# never crashes the renderer.
+#
+# Accepted doc_type values: rules_policy | report_research |
+# contract_agreement | technical_spec | financial_budget | other
 
 
 class ExplainerSection(BaseModel):
@@ -43,8 +44,8 @@ class ExplainerSection(BaseModel):
 class PlainEnglishExplanation(BaseModel):
     """The structured breakdown of what the document says."""
     model_config = ConfigDict(extra="forbid")
-    doc_type: ExplainerDocType = Field(
-        description="Which doc-type pattern was used. Drives section headings.",
+    doc_type: str = Field(
+        description="Which doc-type pattern was used. One of: rules_policy | report_research | contract_agreement | technical_spec | financial_budget | other. Drives section headings.",
     )
     sections: list[ExplainerSection] = Field(
         description="Headings vary by doc_type — see prompt. 4-8 sections typical.",
@@ -90,14 +91,11 @@ class ExplainerMetadata(BaseModel):
     word_count: int = 0
 
 
-LegendKind = Literal["process", "data", "external", "decision", "storage"]
-
-
 class LegendItem(BaseModel):
     """One entry in the diagram legend, paired with a node class
     that nodes in the Mermaid source can reference via `:::`."""
     model_config = ConfigDict(extra="forbid")
-    kind: LegendKind = Field(description="Semantic type. The frontend maps this to a colored swatch and applies the matching classDef in the diagram.")
+    kind: str = Field(description="Semantic type. One of: process | data | external | decision | storage. The frontend maps this to a colored swatch and applies the matching classDef in the diagram.")
     label: str = Field(description="Short human-readable description, e.g. 'Module / processing step' or 'External system'.")
 
 
@@ -123,9 +121,6 @@ class ExplainerDiagram(BaseModel):
     )
 
 
-KeyFactKind = Literal["number", "money", "date", "deadline", "name", "duration", "percentage", "other"]
-
-
 class KeyFact(BaseModel):
     """One scannable fact pulled from the document. Renders as a
     chip/card in the Key Facts panel above the plain-English
@@ -133,7 +128,7 @@ class KeyFact(BaseModel):
     alone with enough context that the user understands it without
     reading the body."""
     model_config = ConfigDict(extra="forbid")
-    kind: KeyFactKind = Field(description="Semantic type — drives the icon and color in the chip.")
+    kind: str = Field(description="Semantic type — one of: number | money | date | deadline | name | duration | percentage | other. Drives the icon and color in the chip.")
     label: str = Field(description="Short label, ≤6 words, e.g. 'Daily hotel limit, Grade 3'.")
     value: str = Field(description="The fact itself, exact from the document. e.g. '₹3,000', '15 March 2026', 'Acme Corp Pvt Ltd'.")
     context: str = Field(
@@ -156,15 +151,12 @@ class GlossaryTerm(BaseModel):
     )
 
 
-SimulatorFieldKind = Literal["select", "number", "text", "date", "boolean", "multiselect"]
-
-
 class SimulatorField(BaseModel):
     """One input field in the what-if simulator form."""
     model_config = ConfigDict(extra="forbid")
     key: str = Field(description="Stable identifier used in the values payload, e.g. 'employee_grade'. Snake_case, no spaces.")
     label: str = Field(description="Human-readable label, e.g. 'Employee grade'.")
-    kind: SimulatorFieldKind = Field(description="Input control type. Pick the one that best matches the document's variable.")
+    kind: str = Field(description="Input control type — one of: select | number | text | date | boolean | multiselect. Pick the one that best matches the document's variable.")
     options: list[str] = Field(default_factory=list, description="For `select` and `multiselect`. Real values from the document, e.g. ['Grade 1', 'Grade 2', 'Grade 3', 'Grade 4'].")
     help_text: str = Field(default="", description="One-line hint shown under the field. Empty when label alone is clear.")
     required: bool = Field(default=True, description="Required by default; mark optional only when the document allows the variable to be omitted.")
@@ -186,10 +178,6 @@ class SimulatorSchema(BaseModel):
     )
 
 
-RecommendationPriority = Literal["high", "medium", "low"]
-RecommendationKind = Literal["action", "watch_out", "opportunity", "compliance", "decision"]
-
-
 class Recommendation(BaseModel):
     """One forward-looking, actionable item derived from the document.
     Different from management_pitch (which explains) — recommendations
@@ -197,8 +185,8 @@ class Recommendation(BaseModel):
     and color, a short action-oriented title, the rationale, and a
     concrete next step the user can take."""
     model_config = ConfigDict(extra="forbid")
-    priority: RecommendationPriority = Field(description="`high` for must-act-soon items (deadlines, compliance, risks); `medium` for should-do; `low` for nice-to-have.")
-    kind: RecommendationKind = Field(description="`action` = generic do-this; `watch_out` = a risk/pitfall to avoid; `opportunity` = a benefit to capture; `compliance` = regulatory/policy obligation; `decision` = a choice the reader needs to make.")
+    priority: str = Field(description="One of: high | medium | low. `high` for must-act-soon items (deadlines, compliance, risks); `medium` for should-do; `low` for nice-to-have.")
+    kind: str = Field(description="One of: action | watch_out | opportunity | compliance | decision. `action` = generic do-this; `watch_out` = a risk/pitfall to avoid; `opportunity` = a benefit to capture; `compliance` = regulatory/policy obligation; `decision` = a choice the reader needs to make.")
     title: str = Field(description="Short, action-oriented, ≤90 chars. Start with a verb when possible (Set, Schedule, Review, Confirm, Negotiate).")
     rationale: str = Field(description="1-2 sentences explaining WHY this matters, grounded in the document's content. Reference the specific clause, number, or finding that drives the recommendation.")
     suggested_action: str = Field(description="One concrete next step, ≤200 chars. Specific enough that the user knows what to do tomorrow.")
