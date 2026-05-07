@@ -32,7 +32,6 @@ import EmptyState from './components/EmptyState.jsx'
 const ExplainerPane = lazy(() => import('./components/explainer/ExplainerPane.jsx'))
 import SourcePane from './components/SourcePane.jsx'
 import ArtifactsPane from './components/ArtifactsPane.jsx'
-import GapsRail from './components/GapsRail.jsx'
 import ResizeHandle from './components/ResizeHandle.jsx'
 import { Card, IconTile, Spinner } from './components/primitives.jsx'
 import { Sparkles, Check } from './components/icons.jsx'
@@ -575,7 +574,6 @@ function AuthedApp() {
   // Accumulated here so PipelineProgress can render the live agent state.
   const [stageEvents, setStageEvents] = useState([])
   const [rerunning, setRerunning] = useState(false)
-  const [showGaps, setShowGaps] = useState(true)
   // M5.2 — when a user clicks a source_quote on an artifact, this gets set
   // and SourcePane scrolls + flashes the matching <mark>. We re-set even
   // when the same quote is picked twice (object wrapper with a nonce so the
@@ -587,14 +585,11 @@ function AuthedApp() {
     setSelectedQuote({ text, nonce: Date.now() })
   }
   // M5.2.2 — reverse direction: SourcePane <mark> click → flash the
-  // owning artifact card. ArtifactsPane / GapsRail watch this for the
-  // matching `data-artifact-id` and run the flash + scroll.
+  // owning artifact card. ArtifactsPane watches this for the matching
+  // `data-artifact-id` and runs the flash + scroll.
   const [selectedArtifact, setSelectedArtifact] = useState(null)
   const pickArtifact = ({ kind, id }) => {
     if (!kind || !id) return
-    // M5.2.2 — when the picked artifact is a gap, ensure GapsRail is
-    // visible (otherwise the scroll-flash target wouldn't be mounted).
-    if (kind === 'gap') setShowGaps(true)
     setSelectedArtifact({ kind, id, nonce: Date.now() })
   }
   const [theme, setThemeRaw] = useState(() => getSettings().theme || 'light')
@@ -991,9 +986,7 @@ function AuthedApp() {
           extraction,
           versions,
           comments,
-          showGaps,
           onSwitchVersion: switchVersion,
-          onToggleGaps: () => setShowGaps((x) => !x),
           unread,
           onMarkSeen: markExtractionSeen,
         } : null}
@@ -1059,23 +1052,6 @@ function AuthedApp() {
         </Routes>
         </Suspense>
       </main>
-      {/* M8.6 — side GapsRail only renders at wide viewports. At narrow
-          widths the 'gaps' tab inside .body shows the same component
-          inline, so two-instance double-rendering is impossible. */}
-      {isHome && extraction && !loading && showGaps && !isNarrow && extraction.lens !== 'dossier' && (
-        <GapsRail
-          gaps={extraction.gaps}
-          extractionId={extractionId}
-          onPickQuote={pickQuote}
-          onUpdate={(nextGaps) => updateExtraction({ gaps: nextGaps })}
-          onRegen={() => handleRegenSection('gaps')}
-          regenBusy={regenBusy === 'gaps'}
-          rawText={extraction.raw_text}
-          comments={comments}
-          commentHandlers={{ onCreate: onCommentCreate, onPatch: onCommentPatch, onDelete: onCommentDelete }}
-          selectedArtifact={selectedArtifact}
-        />
-      )}
       <PaywallModal paywall={paywall} onClose={() => setPaywall(null)} />
       {shareOpen && extractionId && (
         <ShareModal extractionId={extractionId} onClose={() => setShareOpen(false)} />

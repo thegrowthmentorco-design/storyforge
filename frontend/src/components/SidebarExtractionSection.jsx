@@ -5,7 +5,6 @@ import { parseDocNames } from '../lib/multi_doc.js'
 import { useToast } from './Toast.jsx'
 import { Badge } from './primitives.jsx'
 import {
-  AlertTriangle,
   Check,
   ChevronDown,
   ChevronRight,
@@ -77,9 +76,7 @@ export default function SidebarExtractionSection({
   extraction,
   versions,
   comments,
-  showGaps,
   onSwitchVersion,
-  onToggleGaps,
   // M4.5.3 — unread comment count vs. last-seen (localStorage). When
   // > 0, the badge swaps to an accent "N new" pill that's clickable
   // to advance last-seen via onMarkSeen.
@@ -104,7 +101,6 @@ export default function SidebarExtractionSection({
   const docNames = useMemo(() => parseDocNames(extraction.raw_text || ''), [extraction.raw_text])
   const isMultiDoc = sourcePaths.length > 1
 
-  const gapCount = extraction.gaps?.length || 0
   const commentCount = comments?.length || 0
 
   return (
@@ -181,7 +177,7 @@ export default function SidebarExtractionSection({
         />
       )}
 
-      {/* Stats row — gaps badge (clickable → toggles GapsRail) + comments count */}
+      {/* Stats row — comments count */}
       <div
         style={{
           display: 'flex',
@@ -191,30 +187,6 @@ export default function SidebarExtractionSection({
           flexWrap: 'wrap',
         }}
       >
-        {gapCount > 0 && (
-          <button
-            type="button"
-            onClick={onToggleGaps}
-            title={showGaps ? 'Hide gaps panel' : 'Show gaps panel'}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 4,
-              padding: '3px 8px',
-              borderRadius: 'var(--radius-pill)',
-              border: 'none',
-              cursor: 'pointer',
-              fontSize: 11,
-              fontWeight: 500,
-              fontFamily: 'inherit',
-              background: showGaps ? 'var(--warn)' : 'var(--warn-soft)',
-              color: showGaps ? '#fff' : 'var(--warn-ink)',
-            }}
-          >
-            <AlertTriangle size={11} />
-            {gapCount} {gapCount === 1 ? 'gap' : 'gaps'}
-          </button>
-        )}
         {commentCount > 0 && (
           unread > 0 ? (
             // M4.5.3 — clickable "N new" pill. Click marks all comments on
