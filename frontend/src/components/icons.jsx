@@ -472,6 +472,29 @@ export const GripVertical = (p) => (
   </I>
 )
 
+export const Percent = (p) => (
+  <I {...p}>
+    <line x1="19" y1="5" x2="5" y2="19" />
+    <circle cx="6.5" cy="6.5" r="2.5" />
+    <circle cx="17.5" cy="17.5" r="2.5" />
+  </I>
+)
+
+export const Timer = (p) => (
+  <I {...p}>
+    <line x1="10" y1="2" x2="14" y2="2" />
+    <line x1="12" y1="14" x2="15" y2="11" />
+    <circle cx="12" cy="14" r="8" />
+  </I>
+)
+
+export const Quote = (p) => (
+  <I {...p}>
+    <path d="M3 21c3 0 7-1 7-8V5c0-1.25-.756-2.017-2-2H4c-1.25 0-2 .75-2 1.972V11c0 1.25.75 2 2 2h2c.75 0 1 0 1 1v1c0 1-1 2-2 2s-1 .008-1 1.031V21z" />
+    <path d="M15 21c3 0 7-1 7-8V5c0-1.25-.757-2.017-2-2h-4c-1.25 0-2 .75-2 1.972V11c0 1.25.75 2 2 2h2c.75 0 1 0 1 1v1c0 1-1 2-2 2s-1 .008-1 1.031V21z" />
+  </I>
+)
+
 export const Maximize2 = (p) => (
   <I {...p}>
     <polyline points="15 3 21 3 21 9" />

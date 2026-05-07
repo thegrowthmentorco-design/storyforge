@@ -102,6 +102,30 @@ def _explainer_digest(payload: dict) -> str:
                 preview += " …"
             out.append(f"  - {heading}: {preview}")
 
+    # Key facts — high-signal, often what users ask about.
+    facts = payload.get("key_facts") or []
+    if facts:
+        out.append("\nKEY FACTS:")
+        for f in facts[:20]:
+            label = f.get("label") or ""
+            value = f.get("value") or ""
+            ctx = f.get("context") or ""
+            line = f"  - {label}: {value}"
+            if ctx:
+                line += f" ({ctx})"
+            out.append(line)
+
+    # Glossary — so chat answers can use the same terminology consistently.
+    glossary = payload.get("glossary") or []
+    if glossary:
+        out.append("\nGLOSSARY:")
+        for g in glossary[:30]:
+            term = g.get("term") or ""
+            expansion = g.get("expansion") or ""
+            definition = g.get("definition") or ""
+            head = f"{term} ({expansion})" if expansion else term
+            out.append(f"  - {head}: {definition}")
+
     # Management pitch — the whole pitch is the high-signal "executive
     # version", so include it in full (it's typically <1k tokens total).
     pitch = payload.get("management_pitch") or {}

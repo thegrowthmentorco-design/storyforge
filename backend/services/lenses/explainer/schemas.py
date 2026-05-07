@@ -26,10 +26,18 @@ ExplainerDocType = Literal[
 
 class ExplainerSection(BaseModel):
     """One section within the plain-english breakdown.
-    `body` is markdown — supports headings, lists, tables, code, links."""
+    `body` is markdown — supports headings, lists, tables, code, links.
+    `source_quotes` are verbatim snippets from the original document
+    that back up the section's claims; the frontend renders them as a
+    "Sources" disclosure under the card so the user can verify the
+    explanation against the document."""
     model_config = ConfigDict(extra="forbid")
     heading: str = Field(description="Short section title, e.g. 'Who it applies to'")
     body: str = Field(description="Markdown content; tables for comparative data, numbered lists for steps, bullets for independent items")
+    source_quotes: list[str] = Field(
+        default_factory=list,
+        description="2-4 verbatim quotes from the original document that support the body. Each ≤200 chars. Quote exactly as written, including casing and punctuation; do not paraphrase. Empty list only when the section is purely synthesis (rare).",
+    )
 
 
 class PlainEnglishExplanation(BaseModel):
@@ -115,6 +123,39 @@ class ExplainerDiagram(BaseModel):
     )
 
 
+KeyFactKind = Literal["number", "money", "date", "deadline", "name", "duration", "percentage", "other"]
+
+
+class KeyFact(BaseModel):
+    """One scannable fact pulled from the document. Renders as a
+    chip/card in the Key Facts panel above the plain-English
+    explanation. The point is "30-second scan" — every fact stands
+    alone with enough context that the user understands it without
+    reading the body."""
+    model_config = ConfigDict(extra="forbid")
+    kind: KeyFactKind = Field(description="Semantic type — drives the icon and color in the chip.")
+    label: str = Field(description="Short label, ≤6 words, e.g. 'Daily hotel limit, Grade 3'.")
+    value: str = Field(description="The fact itself, exact from the document. e.g. '₹3,000', '15 March 2026', 'Acme Corp Pvt Ltd'.")
+    context: str = Field(
+        default="",
+        description="One short sentence (≤140 chars) of surrounding context — when/where/to whom this applies. Empty if the label+value are self-explanatory.",
+    )
+
+
+class GlossaryTerm(BaseModel):
+    """One term defined for the user. Includes acronyms, role names,
+    domain-specific jargon, and any term the document uses that a
+    layperson wouldn't know. The frontend renders these as a
+    definition list."""
+    model_config = ConfigDict(extra="forbid")
+    term: str = Field(description="The term as it appears in the document, e.g. 'GRN', 'Three-Way Matching', 'GSTR-3B'.")
+    definition: str = Field(description="Plain-language definition, ≤200 chars. Avoid using other jargon to define jargon.")
+    expansion: str = Field(
+        default="",
+        description="Acronym expansion if applicable, e.g. 'Goods Receipt Note'. Empty for non-acronyms.",
+    )
+
+
 class ExplainerOutput(BaseModel):
     """Full explainer payload — what gets stored in lens_payload.
 
@@ -130,4 +171,12 @@ class ExplainerOutput(BaseModel):
     diagram: ExplainerDiagram | None = Field(
         default=None,
         description="Optional Mermaid flow/sequence/state diagram. Populated when the document describes a process, pipeline, or interacting components; null otherwise.",
+    )
+    key_facts: list[KeyFact] = Field(
+        default_factory=list,
+        description="6-12 scannable facts (numbers, dates, names, money) for the 30-second scan. Empty list only for documents with no concrete facts.",
+    )
+    glossary: list[GlossaryTerm] = Field(
+        default_factory=list,
+        description="Domain terms, acronyms, and jargon used in the document with plain-language definitions. Empty list when the document uses no specialized terminology.",
     )

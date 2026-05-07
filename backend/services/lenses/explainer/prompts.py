@@ -118,6 +118,97 @@ TONE FOR THE MANAGEMENT PITCH:
     thing directly.
 
 ================================================================
+SOURCE QUOTES (per section)
+================================================================
+
+Every section in the plain-english explanation gets a `source_quotes`
+list — 2-4 short verbatim snippets from the original document that
+back up the section's claims. The user uses these to verify the
+explanation against the document.
+
+Rules:
+  - Each quote is VERBATIM from the source. Do not paraphrase, do
+    not fix typos, do not change casing. Copy exactly.
+  - Each quote ≤200 characters. If the supporting passage is longer,
+    pick the single most-load-bearing sentence or clause.
+  - 2-4 quotes per section is the target. More than 4 dilutes the
+    signal.
+  - If a section makes multiple distinct claims, prefer one quote
+    per claim over four quotes for the same point.
+  - Empty list only when the section is pure synthesis (e.g.
+    "Document overview" composed entirely from your own framing).
+    This is rare — most sections have direct backing in the source.
+
+================================================================
+KEY FACTS (top-level)
+================================================================
+
+Populate `key_facts` with 6-12 scannable facts the user would want
+at a glance. Each fact = a label + a verbatim value + optional
+one-line context. Pick the kind that best fits:
+  - `number`     — counts, quantities, sizes
+  - `money`      — currency amounts (any currency)
+  - `date`       — calendar dates (issue date, effective date, etc.)
+  - `deadline`   — dates with a "by when" implication
+  - `duration`   — periods, terms, validity windows
+  - `percentage` — rates, tolerances, splits
+  - `name`       — proper nouns: vendors, parties, projects, places
+  - `other`      — anything else worth a chip
+
+What to include:
+  - The most decision-relevant numbers, dates, names from the doc.
+  - Distinct facts only — don't repeat the same number with different
+    framing.
+
+What NOT to include:
+  - Generic terms ("the company", "the policy")
+  - Made-up examples
+  - Section titles or headings
+
+Format:
+  - `value` is exact from the document, including currency symbol,
+    casing, and punctuation: "₹3,000" not "Rs 3000".
+  - `label` is what the value MEANS, ≤6 words: "Daily hotel limit,
+    Grade 3" not "Section 4.2 limit".
+  - `context` adds the where/when/to-whom in one short sentence.
+    Leave empty when label+value already tell the whole story.
+
+If the document genuinely has no concrete facts (rare — most docs
+have at least dates and names), `key_facts` may be empty.
+
+================================================================
+GLOSSARY (top-level)
+================================================================
+
+Populate `glossary` with domain terms, acronyms, and jargon the
+document uses that a non-expert wouldn't know. The user uses this
+to read the explanation without context-switching to look terms up.
+
+What to include:
+  - All acronyms used in the document (with `expansion` populated).
+  - Domain-specific jargon (technical, legal, financial, regulatory).
+  - Role names that aren't self-explanatory (e.g. "AP Analyst",
+    "Finance Head" if the doc gives them specific responsibilities).
+  - Process names that recur as a label ("Three-Way Matching",
+    "Goods Receipt Note").
+
+What NOT to include:
+  - Common English words
+  - Terms defined inline in the explanation (no need to repeat)
+  - Proper nouns covered by `key_facts` (e.g. company names)
+
+Format:
+  - `term` is exactly as it appears in the document.
+  - `expansion` is the spelled-out form for acronyms only;
+    empty otherwise.
+  - `definition` is plain-language, ≤200 chars. Avoid jargon-to-
+    define-jargon: if your definition uses another acronym, define
+    that one too.
+
+If the document is purely conversational with no specialized terms,
+`glossary` may be empty.
+
+================================================================
 OPTIONAL DIAGRAM
 ================================================================
 
@@ -192,6 +283,11 @@ QUALITY CHECK BEFORE RESPONDING
 
   - Actual numbers, names, and dates from the document are used — not
     placeholders.
+  - Every plain_english section has 2-4 verbatim source_quotes
+    (unless it's pure synthesis), each ≤200 chars and copied
+    EXACTLY from the source.
+  - key_facts has 6-12 scannable entries with verbatim values.
+  - glossary covers every acronym used in the document.
   - The management pitch contains a worked example with real figures.
   - All 7 management_pitch fields are populated. whats_new is an empty
     list if not applicable.

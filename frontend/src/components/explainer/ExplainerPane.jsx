@@ -10,12 +10,14 @@
  * tables, lists, code blocks, and bold/italic in the model's output
  * render correctly.
  */
-import React, { lazy, Suspense } from 'react'
+import React, { lazy, Suspense, useState } from 'react'
 import MarkdownText from '../MarkdownText.jsx'
 import ChatPanel from './ChatPanel.jsx'
+import KeyFactsPanel from './KeyFactsPanel.jsx'
+import GlossaryPanel from './GlossaryPanel.jsx'
 import {
-  AlertTriangle, BookOpen, CheckCircle, FileText, HelpCircle,
-  Lightbulb, Share2, Sparkles, Zap,
+  AlertTriangle, BookOpen, CheckCircle, ChevronDown, ChevronRight,
+  FileText, Hash, HelpCircle, Lightbulb, Quote, Share2, Sparkles, Zap,
 } from '../icons.jsx'
 
 const MermaidDiagram = lazy(() => import('./MermaidDiagram.jsx'))
@@ -82,6 +84,17 @@ export default function ExplainerPane({ extraction }) {
           )}
         </header>
 
+        {/* Key Facts — 30-second scan of the document's concrete bits.
+            Renders only when the model surfaced any. */}
+        {data.key_facts?.length > 0 && (
+          <section>
+            <SectionEyebrow icon={Hash} accent="--success">
+              Key facts
+            </SectionEyebrow>
+            <KeyFactsPanel facts={data.key_facts} />
+          </section>
+        )}
+
         {/* Section 1: Plain-English Explanation */}
         <section>
           <SectionEyebrow icon={BookOpen} accent="--accent">
@@ -89,10 +102,26 @@ export default function ExplainerPane({ extraction }) {
           </SectionEyebrow>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 24, marginTop: 16 }}>
             {visibleSections.map((s, i) => (
-              <ExplainerSection key={i} heading={s.heading} body={s.body} />
+              <ExplainerSection
+                key={i}
+                heading={s.heading}
+                body={s.body}
+                sourceQuotes={s.source_quotes || []}
+              />
             ))}
           </div>
         </section>
+
+        {/* Glossary — domain terms, acronyms, jargon. Renders only
+            when the model surfaced any. */}
+        {data.glossary?.length > 0 && (
+          <section>
+            <SectionEyebrow icon={BookOpen} accent="--info">
+              Glossary
+            </SectionEyebrow>
+            <GlossaryPanel terms={data.glossary} />
+          </section>
+        )}
 
         {/* Optional: Mermaid diagram when the document describes a
             process, pipeline, or interacting components. The model
@@ -133,13 +162,52 @@ export default function ExplainerPane({ extraction }) {
 // Plain-English section card
 // ============================================================================
 
-function ExplainerSection({ heading, body }) {
+function ExplainerSection({ heading, body, sourceQuotes }) {
+  const [open, setOpen] = useState(false)
+  const hasQuotes = sourceQuotes && sourceQuotes.length > 0
+  const copyQuote = (text) => {
+    if (!navigator.clipboard) return
+    navigator.clipboard.writeText(text).catch(() => {})
+  }
   return (
     <article style={sectionCard}>
       <h2 style={sectionHeading}>{heading}</h2>
       <div style={sectionBody}>
         <MarkdownText text={body} />
       </div>
+      {hasQuotes && (
+        <div style={sourcesShell}>
+          <button
+            type="button"
+            style={sourcesToggle}
+            onClick={() => setOpen((x) => !x)}
+            aria-expanded={open}
+          >
+            {open
+              ? <ChevronDown size={13} />
+              : <ChevronRight size={13} />}
+            <Quote size={13} />
+            Sources ({sourceQuotes.length})
+          </button>
+          {open && (
+            <ul style={sourcesList}>
+              {sourceQuotes.map((q, i) => (
+                <li key={i} style={sourcesItem}>
+                  <span style={sourcesText}>“{q}”</span>
+                  <button
+                    type="button"
+                    style={copyBtn}
+                    onClick={() => copyQuote(q)}
+                    title="Copy quote"
+                  >
+                    Copy
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
     </article>
   )
 }
@@ -335,6 +403,65 @@ const sectionBody = {
   fontSize: 15,
   lineHeight: 1.65,
   color: 'var(--text)',
+}
+const sourcesShell = {
+  marginTop: 14,
+  paddingTop: 12,
+  borderTop: '1px dashed var(--border)',
+}
+const sourcesToggle = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 6,
+  padding: '4px 10px',
+  fontSize: 11.5,
+  fontWeight: 600,
+  letterSpacing: '0.06em',
+  textTransform: 'uppercase',
+  color: 'var(--text-muted)',
+  background: 'transparent',
+  border: '1px solid var(--border)',
+  borderRadius: 'var(--radius-pill)',
+  cursor: 'pointer',
+  fontFamily: 'inherit',
+}
+const sourcesList = {
+  margin: '12px 0 0',
+  padding: 0,
+  listStyle: 'none',
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 8,
+}
+const sourcesItem = {
+  display: 'flex',
+  alignItems: 'flex-start',
+  gap: 10,
+  padding: '10px 12px',
+  background: 'var(--bg-elevated)',
+  border: '1px solid var(--border)',
+  borderLeft: '3px solid var(--accent)',
+  borderRadius: 'var(--radius-md)',
+  fontSize: 13.5,
+  lineHeight: 1.55,
+  color: 'var(--text)',
+}
+const sourcesText = {
+  flex: 1,
+  fontStyle: 'italic',
+  fontFamily: 'var(--font-display)',
+}
+const copyBtn = {
+  flexShrink: 0,
+  fontSize: 11,
+  fontWeight: 600,
+  padding: '3px 8px',
+  border: '1px solid var(--border)',
+  background: 'var(--bg-subtle)',
+  color: 'var(--text-muted)',
+  borderRadius: 'var(--radius-pill)',
+  cursor: 'pointer',
+  fontFamily: 'inherit',
 }
 
 // Management Pitch
