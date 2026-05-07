@@ -286,6 +286,43 @@ export async function sendChatMessageStream(
   return final
 }
 
+/** Stream a persona-rewritten set of plain-English sections.
+ *  SSE events: stage, complete{persona, sections}, error.
+ */
+export async function regeneratePersonaStream(id, persona, { onStage, onComplete, signal } = {}) {
+  const { readSSE } = await import('./lib/sse.js')
+  const res = await apiFetch(
+    `/api/extractions/${encodeURIComponent(id)}/persona/${encodeURIComponent(persona)}`,
+    { method: 'POST', signal },
+  )
+  if (!res.ok) return jsonOrThrow(res)
+  let final = null
+  await readSSE(res, (eventName, data) => {
+    if (eventName === 'stage') onStage?.(data)
+    else if (eventName === 'complete') {
+      final = data
+      onComplete?.(data)
+    } else if (eventName === 'error') {
+      const err = new Error(data.detail || 'Persona rewrite failed')
+      err.status = data.status
+      throw err
+    }
+  })
+  return final
+}
+
+/** Evaluate the what-if simulator with a values payload.
+ *  Returns { result: SimulationResult, usage: {...} }.
+ */
+export async function simulateApi(id, values) {
+  const res = await apiFetch(`/api/extractions/${encodeURIComponent(id)}/simulate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ values }),
+  })
+  return jsonOrThrow(res)
+}
+
 /** Clear all messages in the chat thread for an extraction. */
 export async function clearChatApi(id) {
   const res = await apiFetch(`/api/extractions/${encodeURIComponent(id)}/chat`, { method: 'DELETE' })

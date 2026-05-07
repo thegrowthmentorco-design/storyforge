@@ -262,6 +262,40 @@ report read for context), `recommendations` may be empty. This is
 rare — most business documents have at least one action item.
 
 ================================================================
+OPTIONAL WHAT-IF SIMULATOR
+================================================================
+
+If — and ONLY if — the document is a rules/policy with computable
+outcomes given a set of inputs (allowances, eligibility limits,
+tax calculations, approval routing, leave entitlement, discount
+rules, etc.), emit a `simulator_schema`. Otherwise leave it null.
+
+A good simulator candidate document has:
+  - Variables the reader supplies (grade, location, days, amount,
+    category, role, etc.)
+  - A deterministic outcome the document specifies for each
+    combination of those variables.
+
+When you emit a schema:
+  - Pick 2-6 fields. The fields are the variables that actually
+    drive outcomes — not every detail mentioned. If the document
+    has 12 inputs but only 3 matter for 90% of cases, pick those 3.
+  - For `select` and `multiselect`, populate `options` with the
+    REAL values from the document, exactly as named. Don't invent
+    grades or city tiers the document doesn't list.
+  - `kind=date` for calendar dates; `kind=number` for amounts and
+    counts; `kind=boolean` for yes/no flags; `kind=text` only when
+    no structured option fits.
+  - `example_inputs`: 1-3 worked examples taken from the document.
+    Use the document's own example cases (e.g. "Grade 3 engineer
+    travelling to Mumbai for 4 days") as a {field.key: value} dict.
+    Every key in an example_inputs dict must be a key from `fields`.
+
+DO NOT emit a simulator for documents that are purely descriptive
+(reports, narratives, contracts that don't compute anything,
+technical specs that describe behavior rather than parameterize it).
+
+================================================================
 OPTIONAL DIAGRAM
 ================================================================
 

@@ -156,6 +156,36 @@ class GlossaryTerm(BaseModel):
     )
 
 
+SimulatorFieldKind = Literal["select", "number", "text", "date", "boolean", "multiselect"]
+
+
+class SimulatorField(BaseModel):
+    """One input field in the what-if simulator form."""
+    model_config = ConfigDict(extra="forbid")
+    key: str = Field(description="Stable identifier used in the values payload, e.g. 'employee_grade'. Snake_case, no spaces.")
+    label: str = Field(description="Human-readable label, e.g. 'Employee grade'.")
+    kind: SimulatorFieldKind = Field(description="Input control type. Pick the one that best matches the document's variable.")
+    options: list[str] = Field(default_factory=list, description="For `select` and `multiselect`. Real values from the document, e.g. ['Grade 1', 'Grade 2', 'Grade 3', 'Grade 4'].")
+    help_text: str = Field(default="", description="One-line hint shown under the field. Empty when label alone is clear.")
+    required: bool = Field(default=True, description="Required by default; mark optional only when the document allows the variable to be omitted.")
+    default_value: str = Field(default="", description="Optional default; empty string means no default.")
+
+
+class SimulatorSchema(BaseModel):
+    """A what-if simulator definition. Emitted at extraction time for
+    rules/policy documents that have computable outcomes given a set
+    of inputs (allowances, eligibility, tax calc, approval routing,
+    etc.). Empty/null for documents that are purely descriptive."""
+    model_config = ConfigDict(extra="forbid")
+    title: str = Field(description="Question this simulator answers, e.g. 'Calculate your travel allowance'.")
+    description: str = Field(description="One-line context for the form, e.g. 'Enter your details to see what this policy entitles you to.'")
+    fields: list[SimulatorField] = Field(description="2-6 input fields. Pick the variables that actually drive outcomes in the document; skip cosmetic ones.")
+    example_inputs: list[dict[str, str]] = Field(
+        default_factory=list,
+        description="0-3 worked examples — pre-fill values one click. Each is a {field.key: stringified value} dict using real cases mentioned in the document.",
+    )
+
+
 RecommendationPriority = Literal["high", "medium", "low"]
 RecommendationKind = Literal["action", "watch_out", "opportunity", "compliance", "decision"]
 
@@ -201,4 +231,8 @@ class ExplainerOutput(BaseModel):
     recommendations: list[Recommendation] = Field(
         default_factory=list,
         description="3-7 forward-looking recommendations derived from the document — what to DO, watch out for, decide, or capture. Empty list only when the document genuinely doesn't imply any action (rare).",
+    )
+    simulator_schema: SimulatorSchema | None = Field(
+        default=None,
+        description="Optional what-if simulator definition. Populated when the document is a rules/policy with computable outcomes (allowances, eligibility, tax calc, approval routing). Null otherwise.",
     )

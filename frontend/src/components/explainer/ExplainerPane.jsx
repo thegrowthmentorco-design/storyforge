@@ -16,9 +16,11 @@ import ChatPanel from './ChatPanel.jsx'
 import KeyFactsPanel from './KeyFactsPanel.jsx'
 import GlossaryPanel from './GlossaryPanel.jsx'
 import RecommendationsPanel from './RecommendationsPanel.jsx'
+import PersonaSwitcher from './PersonaSwitcher.jsx'
+import SimulatorPanel from './SimulatorPanel.jsx'
 import {
-  AlertTriangle, BookOpen, CheckCircle, ChevronDown, ChevronRight,
-  FileText, Hash, HelpCircle, Lightbulb, Quote, Share2, Sparkles, Target, Zap,
+  AlertTriangle, BookOpen, Calculator, CheckCircle, ChevronDown, ChevronRight,
+  FileText, Hash, HelpCircle, Lightbulb, Quote, Share2, Sparkles, Target, Users, Zap,
 } from '../icons.jsx'
 
 const MermaidDiagram = lazy(() => import('./MermaidDiagram.jsx'))
@@ -47,6 +49,11 @@ export default function ExplainerPane({ extraction }) {
   const meta = data.metadata || {}
   const plain = data.plain_english || {}
   const pitch = data.management_pitch || {}
+  // Persona override — when the user picks a non-default persona, we
+  // swap the section bodies in-place. `default` falls back to the
+  // original sections from lens_payload.
+  const [personaSections, setPersonaSections] = useState(null)
+  const [activePersona, setActivePersona] = useState('default')
 
   // Filter out any "Gaps & questions" / "Open questions" / "Caveats" /
   // "What's missing" sections so legacy extractions (generated before
@@ -58,11 +65,17 @@ export default function ExplainerPane({ extraction }) {
     /gaps?/i, /open questions?/i, /caveats?/i, /missing/i,
     /things? to clarify/i, /unclear/i, /ambiguit/i,
   ]
-  const visibleSections = (plain.sections || []).filter((s) => {
+  const baseSections = personaSections || plain.sections || []
+  const visibleSections = baseSections.filter((s) => {
     const h = (s?.heading || '').trim()
     if (!h) return true
     return !SECTION_HIDE_PATTERNS.some((re) => re.test(h))
   })
+  // Source quotes are tied to the original sections only — persona
+  // rewrites preserve the same section topics in the same order, so
+  // we look up quotes by index in plain.sections rather than re-fetching.
+  const sourceQuotesByIndex = (plain.sections || []).map((s) => s.source_quotes || [])
+  const quotesFor = (i) => activePersona === 'default' ? (sourceQuotesByIndex[i] || []) : []
 
   return (
     <div style={paneShell}>
@@ -101,17 +114,37 @@ export default function ExplainerPane({ extraction }) {
           <SectionEyebrow icon={BookOpen} accent="--accent">
             Plain-English Explanation
           </SectionEyebrow>
+          {extraction?.id && (plain.sections?.length > 0) && (
+            <PersonaSwitcher
+              extractionId={extraction.id}
+              defaultSections={plain.sections || []}
+              onSectionsChange={(secs, personaKey) => {
+                setActivePersona(personaKey)
+                setPersonaSections(personaKey === 'default' ? null : secs)
+              }}
+            />
+          )}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 24, marginTop: 16 }}>
             {visibleSections.map((s, i) => (
               <ExplainerSection
-                key={i}
+                key={`${activePersona}-${i}`}
                 heading={s.heading}
                 body={s.body}
-                sourceQuotes={s.source_quotes || []}
+                sourceQuotes={quotesFor(i)}
               />
             ))}
           </div>
         </section>
+
+        {/* What-if simulator — only when the model emitted a schema. */}
+        {data.simulator_schema && extraction?.id && (
+          <section>
+            <SectionEyebrow icon={Calculator} accent="--accent">
+              What-if simulator
+            </SectionEyebrow>
+            <SimulatorPanel extractionId={extraction.id} schema={data.simulator_schema} />
+          </section>
+        )}
 
         {/* Glossary — domain terms, acronyms, jargon. Renders only
             when the model surfaced any. */}
