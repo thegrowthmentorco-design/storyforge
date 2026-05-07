@@ -18,9 +18,12 @@ from pydantic import BaseModel, ConfigDict, Field
 # ============================================================================
 
 DocType = Literal[
-    "agenda", "contract", "policy", "research_paper", "technical_spec",
-    "financial_report", "meeting_minutes", "email_thread", "proposal",
-    "report", "manual", "other",
+    # Router v2 (M14.17.fix) — added process_design + status_report;
+    # dropped email_thread / report / manual (rolled into "other") to
+    # match the mandatory-specialists table.
+    "agenda", "meeting_minutes", "contract", "policy", "process_design",
+    "research_paper", "proposal", "financial_report", "technical_spec",
+    "status_report", "other",
 ]
 UserIntent = Literal["understand", "act", "decide", "learn", "communicate"]
 Depth = Literal["thin", "moderate", "deep"]

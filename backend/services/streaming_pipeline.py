@@ -227,6 +227,7 @@ def _run_pipeline_with_progress(
                         key=key, filename=filename, raw_text=raw_text,
                         extractor_output=extractor_out,
                         client=client, model=model,
+                        depth=router_out.depth,
                     ): key
                     for key in router_out.selected_specialists
                 }

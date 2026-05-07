@@ -21,6 +21,7 @@ from services.lenses.pipeline.prompts import (
     ACTION_EXTRACTOR_PROMPT,
     ARGUMENT_MAPPER_PROMPT,
     CRITIC_PROMPT,
+    DEPTH_CAP_RULE,
     EXTRACTOR_PROMPT,
     GLOSSARY_BUILDER_PROMPT,
     NUMERICAL_ANALYZER_PROMPT,
@@ -146,27 +147,35 @@ def run_extractor(
 # (saw truncation mid-string on multiple specialists at 4-8k caps).
 # 16k is the highest we use anywhere; max_tokens is a ceiling so cost
 # only grows when Claude actually emits that many tokens.
+# Each specialist prompt gets DEPTH_CAP_RULE appended so the runtime
+# `Depth: thin/moderate/deep` value supplied in the user message
+# constrains output size (Router v2 — depth no longer affects which
+# specialists run).
 _SPECIALIST_REGISTRY = {
-    "action_extractor": (ACTION_EXTRACTOR_PROMPT, ActionExtractorOutput, 16000),
-    "risk_analyzer": (RISK_ANALYZER_PROMPT, RiskAnalyzerOutput, 16000),
-    "argument_mapper": (ARGUMENT_MAPPER_PROMPT, ArgumentMapperOutput, 16000),
-    "obligation_mapper": (OBLIGATION_MAPPER_PROMPT, ObligationMapperOutput, 16000),
-    "glossary_builder": (GLOSSARY_BUILDER_PROMPT, GlossaryBuilderOutput, 16000),
-    "numerical_analyzer": (NUMERICAL_ANALYZER_PROMPT, NumericalAnalyzerOutput, 16000),
-    "timeline_builder": (TIMELINE_BUILDER_PROMPT, TimelineBuilderOutput, 16000),
+    "action_extractor": (ACTION_EXTRACTOR_PROMPT + DEPTH_CAP_RULE, ActionExtractorOutput, 16000),
+    "risk_analyzer": (RISK_ANALYZER_PROMPT + DEPTH_CAP_RULE, RiskAnalyzerOutput, 16000),
+    "argument_mapper": (ARGUMENT_MAPPER_PROMPT + DEPTH_CAP_RULE, ArgumentMapperOutput, 16000),
+    "obligation_mapper": (OBLIGATION_MAPPER_PROMPT + DEPTH_CAP_RULE, ObligationMapperOutput, 16000),
+    "glossary_builder": (GLOSSARY_BUILDER_PROMPT + DEPTH_CAP_RULE, GlossaryBuilderOutput, 16000),
+    "numerical_analyzer": (NUMERICAL_ANALYZER_PROMPT + DEPTH_CAP_RULE, NumericalAnalyzerOutput, 16000),
+    "timeline_builder": (TIMELINE_BUILDER_PROMPT + DEPTH_CAP_RULE, TimelineBuilderOutput, 16000),
 }
 
 
 def run_specialist(
     *, key: str, filename: str, raw_text: str, extractor_output: ExtractorOutput,
-    client, model: str,
+    client, model: str, depth: str = "moderate",
 ) -> tuple[Any, TokenUsage]:
+    """Run one specialist. `depth` (thin/moderate/deep) is supplied to
+    the prompt so DEPTH_CAP_RULE applies — controls output verbosity
+    without changing which specialists run (Router v2)."""
     if key not in _SPECIALIST_REGISTRY:
         raise ValueError(f"unknown specialist: {key}")
     system, schema, max_tokens = _SPECIALIST_REGISTRY[key]
     user_msg = _doc_user_msg(
         filename, raw_text,
         extra=(
+            f"Depth: {depth}\n\n"
             "Grounded facts (extractor_output):\n"
             + json.dumps(extractor_output.model_dump(mode="json"), indent=2)
         ),
