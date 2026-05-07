@@ -166,7 +166,14 @@ function renderBlock(b, key) {
 //   4. link           [text](url)
 // ============================================================================
 
-const INLINE_RE = /(`[^`]+`|\*\*[^*]+\*\*|\*[^*\n]+\*|_[^_\n]+_|\[[^\]]+\]\([^)]+\))/g
+// IMPORTANT: do NOT cache a `g`-flag RegExp at module scope and call .exec()
+// in a loop while recursively re-entering renderInline — `lastIndex` is
+// shared mutable state and recursion corrupts the outer loop's position,
+// causing re-matches / overlapping outputs / runaway DOM. We use
+// String.prototype.matchAll which returns a per-call iterator (lastIndex
+// is internal to the iterator, not shared globally). Pattern is created
+// fresh in matchAll so any future regex caching has to be intentional.
+const INLINE_PATTERN = String.raw`(\x60[^\x60]+\x60|\*\*[^*]+\*\*|\*[^*\n]+\*|_[^_\n]+_|\[[^\]]+\]\([^)]+\))`
 
 function renderInline(text) {
   if (!text) return null
@@ -177,10 +184,9 @@ function renderInline(text) {
   const out = []
   lines.forEach((line, lineIdx) => {
     if (lineIdx > 0) out.push(<br key={`br-${lineIdx}`} />)
+    const matches = line.matchAll(new RegExp(INLINE_PATTERN, 'g'))
     let lastIdx = 0
-    let match
-    INLINE_RE.lastIndex = 0
-    while ((match = INLINE_RE.exec(line)) !== null) {
+    for (const match of matches) {
       if (match.index > lastIdx) {
         out.push(line.slice(lastIdx, match.index))
       }
