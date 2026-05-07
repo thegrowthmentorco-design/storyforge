@@ -1,7 +1,7 @@
 /**
  * M14.16.a — Tiny Markdown renderer for chat + dossier prose blocks.
  *
- * Supports the subset Claude actually uses in dossier/chat replies:
+ * Supports the subset Claude actually uses in explainer / chat replies:
  *   # / ## / ### / #### headings
  *   - or * bullets (one level; nested lists fall back to indented bullets)
  *   1. ordered lists
@@ -9,11 +9,13 @@
  *   `inline code` and ```fenced``` code blocks
  *   [link text](url)
  *   --- horizontal rule
+ *   > blockquote
+ *   | table | rows | (M14.18.fix — added for explainer output)
  *   blank line = paragraph break, single newline = soft break
  *
- * Out of scope (rare in Claude output, not worth the bytes): tables,
- * footnotes, task lists, blockquotes (we add them if Claude starts using
- * them). React-markdown would be the obvious dep but adds ~30 KB gzipped.
+ * Out of scope (rare in Claude output, not worth the bytes): footnotes,
+ * task lists, nested tables, alignment in tables. React-markdown would be
+ * the obvious dep but adds ~30 KB gzipped.
  */
 import React from 'react'
 
@@ -22,6 +24,11 @@ const BULLET_RE = /^[-*]\s+(.*)$/
 const ORDERED_RE = /^(\d+)\.\s+(.*)$/
 const HR_RE = /^---+\s*$/
 const FENCE_RE = /^```/
+const QUOTE_RE = /^>\s?(.*)$/
+// Table detection: a row starts with `|` and the next line is a separator
+// of pipes and dashes (with optional `:` for alignment, ignored for now).
+const TABLE_ROW_RE = /^\s*\|/
+const TABLE_SEP_RE = /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/
 
 export default function MarkdownText({ text, style }) {
   if (!text || typeof text !== 'string') return null
@@ -70,6 +77,30 @@ function parseBlocks(src) {
       i++
       continue
     }
+    // Table — detect header row + separator row. Both must be present;
+    // a single `|` line without a `|---|` follow-up is just a paragraph.
+    if (TABLE_ROW_RE.test(line)
+        && i + 1 < lines.length && TABLE_SEP_RE.test(lines[i + 1])) {
+      const header = parseTableRow(line)
+      i += 2  // skip header + separator
+      const rows = []
+      while (i < lines.length && TABLE_ROW_RE.test(lines[i])) {
+        rows.push(parseTableRow(lines[i]))
+        i++
+      }
+      blocks.push({ type: 'table', header, rows })
+      continue
+    }
+    // Blockquote — gather consecutive `>` lines.
+    if (QUOTE_RE.test(line)) {
+      const quoteLines = []
+      while (i < lines.length && QUOTE_RE.test(lines[i])) {
+        quoteLines.push(QUOTE_RE.exec(lines[i])[1])
+        i++
+      }
+      blocks.push({ type: 'quote', content: quoteLines.join('\n') })
+      continue
+    }
     // Bullet list (consecutive bullets)
     if (BULLET_RE.test(line)) {
       const items = []
@@ -113,6 +144,17 @@ function parseBlocks(src) {
 function isBlockStart(line) {
   return HEADING_RE.test(line) || BULLET_RE.test(line)
     || ORDERED_RE.test(line) || HR_RE.test(line) || FENCE_RE.test(line)
+    || QUOTE_RE.test(line) || TABLE_ROW_RE.test(line)
+}
+
+// Split a `| cell | cell | cell |` row into its cells. Strips leading/trailing
+// pipes and trims surrounding whitespace. Empty trailing cells are kept so
+// header + body row counts can mismatch (we render whatever's there).
+function parseTableRow(line) {
+  let s = line.trim()
+  if (s.startsWith('|')) s = s.slice(1)
+  if (s.endsWith('|')) s = s.slice(0, -1)
+  return s.split('|').map((c) => c.trim())
 }
 
 // ============================================================================
@@ -148,6 +190,35 @@ function renderBlock(b, key) {
         <pre key={key} style={preStyle}>
           <code>{b.content}</code>
         </pre>
+      )
+    case 'quote':
+      return (
+        <blockquote key={key} style={quoteBlockStyle}>
+          {renderInline(b.content)}
+        </blockquote>
+      )
+    case 'table':
+      return (
+        <div key={key} style={tableScrollStyle}>
+          <table style={tableStyle}>
+            <thead>
+              <tr>
+                {b.header.map((cell, i) => (
+                  <th key={i} style={thStyle}>{renderInline(cell)}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {b.rows.map((row, ri) => (
+                <tr key={ri} style={ri % 2 === 0 ? trEvenStyle : trOddStyle}>
+                  {row.map((cell, ci) => (
+                    <td key={ci} style={tdStyle}>{renderInline(cell)}</td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )
     case 'p':
     default:
@@ -289,4 +360,62 @@ const linkStyle = {
   color: 'var(--accent-strong)',
   textDecoration: 'underline',
   textUnderlineOffset: 2,
+}
+
+// M14.18.fix — blockquote styling.
+const quoteBlockStyle = {
+  margin: '0 0 0.8em',
+  padding: '8px 14px',
+  borderLeft: '3px solid var(--accent)',
+  background: 'var(--accent-soft)',
+  color: 'var(--text)',
+  fontStyle: 'italic',
+  fontSize: '0.97em',
+  lineHeight: 1.55,
+  borderRadius: '0 var(--radius-sm) var(--radius-sm) 0',
+}
+
+// M14.18.fix — table styling. Outer wrapper enables horizontal scroll on
+// narrow viewports without breaking the page layout. Inner table uses
+// border-collapse so the row dividers actually meet.
+const tableScrollStyle = {
+  margin: '0 0 1em',
+  overflowX: 'auto',
+  border: '1px solid var(--border)',
+  borderRadius: 'var(--radius)',
+  background: 'var(--bg-elevated)',
+}
+
+const tableStyle = {
+  width: '100%',
+  borderCollapse: 'collapse',
+  fontSize: '0.92em',
+  lineHeight: 1.5,
+}
+
+const thStyle = {
+  textAlign: 'left',
+  padding: '10px 14px',
+  fontWeight: 600,
+  fontSize: '0.86em',
+  letterSpacing: '0.02em',
+  color: 'var(--text-strong)',
+  background: 'var(--bg-subtle)',
+  borderBottom: '2px solid var(--border-strong)',
+  whiteSpace: 'nowrap',
+}
+
+const tdStyle = {
+  padding: '10px 14px',
+  borderBottom: '1px solid var(--border)',
+  color: 'var(--text)',
+  verticalAlign: 'top',
+}
+
+const trEvenStyle = {
+  background: 'var(--bg-elevated)',
+}
+
+const trOddStyle = {
+  background: 'var(--bg-subtle)',
 }
