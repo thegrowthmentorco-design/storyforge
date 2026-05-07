@@ -140,21 +140,19 @@ def run_extractor(
 # Each specialist takes the document + extractor output as user message.
 # Pattern is identical; we DRY it via a small helper.
 
-# M14.17.fix — max_tokens bumped after observing real-world truncation:
-# - timeline_builder hit the 4000 limit on a multi-event agenda; the JSON
-#   stream was cut mid-string so Pydantic rejected it. Bumped to 8000.
-# - obligation_mapper / argument_mapper similarly produce long structured
-#   output on contracts / research papers; bumped to 8000 / 6000.
-# - The other specialists are list-capped at <=10 items and stay at 4000.
-# Cost impact is small in practice — Claude only emits as many tokens as
-# the schema needs; max_tokens is just a ceiling.
+# M14.17.fix — uniform 16k max_tokens across specialists. Adaptive
+# thinking shares the same budget as the structured output, and
+# verbatim source_span / evidence fields balloon output unpredictably
+# (saw truncation mid-string on multiple specialists at 4-8k caps).
+# 16k is the highest we use anywhere; max_tokens is a ceiling so cost
+# only grows when Claude actually emits that many tokens.
 _SPECIALIST_REGISTRY = {
-    "action_extractor": (ACTION_EXTRACTOR_PROMPT, ActionExtractorOutput, 5000),
-    "risk_analyzer": (RISK_ANALYZER_PROMPT, RiskAnalyzerOutput, 5000),
-    "argument_mapper": (ARGUMENT_MAPPER_PROMPT, ArgumentMapperOutput, 6000),
-    "obligation_mapper": (OBLIGATION_MAPPER_PROMPT, ObligationMapperOutput, 8000),
-    "glossary_builder": (GLOSSARY_BUILDER_PROMPT, GlossaryBuilderOutput, 4000),
-    "numerical_analyzer": (NUMERICAL_ANALYZER_PROMPT, NumericalAnalyzerOutput, 5000),
+    "action_extractor": (ACTION_EXTRACTOR_PROMPT, ActionExtractorOutput, 16000),
+    "risk_analyzer": (RISK_ANALYZER_PROMPT, RiskAnalyzerOutput, 16000),
+    "argument_mapper": (ARGUMENT_MAPPER_PROMPT, ArgumentMapperOutput, 16000),
+    "obligation_mapper": (OBLIGATION_MAPPER_PROMPT, ObligationMapperOutput, 16000),
+    "glossary_builder": (GLOSSARY_BUILDER_PROMPT, GlossaryBuilderOutput, 16000),
+    "numerical_analyzer": (NUMERICAL_ANALYZER_PROMPT, NumericalAnalyzerOutput, 16000),
     "timeline_builder": (TIMELINE_BUILDER_PROMPT, TimelineBuilderOutput, 16000),
 }
 

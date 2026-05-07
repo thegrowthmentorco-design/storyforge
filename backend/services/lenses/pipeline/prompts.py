@@ -69,6 +69,7 @@ You are an Action Extractor. Identify what needs to be done because of this docu
 
 RULES
 - Explicit actions must have a source_span. If you can't quote it, it's implied.
+- source_span: verbatim quote, keep under ~120 chars. Tighter is better.
 - Priority: high = will block the goal if missed; medium = will degrade outcome; low = nice-to-have.
 - Cap at 8 actions total across explicit + implied. If more exist, return the highest-priority 8.
 - If a category is empty, return an empty array — do not invent items.
@@ -80,6 +81,8 @@ You are a Risk Analyzer. Find where this document's plan, process, or argument b
 RULES
 - Maximum 6 risks. Rank by impact x likelihood; cut the rest.
 - Every risk must cite specific document evidence. No "generally, plans like this can fail."
+- evidence: verbatim quote, keep under ~120 chars. Tighter is better.
+- what_breaks / trigger: one concise sentence each, ~20 words max.
 - Do not list a risk that requires guessing about facts not in the document.
 - If the document is too thin to produce 3+ specific risks, return fewer. Empty array is acceptable.
 - If two risks share a root cause, merge them into one.
@@ -95,6 +98,8 @@ You are an Argument Mapper. Map the claims this document makes and the evidence 
 
 RULES
 - Cap at 8 claims. Pick the load-bearing ones, not every assertion.
+- Each claim: max 3 evidence entries. Keep verbatim source_span quotes
+  under ~120 chars; longer paraphrases lose the citation.
 - evidence_quality "absent" -> also list in unsupported_claims.
 - Do not insert your own opinion on whether the thesis is correct.
 """
@@ -104,7 +109,9 @@ You are an Obligation Mapper. Identify who owes what to whom in this contract or
 
 RULES
 - Every obligation must have a source_span. No paraphrase-only entries.
-- red_flags = clauses unusual in scope, asymmetric, or potentially adverse to one party.
+- source_span: verbatim quote, keep under ~120 chars. Tighter is better.
+- red_flags = clauses unusual in scope, asymmetric, or potentially adverse to one party. Cap at 6.
+- exit_clauses: cap at 5.
 - Cap at 12 obligations. Pick the load-bearing ones.
 """
 
@@ -115,6 +122,8 @@ RULES
 - Only terms that a smart non-specialist would not understand.
 - Skip terms that are defined inline in the document.
 - Cap at 15 terms. If the document has fewer non-obvious terms, return fewer.
+- definition: ~20 words, plain language. Don't pad.
+- first_use_span: verbatim quote, keep under ~120 chars.
 - Empty array is acceptable. Do not invent terms to fill quota.
 
 ANTI-PATTERNS
@@ -127,8 +136,10 @@ You are a Numerical Analyzer. Surface the numbers that matter, flag anomalies, c
 
 RULES
 - headline_numbers = the 5-8 figures that drive the document's argument or decision.
-- derived_metrics = compute only when the inputs are unambiguous (e.g., per-unit cost, growth rate).
-- anomalies = round numbers that don't fit a pattern, sudden changes, magnitude mismatches.
+- source_span: verbatim quote, keep under ~120 chars.
+- derived_metrics = compute only when the inputs are unambiguous (e.g., per-unit cost, growth rate). Cap at 5.
+- anomalies = round numbers that don't fit a pattern, sudden changes, magnitude mismatches. Cap at 5.
+- trends: cap at 6.
 - Do not extrapolate beyond what the document supports.
 """
 
