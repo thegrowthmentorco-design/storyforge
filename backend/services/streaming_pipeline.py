@@ -137,14 +137,23 @@ def _run_pipeline_with_progress(
 ) -> tuple[PipelineResult, TokenUsage]:
     """Mirror of orchestrator.run_pipeline that pushes a `stage` event
     after each phase. Kept here (vs a callback inside the orchestrator)
-    so the orchestrator stays synchronous and easy to test."""
-    from concurrent.futures import ThreadPoolExecutor, as_completed
+    so the orchestrator stays synchronous and easy to test.
+
+    M14.17.fix — global heartbeat thread emits a tick every 20s so the
+    SSE stream stays alive past the Render proxy's 60s idle timeout,
+    even when an individual agent (extractor / synthesizer / etc.) takes
+    30-90s. Plus per-specialist timeout (3min) so a stuck Anthropic
+    call can't hang forever.
+    """
+    from concurrent.futures import ThreadPoolExecutor, wait as _wait, FIRST_COMPLETED
     from services.lenses.pipeline.orchestrator import MAX_REVISIONS
+    import threading as _threading
 
     client = anthropic.Anthropic(api_key=api_key)
+
     # TokenUsage is a frozen dataclass — accumulate by replacing the
-    # reference. Wrapped in a list so the inner closure can rebind
-    # without `nonlocal` on a name defined in an outer function scope.
+    # reference. Wrapped in a single-element list so the closure can
+    # rebind without `nonlocal` shenanigans.
     total_box: list[TokenUsage] = [TokenUsage(input_tokens=0, output_tokens=0)]
 
     def acc(u: TokenUsage):
@@ -158,100 +167,158 @@ def _run_pipeline_with_progress(
         push({"type": "usage", "input": total_box[0].input_tokens,
               "output": total_box[0].output_tokens, "max": 16000})
 
-    push({"type": "stage", "name": "router", "detail": {}})
-    router_out, u = agents.run_router(
-        filename=filename, raw_text=raw_text, user_query=user_query,
-        client=client, model=model,
-    )
-    acc(u)
-    push({"type": "stage", "name": "router", "detail": {
-        "doc_type": router_out.doc_type, "user_intent": router_out.user_intent,
-        "depth": router_out.depth, "specialists": router_out.selected_specialists,
-        "done": True,
-    }})
+    # Global heartbeat — keeps SSE alive across all phases.
+    HEARTBEAT_INTERVAL_S = 20
+    SPECIALIST_TIMEOUT_S = 180
+    stop_heartbeat = _threading.Event()
+    current_phase = {"name": "starting"}
 
-    push({"type": "stage", "name": "extractor", "detail": {}})
-    extractor_out, u = agents.run_extractor(
-        filename=filename, raw_text=raw_text,
-        client=client, model=model,
-    )
-    acc(u)
-    push({"type": "stage", "name": "extractor", "detail": {
-        "people": len(extractor_out.people), "orgs": len(extractor_out.organizations),
-        "dates": len(extractor_out.dates), "numbers": len(extractor_out.numbers),
-        "done": True,
-    }})
+    def heartbeat_loop():
+        while not stop_heartbeat.wait(HEARTBEAT_INTERVAL_S):
+            try:
+                push({"type": "stage", "name": "heartbeat",
+                      "detail": {"phase": current_phase["name"]}})
+            except Exception:  # noqa: BLE001
+                break  # downstream queue closed; exit silently
 
-    specialist_outputs: dict[str, dict] = {}
-    if router_out.selected_specialists:
-        push({"type": "stage", "name": "specialists", "detail": {
-            "running": list(router_out.selected_specialists),
-        }})
-        with ThreadPoolExecutor(max_workers=4) as pool:
-            future_to_key = {
-                pool.submit(
-                    agents.run_specialist,
-                    key=key, filename=filename, raw_text=raw_text,
-                    extractor_output=extractor_out,
-                    client=client, model=model,
-                ): key
-                for key in router_out.selected_specialists
-            }
-            for future in as_completed(future_to_key):
-                key = future_to_key[future]
-                try:
-                    output, u = future.result()
-                    specialist_outputs[key] = output.model_dump(mode="json")
-                    acc(u)
-                    push({"type": "stage", "name": "specialist_done", "detail": {"key": key}})
-                except Exception as e:  # noqa: BLE001
-                    log.warning("pipeline: specialist %s failed: %s", key, e)
-                    push({"type": "stage", "name": "specialist_failed", "detail": {"key": key, "error": str(e)}})
+    hb_thread = _threading.Thread(target=heartbeat_loop, daemon=True)
+    hb_thread.start()
 
-    push({"type": "stage", "name": "synthesizer", "detail": {}})
-    synth_out, u = agents.run_synthesizer(
-        doc_type=router_out.doc_type, user_intent=router_out.user_intent,
-        extractor_output=extractor_out, specialist_outputs=specialist_outputs,
-        critic_issues=None, client=client, model=model,
-    )
-    acc(u)
-    push({"type": "stage", "name": "synthesizer", "detail": {"template": synth_out.template, "done": True}})
-
-    critic_out = None
-    revision_count = 0
-    word_count = len(raw_text.split())
-    while revision_count <= MAX_REVISIONS:
-        push({"type": "stage", "name": "critic", "detail": {"pass": revision_count}})
-        critic_out, u = agents.run_critic(
-            doc_type=router_out.doc_type, user_intent=router_out.user_intent,
-            depth=router_out.depth,
-            synthesizer_output=synth_out,
-            source_word_count=word_count,
+    try:
+        # ---------- Router ----------
+        current_phase["name"] = "router"
+        push({"type": "stage", "name": "router", "detail": {}})
+        router_out, u = agents.run_router(
+            filename=filename, raw_text=raw_text, user_query=user_query,
             client=client, model=model,
         )
         acc(u)
-        push({"type": "stage", "name": "critic", "detail": {
-            "verdict": critic_out.verdict, "issue_count": len(critic_out.issues),
-            "pass": revision_count, "done": True,
+        push({"type": "stage", "name": "router", "detail": {
+            "doc_type": router_out.doc_type, "user_intent": router_out.user_intent,
+            "depth": router_out.depth, "specialists": router_out.selected_specialists,
+            "done": True,
         }})
-        if critic_out.verdict == "pass" or revision_count >= MAX_REVISIONS:
-            break
-        revision_count += 1
-        push({"type": "stage", "name": "synthesizer", "detail": {"revising": True, "pass": revision_count}})
+
+        # ---------- Extractor ----------
+        current_phase["name"] = "extractor"
+        push({"type": "stage", "name": "extractor", "detail": {}})
+        extractor_out, u = agents.run_extractor(
+            filename=filename, raw_text=raw_text,
+            client=client, model=model,
+        )
+        acc(u)
+        push({"type": "stage", "name": "extractor", "detail": {
+            "people": len(extractor_out.people), "orgs": len(extractor_out.organizations),
+            "dates": len(extractor_out.dates), "numbers": len(extractor_out.numbers),
+            "done": True,
+        }})
+
+        # ---------- Specialists (parallel) ----------
+        current_phase["name"] = "specialists"
+        specialist_outputs: dict[str, dict] = {}
+        if router_out.selected_specialists:
+            push({"type": "stage", "name": "specialists", "detail": {
+                "running": list(router_out.selected_specialists),
+            }})
+            with ThreadPoolExecutor(max_workers=4) as pool:
+                future_to_key = {
+                    pool.submit(
+                        agents.run_specialist,
+                        key=key, filename=filename, raw_text=raw_text,
+                        extractor_output=extractor_out,
+                        client=client, model=model,
+                    ): key
+                    for key in router_out.selected_specialists
+                }
+                pending = set(future_to_key.keys())
+                elapsed = 0
+                # Poll loop — completes futures as they arrive; the global
+                # heartbeat keeps SSE alive in between. SPECIALIST_TIMEOUT_S
+                # caps any single specialist at 3min.
+                while pending:
+                    done, pending = _wait(pending, timeout=15, return_when=FIRST_COMPLETED)
+                    if not done:
+                        elapsed += 15
+                        if elapsed >= SPECIALIST_TIMEOUT_S:
+                            for f in pending:
+                                f.cancel()
+                                key = future_to_key[f]
+                                log.warning("pipeline: specialist %s timed out after %ds", key, elapsed)
+                                push({"type": "stage", "name": "specialist_failed", "detail": {
+                                    "key": key, "error": f"timeout after {elapsed}s",
+                                }})
+                            break
+                        continue
+                    for future in done:
+                        key = future_to_key[future]
+                        try:
+                            output, u = future.result()
+                            specialist_outputs[key] = output.model_dump(mode="json")
+                            acc(u)
+                            push({"type": "stage", "name": "specialist_done", "detail": {"key": key}})
+                        except Exception as e:  # noqa: BLE001
+                            log.warning("pipeline: specialist %s failed: %s", key, e)
+                            push({"type": "stage", "name": "specialist_failed",
+                                  "detail": {"key": key, "error": str(e)}})
+
+        # ---------- Synthesizer ----------
+        current_phase["name"] = "synthesizer"
+        push({"type": "stage", "name": "synthesizer", "detail": {}})
         synth_out, u = agents.run_synthesizer(
             doc_type=router_out.doc_type, user_intent=router_out.user_intent,
             extractor_output=extractor_out, specialist_outputs=specialist_outputs,
-            critic_issues=[i.model_dump(mode="json") for i in critic_out.issues],
-            client=client, model=model,
+            critic_issues=None, client=client, model=model,
         )
         acc(u)
-        push({"type": "stage", "name": "synthesizer", "detail": {"revising": True, "pass": revision_count, "done": True}})
+        push({"type": "stage", "name": "synthesizer",
+              "detail": {"template": synth_out.template, "done": True}})
 
-    return PipelineResult(
-        router=router_out,
-        extractor=extractor_out,
-        specialists=specialist_outputs,
-        synthesizer=synth_out,
-        critic=critic_out,
-        revision_count=revision_count,
-    ), total_box[0]
+        # ---------- Critic (with revision loop) ----------
+        critic_out = None
+        revision_count = 0
+        word_count = len(raw_text.split())
+        while revision_count <= MAX_REVISIONS:
+            current_phase["name"] = "critic"
+            push({"type": "stage", "name": "critic", "detail": {"pass": revision_count}})
+            critic_out, u = agents.run_critic(
+                doc_type=router_out.doc_type, user_intent=router_out.user_intent,
+                depth=router_out.depth,
+                synthesizer_output=synth_out,
+                source_word_count=word_count,
+                client=client, model=model,
+            )
+            acc(u)
+            push({"type": "stage", "name": "critic", "detail": {
+                "verdict": critic_out.verdict, "issue_count": len(critic_out.issues),
+                "pass": revision_count, "done": True,
+            }})
+            if critic_out.verdict == "pass" or revision_count >= MAX_REVISIONS:
+                break
+            revision_count += 1
+            current_phase["name"] = "synthesizer"
+            push({"type": "stage", "name": "synthesizer",
+                  "detail": {"revising": True, "pass": revision_count}})
+            synth_out, u = agents.run_synthesizer(
+                doc_type=router_out.doc_type, user_intent=router_out.user_intent,
+                extractor_output=extractor_out, specialist_outputs=specialist_outputs,
+                critic_issues=[i.model_dump(mode="json") for i in critic_out.issues],
+                client=client, model=model,
+            )
+            acc(u)
+            push({"type": "stage", "name": "synthesizer",
+                  "detail": {"revising": True, "pass": revision_count, "done": True}})
+
+        return PipelineResult(
+            router=router_out,
+            extractor=extractor_out,
+            specialists=specialist_outputs,
+            synthesizer=synth_out,
+            critic=critic_out,
+            revision_count=revision_count,
+        ), total_box[0]
+    finally:
+        # Stop the heartbeat in every exit path (success / agent failure /
+        # Anthropic error). The thread is daemon=True so it dies with the
+        # process anyway, but stopping it explicitly prevents late-arriving
+        # heartbeat events after the SSE stream has closed.
+        stop_heartbeat.set()
