@@ -77,6 +77,95 @@ export default function ExplainerPane({ extraction }) {
   const sourceQuotesByIndex = (plain.sections || []).map((s) => s.source_quotes || [])
   const quotesFor = (i) => activePersona === 'default' ? (sourceQuotesByIndex[i] || []) : []
 
+  // Build the tab list. Conditional tabs (diagram, simulator, glossary,
+  // recommendations) are skipped when their underlying data is absent so
+  // the strip stays tight. Order: Overview → Explanation → Visual →
+  // Simulator → Pitch → Actions.
+  const tabs = [
+    data.key_facts?.length > 0 && {
+      key: 'overview',
+      label: 'Overview',
+      icon: Hash,
+      accent: '--success',
+      render: () => <KeyFactsPanel facts={data.key_facts} />,
+    },
+    plain.sections?.length > 0 && {
+      key: 'explanation',
+      label: 'Explanation',
+      icon: BookOpen,
+      accent: '--accent',
+      render: () => (
+        <>
+          {extraction?.id && (
+            <PersonaSwitcher
+              extractionId={extraction.id}
+              defaultSections={plain.sections || []}
+              onSectionsChange={(secs, personaKey) => {
+                setActivePersona(personaKey)
+                setPersonaSections(personaKey === 'default' ? null : secs)
+              }}
+            />
+          )}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 24, marginTop: 16 }}>
+            {visibleSections.map((s, i) => (
+              <ExplainerSection
+                key={`${activePersona}-${i}`}
+                heading={s.heading}
+                body={s.body}
+                sourceQuotes={quotesFor(i)}
+              />
+            ))}
+          </div>
+          {data.glossary?.length > 0 && (
+            <div style={{ marginTop: 32 }}>
+              <SectionEyebrow icon={BookOpen} accent="--info">Glossary</SectionEyebrow>
+              <GlossaryPanel terms={data.glossary} />
+            </div>
+          )}
+        </>
+      ),
+    },
+    data.diagram?.source && {
+      key: 'diagram',
+      label: 'Visual flow',
+      icon: Share2,
+      accent: '--success',
+      render: () => (
+        <Suspense fallback={<div style={loadingFallback}>Rendering diagram…</div>}>
+          <MermaidDiagram
+            caption={data.diagram.caption}
+            source={data.diagram.source}
+            legend={data.diagram.legend || []}
+          />
+        </Suspense>
+      ),
+    },
+    data.simulator_schema && extraction?.id && {
+      key: 'simulator',
+      label: 'Simulator',
+      icon: Calculator,
+      accent: '--accent',
+      render: () => <SimulatorPanel extractionId={extraction.id} schema={data.simulator_schema} />,
+    },
+    {
+      key: 'pitch',
+      label: 'Pitch',
+      icon: Sparkles,
+      accent: '--info',
+      render: () => <ManagementPitch pitch={pitch} />,
+    },
+    data.recommendations?.length > 0 && {
+      key: 'actions',
+      label: 'Actions',
+      icon: Target,
+      accent: '--warn',
+      render: () => <RecommendationsPanel items={data.recommendations} />,
+    },
+  ].filter(Boolean)
+
+  const [activeTab, setActiveTab] = useState(tabs[0]?.key || 'explanation')
+  const current = tabs.find((t) => t.key === activeTab) || tabs[0]
+
   return (
     <div style={paneShell}>
       <div style={contentColumn}>
@@ -98,106 +187,39 @@ export default function ExplainerPane({ extraction }) {
           )}
         </header>
 
-        {/* Key Facts — 30-second scan of the document's concrete bits.
-            Renders only when the model surfaced any. */}
-        {data.key_facts?.length > 0 && (
-          <section>
-            <SectionEyebrow icon={Hash} accent="--success">
-              Key facts
-            </SectionEyebrow>
-            <KeyFactsPanel facts={data.key_facts} />
-          </section>
-        )}
+        {/* Tab strip — sticky so it stays visible while scrolling within a tab. */}
+        <div style={tabStrip} role="tablist" aria-label="Extraction sections">
+          {tabs.map((t) => {
+            const Icon = t.icon
+            const isActive = t.key === activeTab
+            return (
+              <button
+                key={t.key}
+                type="button"
+                role="tab"
+                aria-selected={isActive}
+                onClick={() => setActiveTab(t.key)}
+                style={{
+                  ...tabBtn,
+                  ...(isActive ? {
+                    color: `var(${t.accent})`,
+                    borderBottomColor: `var(${t.accent})`,
+                  } : {}),
+                }}
+              >
+                <Icon size={14} />
+                {t.label}
+              </button>
+            )
+          })}
+        </div>
 
-        {/* Section 1: Plain-English Explanation */}
-        <section>
-          <SectionEyebrow icon={BookOpen} accent="--accent">
-            Plain-English Explanation
-          </SectionEyebrow>
-          {extraction?.id && (plain.sections?.length > 0) && (
-            <PersonaSwitcher
-              extractionId={extraction.id}
-              defaultSections={plain.sections || []}
-              onSectionsChange={(secs, personaKey) => {
-                setActivePersona(personaKey)
-                setPersonaSections(personaKey === 'default' ? null : secs)
-              }}
-            />
-          )}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 24, marginTop: 16 }}>
-            {visibleSections.map((s, i) => (
-              <ExplainerSection
-                key={`${activePersona}-${i}`}
-                heading={s.heading}
-                body={s.body}
-                sourceQuotes={quotesFor(i)}
-              />
-            ))}
-          </div>
+        {/* Active tab content */}
+        <section role="tabpanel" key={current?.key} style={tabPanel}>
+          {current?.render?.()}
         </section>
-
-        {/* What-if simulator — only when the model emitted a schema. */}
-        {data.simulator_schema && extraction?.id && (
-          <section>
-            <SectionEyebrow icon={Calculator} accent="--accent">
-              What-if simulator
-            </SectionEyebrow>
-            <SimulatorPanel extractionId={extraction.id} schema={data.simulator_schema} />
-          </section>
-        )}
-
-        {/* Glossary — domain terms, acronyms, jargon. Renders only
-            when the model surfaced any. */}
-        {data.glossary?.length > 0 && (
-          <section>
-            <SectionEyebrow icon={BookOpen} accent="--info">
-              Glossary
-            </SectionEyebrow>
-            <GlossaryPanel terms={data.glossary} />
-          </section>
-        )}
-
-        {/* Optional: Mermaid diagram when the document describes a
-            process, pipeline, or interacting components. The model
-            decides whether to emit one — null otherwise. */}
-        {data.diagram?.source && (
-          <section>
-            <SectionEyebrow icon={Share2} accent="--success">
-              Visual flow
-            </SectionEyebrow>
-            <Suspense fallback={<div style={{ marginTop: 16, fontSize: 13, color: 'var(--text-muted)' }}>Rendering diagram…</div>}>
-              <MermaidDiagram
-                caption={data.diagram.caption}
-                source={data.diagram.source}
-                legend={data.diagram.legend || []}
-              />
-            </Suspense>
-          </section>
-        )}
-
-        {/* Section 2: Management Pitch */}
-        <section>
-          <SectionEyebrow icon={Sparkles} accent="--info">
-            How to explain this to management
-          </SectionEyebrow>
-          <ManagementPitch pitch={pitch} />
-        </section>
-
-        {/* Recommendations — forward-looking, actionable items.
-            Renders only when the model surfaced any. */}
-        {data.recommendations?.length > 0 && (
-          <section>
-            <SectionEyebrow icon={Target} accent="--warn">
-              Recommendations
-            </SectionEyebrow>
-            <RecommendationsPanel items={data.recommendations} />
-          </section>
-        )}
       </div>
-      {/* M14.18.fix — chat panel replaces the old "Gaps & questions"
-          / flagged-issues callout. Floats bottom-right; opens a
-          conversational workspace where the user can ask anything
-          about the document. */}
+      {/* Floating chat panel — available across every tab. */}
       <ChatPanel extractionId={extraction?.id} />
     </div>
   )
@@ -407,6 +429,46 @@ const metaLine = {
   color: 'var(--text-muted)',
   fontFamily: 'var(--font-display)',
   fontStyle: 'italic',
+}
+
+const tabStrip = {
+  position: 'sticky',
+  top: 0,
+  zIndex: 5,
+  display: 'flex',
+  flexWrap: 'wrap',
+  gap: 4,
+  padding: '4px 0',
+  background: 'var(--bg-elevated)',
+  borderBottom: '1px solid var(--border)',
+  marginTop: -8,
+}
+const tabBtn = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 6,
+  padding: '10px 14px',
+  marginBottom: -1,
+  fontSize: 13,
+  fontWeight: 600,
+  fontFamily: 'inherit',
+  color: 'var(--text-muted)',
+  background: 'transparent',
+  border: 'none',
+  borderBottom: '2px solid transparent',
+  cursor: 'pointer',
+  transition: 'color 0.12s, border-color 0.12s',
+}
+const tabPanel = {
+  paddingTop: 16,
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 16,
+}
+const loadingFallback = {
+  marginTop: 16,
+  fontSize: 13,
+  color: 'var(--text-muted)',
 }
 
 const eyebrowRow = {
