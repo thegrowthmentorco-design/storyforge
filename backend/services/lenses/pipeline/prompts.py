@@ -137,8 +137,16 @@ You are a Timeline Builder. Order the events, milestones, and phases the documen
 
 RULES
 - Events ordered chronologically.
-- tight_transitions = gaps under a sensible threshold for the doc type (e.g., < 15 min between back-to-back meetings, < 2 weeks for a major project handoff).
-- unscheduled_gaps = blocks of time the document does not account for.
+- Cap at 15 events. Pick the load-bearing milestones; merge near-duplicates.
+  Long agendas with dozens of micro-items: collapse to phases (e.g.
+  "Morning sessions" instead of 8 separate breakouts).
+- depends_on lists: keep to 1-3 entries per event. Don't enumerate every
+  prior event.
+- source_span: keep verbatim quotes under ~120 chars; tighter is better.
+- tight_transitions = gaps under a sensible threshold for the doc type
+  (e.g., < 15 min between back-to-back meetings, < 2 weeks for a major
+  project handoff). Cap at 6.
+- unscheduled_gaps = blocks of time the document does not account for. Cap at 4.
 """
 
 SYNTHESIZER_PROMPT = """\

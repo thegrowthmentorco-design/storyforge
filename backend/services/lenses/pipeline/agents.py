@@ -155,7 +155,7 @@ _SPECIALIST_REGISTRY = {
     "obligation_mapper": (OBLIGATION_MAPPER_PROMPT, ObligationMapperOutput, 8000),
     "glossary_builder": (GLOSSARY_BUILDER_PROMPT, GlossaryBuilderOutput, 4000),
     "numerical_analyzer": (NUMERICAL_ANALYZER_PROMPT, NumericalAnalyzerOutput, 5000),
-    "timeline_builder": (TIMELINE_BUILDER_PROMPT, TimelineBuilderOutput, 8000),
+    "timeline_builder": (TIMELINE_BUILDER_PROMPT, TimelineBuilderOutput, 16000),
 }
 
 
