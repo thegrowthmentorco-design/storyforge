@@ -16,15 +16,16 @@ Available lenses:
 """
 from __future__ import annotations
 
-from services.lenses import dossier, pipeline, stories
+from services.lenses import dossier, explainer, pipeline, stories
 
 LENSES = {
     "stories": stories,
     "dossier": dossier,
     "pipeline": pipeline,  # M14.17 — multi-agent router/extractor/specialists/synthesizer/critic
+    "explainer": explainer,  # M14.18 — Document Explainer (plain-english + management pitch)
 }
 
-DEFAULT_LENS = "dossier"  # New uploads default to the dossier lens.
+DEFAULT_LENS = "explainer"  # M14.18 — new uploads default to the Document Explainer.
 
 VALID_LENSES = set(LENSES.keys())
 

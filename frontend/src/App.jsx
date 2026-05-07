@@ -42,6 +42,7 @@ import EmptyState from './components/EmptyState.jsx'
 import ExtractionProgress from './components/ExtractionProgress.jsx'
 import PipelineProgress from './components/PipelineProgress.jsx'
 const PipelinePane = lazy(() => import('./components/pipeline/PipelinePane.jsx'))
+const ExplainerPane = lazy(() => import('./components/explainer/ExplainerPane.jsx'))
 import SourcePane from './components/SourcePane.jsx'
 import ArtifactsPane from './components/ArtifactsPane.jsx'
 import GapsRail from './components/GapsRail.jsx'
@@ -72,6 +73,15 @@ const DOSSIER_STAGES = [
   { key: 'structure',  label: 'Act II · Structure (glossary, mindmap, systems)', threshold: 3500 },
   { key: 'interrogate',label: 'Act III · Interrogate (5 whys, assumptions, gaps)', threshold: 8500 },
   { key: 'act',        label: 'Act IV · Act (action items, decisions, revisits)', threshold: 12500 },
+]
+// M14.18 — Document Explainer is a single Claude call; we show a 4-step
+// narrative for visual reassurance even though all 4 happen inside one
+// agent call. Thresholds are output-token milestones.
+const EXPLAINER_STAGES = [
+  { key: 'reading',       label: 'Reading the document',           threshold: 0 },
+  { key: 'plain_english', label: 'Writing the plain-English breakdown', threshold: 2500 },
+  { key: 'pitch',         label: 'Drafting the management pitch',   threshold: 6500 },
+  { key: 'finishing',     label: 'Flagging issues + finishing',     threshold: 10000 },
 ]
 const STAGES = STORIES_STAGES  // back-compat alias for legacy call sites
 
@@ -215,7 +225,9 @@ function LoadingState({ filename, usage, latestSection, sectionsReady, lens, onS
   // M14.14 — pick the stage list that matches the lens being extracted.
   // Default to dossier (the M14.5.b default) so a missing prop doesn't show
   // the legacy stories steps for a dossier extraction.
-  const stages = lens === 'stories' ? STORIES_STAGES : DOSSIER_STAGES
+  const stages = lens === 'stories' ? STORIES_STAGES
+    : lens === 'explainer' ? EXPLAINER_STAGES
+    : DOSSIER_STAGES
 
   // For the stage list: every stage whose threshold is at or below the current
   // output is "done"; the next one above is "active"; everything above that is
@@ -518,7 +530,7 @@ function AuthedApp() {
   const [latestSectionKey, setLatestSectionKey] = useState(null)
   // Track which lens the in-flight extraction is using so LoadingState can
   // render the correct stage labels (dossier vs stories).
-  const [pendingLens, setPendingLens] = useState('dossier')
+  const [pendingLens, setPendingLens] = useState('explainer')
   // M14.17 — pipeline lens emits `stage` SSE events as each agent finishes.
   // Accumulated here so PipelineProgress can render the live agent state.
   const [stageEvents, setStageEvents] = useState([])
@@ -697,7 +709,7 @@ function AuthedApp() {
     extractAbortRef.current = controller
     // M14.5.b — lens comes from the EmptyState mode dropdown; default
     // 'dossier' for any caller that doesn't pick one.
-    const lens = pickedLens || 'dossier'
+    const lens = pickedLens || 'explainer'
     setPendingLens(lens)
     try {
       const record = await extractStream(
@@ -1008,6 +1020,9 @@ function AuthedApp() {
                   />
                 )}
                 {loading && pendingLens !== 'dossier' && pendingLens !== 'pipeline' && (
+                  /* M14.18 — explainer + stories use LoadingState. Explainer
+                     stages are token-threshold-based since the lens is a
+                     single Claude call. */
                   <LoadingState
                     filename={pendingName}
                     usage={streamUsage}
@@ -1017,7 +1032,12 @@ function AuthedApp() {
                     onStop={handleStopExtract}
                   />
                 )}
-                {extraction && !loading && extraction.lens === 'pipeline' ? (
+                {extraction && !loading && extraction.lens === 'explainer' ? (
+                  /* M14.18 — Document Explainer. Plain-English + Management Pitch. */
+                  <div className="body" ref={studioBodyRef} style={{ flexDirection: 'column' }}>
+                    <ExplainerPane extraction={extraction} />
+                  </div>
+                ) : extraction && !loading && extraction.lens === 'pipeline' ? (
                   /* M14.17 — pipeline lens. Template-aware renderer dispatches
                      on synthesizer.template (agenda_act, contract_decide, etc). */
                   <div className="body" ref={studioBodyRef} style={{ flexDirection: 'column' }}>

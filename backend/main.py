@@ -332,7 +332,26 @@ async def extract(
     # persist_extraction (existing path); dossier rows go through
     # persist_dossier_extraction which writes lens_payload + folds the
     # user_stories list back into the legacy stories column.
-    if effective_lens == "pipeline":
+    if effective_lens == "explainer":
+        # M14.18 — Document Explainer. Single-call lens; output stored
+        # as-is in lens_payload.
+        from services.extractions import persist_explainer_extraction
+        row = persist_explainer_extraction(
+            session,
+            filename=source_name,
+            raw_text=raw_text,
+            explainer_result=result,
+            model_used=model_used,
+            live=usage is not None,
+            user_id=user.user_id,
+            org_id=user.org_id,
+            project_id=project_id or None,
+            extraction_id=extraction_id,
+            source_file_path=source_path,
+            source_file_paths=source_paths,
+        )
+        live_flag = usage is not None
+    elif effective_lens == "pipeline":
         # M14.17 — pipeline result stored as-is in lens_payload. Stories-shape
         # columns (brief / actors / stories / nfrs / gaps) get empty defaults
         # since the pipeline doesn't produce those.
@@ -526,7 +545,18 @@ async def extract_stream(
             # M14.1.c — branch the streamer by lens. Both yield identical SSE
             # event shapes (start / usage / complete / error) so the client
             # doesn't need to know which lens is running.
-            if effective_lens == "pipeline":
+            if effective_lens == "explainer":
+                # M14.18 — Document Explainer. Single Claude call wrapped
+                # with a heartbeat so the SSE stream survives slow runs.
+                from services.streaming_explainer import stream_explainer_extraction
+                stream_iter = stream_explainer_extraction(
+                    filename=source_name,
+                    raw_text=raw_text,
+                    api_key=effective_key,
+                    model=effective_model,
+                    prompt_suffix=effective_suffix,
+                )
+            elif effective_lens == "pipeline":
                 # M14.17 — multi-agent pipeline; runs blocking but emits
                 # `stage` events as each agent finishes.
                 from services.streaming_pipeline import stream_pipeline_extraction
@@ -579,7 +609,24 @@ async def extract_stream(
                     # scoped one is closed by now (see note at the top of the
                     # handler).
                     with _Session(_engine) as s:
-                        if effective_lens == "pipeline":
+                        if effective_lens == "explainer":
+                            from services.extractions import persist_explainer_extraction
+                            row = persist_explainer_extraction(
+                                s,
+                                filename=source_name,
+                                raw_text=raw_text,
+                                explainer_result=ev["result"],
+                                model_used=ev["model_used"],
+                                live=ev["usage"] is not None,
+                                user_id=_user_id,
+                                org_id=_org_id,
+                                project_id=_project_id,
+                                extraction_id=extraction_id,
+                                source_file_path=source_path,
+                                source_file_paths=source_paths,
+                            )
+                            live_flag = ev["usage"] is not None
+                        elif effective_lens == "pipeline":
                             from services.extractions import persist_pipeline_extraction
                             row = persist_pipeline_extraction(
                                 s,

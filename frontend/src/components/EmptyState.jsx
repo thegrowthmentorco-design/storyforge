@@ -116,7 +116,8 @@ const ARTIFACTS_PREVIEW = [
 // ============================================================================
 
 const MODES = [
-  { value: 'dossier', label: 'Full dossier (recommended)', desc: 'Brief, mindmap, gaps, action items, user stories — the full understanding pass' },
+  { value: 'explainer', label: 'Document Explainer (recommended)', desc: 'Plain-English breakdown + a management-ready pitch with real numbers' },
+  { value: 'dossier', label: 'Full dossier', desc: 'Brief, mindmap, gaps, action items, user stories — the full understanding pass' },
   { value: 'pipeline', label: 'Multi-agent pipeline', desc: 'Router classifies the doc, picks specialists, synthesizer + critic refine the output' },
   { value: 'stories', label: 'User stories only', desc: 'Lean output — actors, stories, acceptance criteria, NFRs, gaps' },
   { value: '_soon_brd', label: 'BRD summary (soon)', desc: 'Coming soon', disabled: true },
@@ -134,7 +135,7 @@ export default function EmptyState({ onSubmit, loading }) {
   const [files, setFiles] = useState([])
   const [dragOver, setDragOver] = useState(false)
   const [tab, setTab] = useState('upload') // 'upload' | 'paste'
-  const [mode, setMode] = useState('dossier')
+  const [mode, setMode] = useState('explainer')
 
   const pickFile = () => fileRef.current?.click()
   const addFiles = (incoming) => {

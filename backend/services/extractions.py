@@ -307,6 +307,61 @@ def persist_dossier_extraction(
     return row
 
 
+def persist_explainer_extraction(
+    session: Session,
+    *,
+    filename: str,
+    raw_text: str,
+    explainer_result,  # services.lenses.explainer.ExplainerOutput
+    model_used: str,
+    live: bool,
+    user_id: str = "local",
+    org_id: str | None = None,
+    project_id: str | None = None,
+    extraction_id: str | None = None,
+    created_at: datetime | None = None,
+    source_file_path: str | None = None,
+    source_file_paths: list[str] | None = None,
+    root_id: str | None = None,
+) -> Extraction:
+    """Insert one Extraction row from an ExplainerOutput (M14.18).
+
+    Stores the full ExplainerOutput in lens_payload; mirrors a brief
+    summary into the legacy stories-shape brief column so back-compat
+    code paths don't choke.
+    """
+    payload = explainer_result.model_dump(mode="json")
+    summary_proxy = (
+        payload.get("management_pitch", {}).get("one_line_summary")
+        or "Document explainer output."
+    )
+    row = Extraction(
+        id=extraction_id or mint_extraction_id(),
+        filename=filename,
+        raw_text=raw_text,
+        model_used=model_used,
+        live=live,
+        user_id=user_id,
+        org_id=org_id,
+        project_id=project_id,
+        source_file_path=source_file_path,
+        source_file_paths=list(source_file_paths or []),
+        root_id=root_id,
+        created_at=created_at or datetime.now(timezone.utc),
+        brief={"summary": summary_proxy, "tags": []},
+        actors=[],
+        stories=[],
+        nfrs=[],
+        gaps=[],
+        lens="explainer",
+        lens_payload=payload,
+    )
+    session.add(row)
+    session.commit()
+    session.refresh(row)
+    return row
+
+
 def persist_pipeline_extraction(
     session: Session,
     *,
@@ -583,7 +638,17 @@ def call_claude(
     lens = normalize_lens(lens)
 
     try:
-        if lens == "pipeline":
+        if lens == "explainer":
+            # M14.18 — Document Explainer. Single Claude call producing
+            # plain-english breakdown + management pitch.
+            from services.lenses.explainer import explain_document
+            result, usage = explain_document(
+                filename, raw_text,
+                api_key=api_key, model=model,
+                prompt_suffix=prompt_suffix,
+            )
+            live = usage is not None
+        elif lens == "pipeline":
             # M14.17 — multi-agent pipeline. Returns a PipelineResult that
             # gets stored as-is in lens_payload. Live always (mock path
             # inside the orchestrator just returns placeholder content).
