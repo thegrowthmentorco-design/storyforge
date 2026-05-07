@@ -12,6 +12,7 @@
  */
 import React from 'react'
 import MarkdownText from '../MarkdownText.jsx'
+import ChatPanel from './ChatPanel.jsx'
 import {
   AlertTriangle, BookOpen, CheckCircle, FileText, HelpCircle,
   Lightbulb, Sparkles, Zap,
@@ -41,7 +42,6 @@ export default function ExplainerPane({ extraction }) {
   const meta = data.metadata || {}
   const plain = data.plain_english || {}
   const pitch = data.management_pitch || {}
-  const flagged = data.flagged_issues || []
 
   return (
     <div style={paneShell}>
@@ -60,17 +60,9 @@ export default function ExplainerPane({ extraction }) {
               {plain.sections?.length > 0 && (
                 <> · {plain.sections.length} sections</>
               )}
-              {flagged.length > 0 && (
-                <> · <span style={{ color: 'var(--warn-ink)' }}>{flagged.length} issue{flagged.length === 1 ? '' : 's'} flagged</span></>
-              )}
             </div>
           )}
         </header>
-
-        {/* Flagged issues callout — top of page if any */}
-        {flagged.length > 0 && (
-          <FlaggedIssues items={flagged} />
-        )}
 
         {/* Section 1: Plain-English Explanation */}
         <section>
@@ -92,6 +84,11 @@ export default function ExplainerPane({ extraction }) {
           <ManagementPitch pitch={pitch} />
         </section>
       </div>
+      {/* M14.18.fix — chat panel replaces the old "Gaps & questions"
+          / flagged-issues callout. Floats bottom-right; opens a
+          conversational workspace where the user can ask anything
+          about the document. */}
+      <ChatPanel extractionId={extraction?.id} />
     </div>
   )
 }
@@ -194,25 +191,6 @@ function PitchBlock({ icon: Icon, accent, label, children }) {
   )
 }
 
-// ============================================================================
-// Flagged issues callout
-// ============================================================================
-
-function FlaggedIssues({ items }) {
-  return (
-    <aside style={flaggedShell}>
-      <header style={flaggedHeader}>
-        <AlertTriangle size={15} style={{ color: 'var(--warn-ink)' }} />
-        <span style={flaggedTitle}>Flagged in this document</span>
-      </header>
-      <ul style={flaggedList}>
-        {items.map((it, i) => (
-          <li key={i} style={flaggedItem}>{it}</li>
-        ))}
-      </ul>
-    </aside>
-  )
-}
 
 // ============================================================================
 // Reusable header eyebrow
@@ -427,35 +405,3 @@ const whatsNewList = {
   gap: 8,
 }
 
-// Flagged issues
-const flaggedShell = {
-  padding: '14px 18px',
-  background: 'var(--warn-soft)',
-  border: '1px solid var(--warn)',
-  borderRadius: 'var(--radius)',
-}
-const flaggedHeader = {
-  display: 'flex',
-  alignItems: 'center',
-  gap: 8,
-  marginBottom: 8,
-}
-const flaggedTitle = {
-  fontSize: 12,
-  fontWeight: 700,
-  letterSpacing: '0.1em',
-  textTransform: 'uppercase',
-  color: 'var(--warn-ink)',
-}
-const flaggedList = {
-  margin: 0,
-  padding: '0 0 0 18px',
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 4,
-}
-const flaggedItem = {
-  fontSize: 13.5,
-  lineHeight: 1.55,
-  color: 'var(--warn-ink)',
-}

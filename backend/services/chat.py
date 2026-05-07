@@ -35,22 +35,19 @@ MAX_OUTPUT_TOKENS = 4000
 
 def _system_prompt(extraction) -> str:
     """Build the chat system prompt: persona + the document + a compact
-    dossier digest so Claude can reference everything the dossier surfaced
-    without us re-stuffing the full lens_payload (which can be 15k+ tokens
-    of sometimes-redundant prose)."""
+    explainer digest so Claude can reference what was already produced
+    without re-stuffing the full lens_payload."""
     raw_text = extraction.raw_text or ""
     filename = extraction.filename or "(unnamed document)"
 
-    # Compact dossier digest — only the high-signal bits. The full dossier
-    # lives in the UI; we don't need to re-give Claude prose it already wrote.
-    digest = _dossier_digest(getattr(extraction, "lens_payload", None) or {})
+    digest = _explainer_digest(getattr(extraction, "lens_payload", None) or {})
 
     return f"""You are an expert analyst helping the user understand a document.
 
 The user has uploaded the document below. You have ALREADY produced a structured \
-dossier (digest below). Now they want to ask follow-up questions, get specific \
-sections elaborated, draft response text, run "what if" scenarios, or anything \
-else that builds on the document.
+explanation + management pitch (digest below). Now they want to ask follow-up \
+questions, get specific sections elaborated, draft response text, run "what if" \
+scenarios, or anything else that builds on the document.
 
 Rules:
 - Always ground answers in the document. If asked something not in the doc, say so \
@@ -58,8 +55,8 @@ Rules:
 - Quote the document verbatim when citing specific facts. Use "" quotes inline.
 - Be concise by default. Bullet points or short paragraphs. Long expositions only \
   when the user explicitly asks.
-- Reference dossier sections by name when relevant ("see Better Questions #4...") so \
-  the user can jump to them.
+- Reference the explainer's sections by name when relevant ("see the 'Key risks' \
+  block...") so the user can locate them in the page.
 - For draft requests (response email, meeting agenda, counter-proposal), produce \
   the actual draft, not a description of how to write one.
 
@@ -70,73 +67,68 @@ DOCUMENT: {filename}
 {raw_text}
 
 ═══════════════════════════════════════════════════
-DOSSIER DIGEST
+EXPLAINER DIGEST
 ═══════════════════════════════════════════════════
 
 {digest}
 """
 
 
-def _dossier_digest(payload: dict) -> str:
-    """Compact digest of the dossier — pulls the most useful bits without
-    re-streaming the full prose. Used in the chat system prompt so Claude
-    can reference what was already extracted."""
+def _explainer_digest(payload: dict) -> str:
+    """Compact digest of the M14.18 ExplainerOutput payload — pulls the
+    most useful bits without re-streaming the full markdown prose. Used
+    in the chat system prompt."""
     if not payload:
-        return "(no dossier — chat is grounded in raw document only)"
+        return "(no explainer payload — chat is grounded in raw document only)"
 
     out = []
-    if payload.get("overture"):
-        out.append(f"OVERTURE: {payload['overture']}")
-    brief = payload.get("brief") or {}
-    if brief.get("summary"):
-        out.append(f"BRIEF: {brief['summary']}")
 
-    # Numbers — high info density
-    nums = (payload.get("numbers_extract") or {}).get("facts") or []
-    if nums:
-        out.append("KEY NUMBERS:")
-        for n in nums[:20]:
-            out.append(f"  - {n.get('label')}: {n.get('value')}")
+    # Doc type tells Claude what shape of doc we're dealing with.
+    plain = payload.get("plain_english") or {}
+    if plain.get("doc_type"):
+        out.append(f"DOC TYPE: {plain['doc_type']}")
 
-    # 5W1H — orientation
-    w = payload.get("five_w_one_h") or {}
-    if w:
-        out.append("5W1H:")
-        for k in ("who", "what", "when", "where", "why", "how"):
-            if w.get(k):
-                out.append(f"  {k.upper()}: {w[k]}")
+    # Plain-English section headings — useful for "see the X section" references.
+    sections = plain.get("sections") or []
+    if sections:
+        out.append("\nPLAIN-ENGLISH SECTIONS:")
+        for s in sections:
+            heading = s.get("heading") or ""
+            body = (s.get("body") or "").strip()
+            # First ~200 chars of each section's body so Claude has the
+            # gist without re-paying for the full markdown.
+            preview = body[:240].replace("\n", " ")
+            if len(body) > 240:
+                preview += " …"
+            out.append(f"  - {heading}: {preview}")
 
-    # Assumptions + Inversion + Negative Space — the "what's underneath" bits
-    assumptions = payload.get("assumptions") or []
-    if assumptions:
-        out.append("KEY ASSUMPTIONS:")
-        for a in assumptions[:7]:
-            out.append(f"  - [{a.get('risk_level', 'med')}] {a.get('assumption')}")
+    # Management pitch — the whole pitch is the high-signal "executive
+    # version", so include it in full (it's typically <1k tokens total).
+    pitch = payload.get("management_pitch") or {}
+    if pitch:
+        out.append("\nMANAGEMENT PITCH:")
+        if pitch.get("one_line_summary"):
+            out.append(f"  ONE-LINE: {pitch['one_line_summary']}")
+        if pitch.get("big_picture"):
+            out.append(f"  BIG PICTURE: {pitch['big_picture']}")
+        for d in (pitch.get("key_drivers") or [])[:5]:
+            out.append(f"  KEY DRIVER: {d}")
+        if pitch.get("practical_example"):
+            out.append(f"  PRACTICAL EXAMPLE: {pitch['practical_example']}")
+        for r in (pitch.get("key_risks_or_safeguards") or [])[:5]:
+            out.append(f"  RISK/SAFEGUARD: {r}")
+        for w in (pitch.get("whats_new") or [])[:5]:
+            out.append(f"  WHAT'S NEW: {w}")
+        if pitch.get("closer"):
+            out.append(f"  CLOSER: {pitch['closer']}")
 
-    inversion = payload.get("inversion") or []
-    if inversion:
-        out.append("FAILURE MODES:")
-        for f in inversion[:7]:
-            out.append(f"  - {f.get('scenario')}")
-
-    neg = (payload.get("negative_space") or {}).get("items") or []
-    if neg:
-        out.append("WHAT'S MISSING:")
-        for it in neg[:7]:
-            out.append(f"  - {it.get('missing_item')}")
-
-    # Action items + open decisions — actionable surface
-    actions = payload.get("action_items") or []
-    if actions:
-        out.append("ACTION ITEMS:")
-        for a in actions[:10]:
-            out.append(f"  - [{a.get('owner')}] {a.get('action')} ({a.get('when')})")
-
-    open_decisions = payload.get("decisions_open") or []
-    if open_decisions:
-        out.append("OPEN DECISIONS:")
-        for d in open_decisions[:7]:
-            out.append(f"  - {d}")
+    # Flagged issues — the model already noted these; the user might
+    # ask about them. Helpful as priors.
+    flagged = payload.get("flagged_issues") or []
+    if flagged:
+        out.append("\nFLAGGED ISSUES (ambiguities / missing info noted by the explainer):")
+        for f in flagged[:8]:
+            out.append(f"  - {f}")
 
     return "\n".join(out)
 
