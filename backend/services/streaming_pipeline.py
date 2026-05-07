@@ -142,15 +142,21 @@ def _run_pipeline_with_progress(
     from services.lenses.pipeline.orchestrator import MAX_REVISIONS
 
     client = anthropic.Anthropic(api_key=api_key)
-    total = TokenUsage(input_tokens=0, output_tokens=0)
+    # TokenUsage is a frozen dataclass — accumulate by replacing the
+    # reference. Wrapped in a list so the inner closure can rebind
+    # without `nonlocal` on a name defined in an outer function scope.
+    total_box: list[TokenUsage] = [TokenUsage(input_tokens=0, output_tokens=0)]
 
     def acc(u: TokenUsage):
-        total.input_tokens += u.input_tokens
-        total.output_tokens += u.output_tokens
-        total.cache_creation_input_tokens += u.cache_creation_input_tokens
-        total.cache_read_input_tokens += u.cache_read_input_tokens
-        push({"type": "usage", "input": total.input_tokens,
-              "output": total.output_tokens, "max": 16000})
+        cur = total_box[0]
+        total_box[0] = TokenUsage(
+            input_tokens=cur.input_tokens + u.input_tokens,
+            output_tokens=cur.output_tokens + u.output_tokens,
+            cache_creation_input_tokens=cur.cache_creation_input_tokens + u.cache_creation_input_tokens,
+            cache_read_input_tokens=cur.cache_read_input_tokens + u.cache_read_input_tokens,
+        )
+        push({"type": "usage", "input": total_box[0].input_tokens,
+              "output": total_box[0].output_tokens, "max": 16000})
 
     push({"type": "stage", "name": "router", "detail": {}})
     router_out, u = agents.run_router(
@@ -248,4 +254,4 @@ def _run_pipeline_with_progress(
         synthesizer=synth_out,
         critic=critic_out,
         revision_count=revision_count,
-    ), total
+    ), total_box[0]

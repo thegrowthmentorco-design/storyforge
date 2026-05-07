@@ -75,13 +75,18 @@ def run_pipeline(
     eff_model = resolve_model(model)
     client = anthropic.Anthropic(api_key=api_key)
 
+    # TokenUsage is a frozen dataclass — accumulate by replacing the
+    # reference rather than mutating fields.
     total_usage = TokenUsage(input_tokens=0, output_tokens=0)
 
     def _accumulate(u: TokenUsage):
-        total_usage.input_tokens += u.input_tokens
-        total_usage.output_tokens += u.output_tokens
-        total_usage.cache_creation_input_tokens += u.cache_creation_input_tokens
-        total_usage.cache_read_input_tokens += u.cache_read_input_tokens
+        nonlocal total_usage
+        total_usage = TokenUsage(
+            input_tokens=total_usage.input_tokens + u.input_tokens,
+            output_tokens=total_usage.output_tokens + u.output_tokens,
+            cache_creation_input_tokens=total_usage.cache_creation_input_tokens + u.cache_creation_input_tokens,
+            cache_read_input_tokens=total_usage.cache_read_input_tokens + u.cache_read_input_tokens,
+        )
 
     # ---- 1. Router ------------------------------------------------------
     log.info("pipeline: routing...")
