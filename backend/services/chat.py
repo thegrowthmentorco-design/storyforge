@@ -115,6 +115,21 @@ def _explainer_digest(payload: dict) -> str:
                 line += f" ({ctx})"
             out.append(line)
 
+    # Recommendations — actionable items the user may ask about.
+    recs = payload.get("recommendations") or []
+    if recs:
+        out.append("\nRECOMMENDATIONS:")
+        for r in recs[:10]:
+            prio = r.get("priority") or ""
+            kind = r.get("kind") or ""
+            title = r.get("title") or ""
+            action = r.get("suggested_action") or ""
+            tag = f"[{prio}/{kind}]" if (prio or kind) else ""
+            line = f"  - {tag} {title}".strip()
+            if action:
+                line += f" — Action: {action}"
+            out.append(line)
+
     # Glossary — so chat answers can use the same terminology consistently.
     glossary = payload.get("glossary") or []
     if glossary:

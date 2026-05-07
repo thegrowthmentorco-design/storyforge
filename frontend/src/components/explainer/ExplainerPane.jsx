@@ -15,9 +15,10 @@ import MarkdownText from '../MarkdownText.jsx'
 import ChatPanel from './ChatPanel.jsx'
 import KeyFactsPanel from './KeyFactsPanel.jsx'
 import GlossaryPanel from './GlossaryPanel.jsx'
+import RecommendationsPanel from './RecommendationsPanel.jsx'
 import {
   AlertTriangle, BookOpen, CheckCircle, ChevronDown, ChevronRight,
-  FileText, Hash, HelpCircle, Lightbulb, Quote, Share2, Sparkles, Zap,
+  FileText, Hash, HelpCircle, Lightbulb, Quote, Share2, Sparkles, Target, Zap,
 } from '../icons.jsx'
 
 const MermaidDiagram = lazy(() => import('./MermaidDiagram.jsx'))
@@ -148,6 +149,17 @@ export default function ExplainerPane({ extraction }) {
           </SectionEyebrow>
           <ManagementPitch pitch={pitch} />
         </section>
+
+        {/* Recommendations — forward-looking, actionable items.
+            Renders only when the model surfaced any. */}
+        {data.recommendations?.length > 0 && (
+          <section>
+            <SectionEyebrow icon={Target} accent="--warn">
+              Recommendations
+            </SectionEyebrow>
+            <RecommendationsPanel items={data.recommendations} />
+          </section>
+        )}
       </div>
       {/* M14.18.fix — chat panel replaces the old "Gaps & questions"
           / flagged-issues callout. Floats bottom-right; opens a

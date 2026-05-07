@@ -156,6 +156,24 @@ class GlossaryTerm(BaseModel):
     )
 
 
+RecommendationPriority = Literal["high", "medium", "low"]
+RecommendationKind = Literal["action", "watch_out", "opportunity", "compliance", "decision"]
+
+
+class Recommendation(BaseModel):
+    """One forward-looking, actionable item derived from the document.
+    Different from management_pitch (which explains) — recommendations
+    say what to DO. Each has a priority, a kind that drives the icon
+    and color, a short action-oriented title, the rationale, and a
+    concrete next step the user can take."""
+    model_config = ConfigDict(extra="forbid")
+    priority: RecommendationPriority = Field(description="`high` for must-act-soon items (deadlines, compliance, risks); `medium` for should-do; `low` for nice-to-have.")
+    kind: RecommendationKind = Field(description="`action` = generic do-this; `watch_out` = a risk/pitfall to avoid; `opportunity` = a benefit to capture; `compliance` = regulatory/policy obligation; `decision` = a choice the reader needs to make.")
+    title: str = Field(description="Short, action-oriented, ≤90 chars. Start with a verb when possible (Set, Schedule, Review, Confirm, Negotiate).")
+    rationale: str = Field(description="1-2 sentences explaining WHY this matters, grounded in the document's content. Reference the specific clause, number, or finding that drives the recommendation.")
+    suggested_action: str = Field(description="One concrete next step, ≤200 chars. Specific enough that the user knows what to do tomorrow.")
+
+
 class ExplainerOutput(BaseModel):
     """Full explainer payload — what gets stored in lens_payload.
 
@@ -179,4 +197,8 @@ class ExplainerOutput(BaseModel):
     glossary: list[GlossaryTerm] = Field(
         default_factory=list,
         description="Domain terms, acronyms, and jargon used in the document with plain-language definitions. Empty list when the document uses no specialized terminology.",
+    )
+    recommendations: list[Recommendation] = Field(
+        default_factory=list,
+        description="3-7 forward-looking recommendations derived from the document — what to DO, watch out for, decide, or capture. Empty list only when the document genuinely doesn't imply any action (rare).",
     )

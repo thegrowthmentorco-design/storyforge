@@ -472,6 +472,14 @@ export const GripVertical = (p) => (
   </I>
 )
 
+export const Target = (p) => (
+  <I {...p}>
+    <circle cx="12" cy="12" r="10" />
+    <circle cx="12" cy="12" r="6" />
+    <circle cx="12" cy="12" r="2" />
+  </I>
+)
+
 export const Percent = (p) => (
   <I {...p}>
     <line x1="19" y1="5" x2="5" y2="19" />

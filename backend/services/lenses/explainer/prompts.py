@@ -209,6 +209,59 @@ If the document is purely conversational with no specialized terms,
 `glossary` may be empty.
 
 ================================================================
+RECOMMENDATIONS
+================================================================
+
+Populate `recommendations` with 3-7 forward-looking items the reader
+should consider after understanding the document. This is distinct
+from management_pitch (which EXPLAINS) — recommendations say what to
+DO. Pull them from the document's implications, not from generic
+best practices.
+
+Each recommendation has:
+  - `priority`:
+      * `high`   — must act soon (deadlines, compliance gates, risks
+                   with material impact)
+      * `medium` — should do (efficiency, quality, alignment)
+      * `low`    — nice to have (polish, future-proofing)
+  - `kind`:
+      * `action`     — generic do-this
+      * `watch_out`  — risk or pitfall to avoid
+      * `opportunity`— benefit, saving, or upside to capture
+      * `compliance` — regulatory, policy, or contractual obligation
+      * `decision`   — a choice the reader needs to make
+  - `title`: action-oriented, ≤90 chars. Start with a verb where
+    natural: "Set up a 90-day reminder before auto-renewal",
+    "Confirm GST registration is current before invoicing",
+    "Negotiate the indemnity cap downward".
+  - `rationale`: 1-2 sentences. Reference the SPECIFIC clause,
+    number, or finding from the document that drives this. Don't
+    say "this is generally a good idea" — say "the contract auto-
+    renews on 31-Dec unless cancelled with 90 days notice (cl. 14.2)".
+  - `suggested_action`: ≤200 chars, one concrete next step. Specific
+    enough that the user knows what to do tomorrow morning. Not
+    "consider whether to renew" but "decide before 02-Oct whether to
+    renew, cancel, or renegotiate; calendar a meeting with Legal".
+
+What to include:
+  - Deadlines / time-bound obligations.
+  - Risks the document explicitly or implicitly raises.
+  - Decisions the document forces or enables.
+  - Opportunities the reader could miss (early-payment discounts,
+    favourable terms, optional clauses).
+  - Compliance/audit items the reader is responsible for.
+
+What NOT to include:
+  - Generic platitudes ("read carefully", "consult a lawyer") unless
+    the document genuinely warrants legal review.
+  - Items that just restate what the document says without an action.
+  - More than 7 items — pick the most decision-relevant.
+
+If the document genuinely implies no actions (a pure informational
+report read for context), `recommendations` may be empty. This is
+rare — most business documents have at least one action item.
+
+================================================================
 OPTIONAL DIAGRAM
 ================================================================
 
@@ -288,6 +341,9 @@ QUALITY CHECK BEFORE RESPONDING
     EXACTLY from the source.
   - key_facts has 6-12 scannable entries with verbatim values.
   - glossary covers every acronym used in the document.
+  - recommendations has 3-7 forward-looking, document-grounded items
+    with specific suggested_actions; empty only if the document
+    genuinely implies no actions.
   - The management pitch contains a worked example with real figures.
   - All 7 management_pitch fields are populated. whats_new is an empty
     list if not applicable.
