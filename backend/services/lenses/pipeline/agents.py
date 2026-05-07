@@ -80,7 +80,7 @@ def _call(
         cache_creation_input_tokens=getattr(response.usage, "cache_creation_input_tokens", 0) or 0,
         cache_read_input_tokens=getattr(response.usage, "cache_read_input_tokens", 0) or 0,
     )
-    return response.parsed, usage
+    return response.parsed_output, usage
 
 
 def _doc_user_msg(filename: str, raw_text: str, extra: str = "") -> str:

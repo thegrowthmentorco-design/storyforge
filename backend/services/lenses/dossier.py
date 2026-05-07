@@ -501,7 +501,7 @@ def extract_dossier(
         thinking={"type": "adaptive"},
     )
 
-    dossier = response.parsed
+    dossier = response.parsed_output
     usage = TokenUsage(
         input_tokens=response.usage.input_tokens,
         output_tokens=response.usage.output_tokens,

@@ -219,7 +219,7 @@ def regen_section(
         thinking={"type": "adaptive"},
     )
 
-    parsed = response.parsed
+    parsed = response.parsed_output
     # If the schema is a list-wrapper, unwrap to the bare list. Otherwise
     # serialize the whole sub-model. Either way, we end with JSON-ready data
     # suitable for lens_payload.
