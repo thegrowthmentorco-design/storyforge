@@ -138,11 +138,33 @@ When you do emit a diagram:
     has more, group related items into subgraphs.
   - Use short edge labels for conditions or data being passed
     (e.g., `-->|invoice PDF|`).
+
+  - **Color coding via node classes** (flowcharts only — sequence
+    and state diagrams ignore this). The frontend pre-defines five
+    classDefs you can attach to any node with Mermaid's `:::class`
+    syntax. Match nodes to the most specific class:
+      * `:::process`   — module / processing step / business logic
+      * `:::data`      — data artefact / document / payload (PDF,
+                         JSON, invoice, report)
+      * `:::external`  — external system / third-party API / actor
+                         outside the system being described
+      * `:::decision`  — branching / approval / validation gate
+      * `:::storage`   — database / file store / persistent layer
+    Example: `A["Email Ingestion"]:::process --> B["Invoice PDF"]:::data`
+    When you use these classes, populate the `legend` array with the
+    matching kinds + short labels (e.g. kind="process", label="Module
+    / processing step"). Only include legend entries for classes
+    actually used in the diagram. Leave `legend` empty if the diagram
+    is small enough that color coding adds no value.
+
   - Mermaid is strict about syntax. Common gotchas:
       * Node IDs must be alphanumeric + underscores; quote labels
         with parentheses or special chars: `A["Vendor (external)"]`.
       * `flowchart` graphs need `-->` arrows, not `->`.
       * No trailing semicolons after the last line.
+      * Do NOT emit your own `classDef` lines — the frontend already
+        defines `process`/`data`/`external`/`decision`/`storage`.
+        Just reference them with `:::`.
   - The `caption` is one short line ABOVE the diagram, e.g.
     "End-to-end PayFlow processing — 12 modules in sequence".
 

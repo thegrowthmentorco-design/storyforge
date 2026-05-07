@@ -82,17 +82,37 @@ class ExplainerMetadata(BaseModel):
     word_count: int = 0
 
 
+LegendKind = Literal["process", "data", "external", "decision", "storage"]
+
+
+class LegendItem(BaseModel):
+    """One entry in the diagram legend, paired with a node class
+    that nodes in the Mermaid source can reference via `:::`."""
+    model_config = ConfigDict(extra="forbid")
+    kind: LegendKind = Field(description="Semantic type. The frontend maps this to a colored swatch and applies the matching classDef in the diagram.")
+    label: str = Field(description="Short human-readable description, e.g. 'Module / processing step' or 'External system'.")
+
+
 class ExplainerDiagram(BaseModel):
     """Optional Mermaid diagram when the document describes a process,
     pipeline, or set of interacting components.
 
     `source` is raw Mermaid syntax (flowchart / sequenceDiagram / stateDiagram
-    / etc.) — the frontend renders it via mermaid.js. `caption` is a short
-    one-line label shown above the diagram.
+    / etc.) — the frontend renders it via mermaid.js with a brand-themed
+    palette. `caption` is a short one-line label shown above the diagram.
+    `legend` is optional; when present, the frontend renders colored
+    swatches and the prompt instructs Claude to apply the matching
+    classDef (`process`, `data`, `external`, `decision`, `storage`) to
+    nodes via Mermaid's `:::class` syntax so node colors line up with
+    the legend.
     """
     model_config = ConfigDict(extra="forbid")
     caption: str = Field(description="Short one-line caption shown above the diagram.")
-    source: str = Field(description="Raw Mermaid source. Must start with a valid diagram type keyword (flowchart, sequenceDiagram, stateDiagram, etc.).")
+    source: str = Field(description="Raw Mermaid source. Must start with a valid diagram type keyword (flowchart, sequenceDiagram, stateDiagram, etc.). Apply node classes via `:::process` / `:::data` / `:::external` / `:::decision` / `:::storage` when emitting a legend.")
+    legend: list[LegendItem] = Field(
+        default_factory=list,
+        description="Optional legend items. Empty list if a single visual style is enough.",
+    )
 
 
 class ExplainerOutput(BaseModel):

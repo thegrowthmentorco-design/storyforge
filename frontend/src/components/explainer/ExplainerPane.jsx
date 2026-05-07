@@ -103,7 +103,11 @@ export default function ExplainerPane({ extraction }) {
               Visual flow
             </SectionEyebrow>
             <Suspense fallback={<div style={{ marginTop: 16, fontSize: 13, color: 'var(--text-muted)' }}>Rendering diagram…</div>}>
-              <MermaidDiagram caption={data.diagram.caption} source={data.diagram.source} />
+              <MermaidDiagram
+                caption={data.diagram.caption}
+                source={data.diagram.source}
+                legend={data.diagram.legend || []}
+              />
             </Suspense>
           </section>
         )}

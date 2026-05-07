@@ -472,6 +472,32 @@ export const GripVertical = (p) => (
   </I>
 )
 
+export const Maximize2 = (p) => (
+  <I {...p}>
+    <polyline points="15 3 21 3 21 9" />
+    <polyline points="9 21 3 21 3 15" />
+    <line x1="21" y1="3" x2="14" y2="10" />
+    <line x1="3" y1="21" x2="10" y2="14" />
+  </I>
+)
+
+export const ZoomIn = (p) => (
+  <I {...p}>
+    <circle cx="11" cy="11" r="7" />
+    <line x1="20" y1="20" x2="16.65" y2="16.65" />
+    <line x1="11" y1="8" x2="11" y2="14" />
+    <line x1="8" y1="11" x2="14" y2="11" />
+  </I>
+)
+
+export const ZoomOut = (p) => (
+  <I {...p}>
+    <circle cx="11" cy="11" r="7" />
+    <line x1="20" y1="20" x2="16.65" y2="16.65" />
+    <line x1="8" y1="11" x2="14" y2="11" />
+  </I>
+)
+
 export const Logo = ({ size = 28 }) => (
   <svg width={size} height={size} viewBox="0 0 32 32" fill="none">
     <rect width="32" height="32" rx="8" fill="url(#sf-grad)" />
