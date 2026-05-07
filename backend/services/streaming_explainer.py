@@ -118,7 +118,6 @@ def stream_explainer_extraction(
     yield {"type": "stage", "name": "explaining", "detail": {
         "doc_type": result.plain_english.doc_type,
         "section_count": len(result.plain_english.sections),
-        "flagged_issue_count": len(result.flagged_issues),
         "done": True,
     }}
     yield {

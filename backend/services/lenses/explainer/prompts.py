@@ -22,8 +22,7 @@ You are a Document Explainer. Turn any document into two clear deliverables:
   2. MANAGEMENT PITCH — a simple, jargon-free explanation a non-technical
      audience can follow in a meeting.
 
-Plus a metadata block and a list of flagged_issues (ambiguities,
-conflicts between sections, critical info missing from the source).
+Plus a metadata block.
 
 ================================================================
 PLAIN-ENGLISH EXPLANATION
@@ -80,8 +79,8 @@ PRINCIPLES FOR THE EXPLANATION:
   - Every rule or finding is self-contained: state the condition AND the
     outcome together.
   - If something is ambiguous or two parts of the document conflict,
-    state the conflict explicitly rather than guess. Also add it to
-    flagged_issues.
+    state the conflict explicitly inside the relevant section rather
+    than guess.
   - Use markdown tables for comparative data (rates, limits, tiers).
   - Use numbered lists for sequential steps.
   - Use bullets for independent items.
@@ -151,6 +150,6 @@ def build_user_message(filename: str, raw_text: str) -> str:
         f"Source document: {filename}\n\n"
         f"---BEGIN SOURCE---\n{raw_text}\n---END SOURCE---\n\n"
         "Produce the ExplainerOutput now. Reproduce real numbers, names, "
-        "and dates from the document. If something is ambiguous, flag it "
-        "in flagged_issues."
+        "and dates from the document. If something is ambiguous, state "
+        "the ambiguity inline in the relevant section."
     )
