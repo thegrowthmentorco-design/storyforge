@@ -325,11 +325,6 @@ export default function Sidebar({ onNew, extractionContext }) {
         <NavItem icon={<FileText size={16} />} label="Documents" to="/documents" />
         <ProjectsSection />
 
-        <NavGroupLabel>Setup</NavGroupLabel>
-        <NavItem icon={<Sparkles size={16} />} label="Models" to="/models" />
-        <NavItem icon={<LayoutTemplate size={16} />} label="Tools" to="/tools" />
-        <NavItem icon={<Plug size={16} />} label="Integrations" to="/integrations" />
-
         <NavGroupLabel>Account</NavGroupLabel>
         <NavItem icon={<User size={16} />} label="Account" to="/account" />
         <NavItem icon={<Settings size={16} />} label="Settings" to="/settings" />

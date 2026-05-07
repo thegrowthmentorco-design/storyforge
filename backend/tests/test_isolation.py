@@ -115,29 +115,6 @@ def test_b_cannot_see_or_attach_to_a_projects(client, as_user):
     assert r.status_code == 400
 
 
-def test_b_import_collision_on_a_extraction_id(client, as_user):
-    as_user(USER_A)
-    a_ext = _create_extraction_in_personal_scope(client)
-
-    as_user(USER_B)
-    payload = {
-        "id": a_ext,
-        "filename": "evil.txt",
-        "saved_at": "2025-01-01T00:00:00Z",
-        "payload": {
-            "filename": "evil.txt",
-            "raw_text": "x",
-            "live": False,
-            "brief": {"summary": "x", "tags": []},
-            "actors": [],
-            "stories": [],
-            "nfrs": [],
-            "gaps": [],
-        },
-    }
-    assert client.post("/api/extractions/import", json=payload).status_code == 409
-
-
 def test_a_still_owns_after_b_attempts(client, as_user):
     as_user(USER_A)
     a_ext = _create_extraction_in_personal_scope(client)

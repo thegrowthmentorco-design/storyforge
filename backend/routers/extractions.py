@@ -17,7 +17,6 @@ from auth.deps import CurrentUser, current_user
 from db.models import Extraction, GapState, Project
 from db.session import get_session
 from models import (
-    ExtractionImport,
     ExtractionPatch,
     ExtractionRecord,
     ExtractionRerunRequest,
@@ -34,14 +33,12 @@ from services.extractions import (
     extraction_to_summary,
     gap_state_to_read,
     list_versions,
-    persist_extraction,
+    persist_explainer_extraction,
     record_usage,
     resolved_source_paths,
     root_id_for,
 )
-from services.few_shot import resolve_enabled_examples
 from services.limits import enforce_limits
-from services.prompts import resolve_prompt_suffix
 from services.scope import apply_scope, in_scope
 
 log = logging.getLogger("storyforge.extractions")
@@ -341,21 +338,21 @@ def rerun_extraction(
     # user's monthly quota too (re-extraction is a paid operation).
     enforce_limits(session, user, raw_text=source.raw_text, model=effective_model)
 
-    suffix = resolve_prompt_suffix(session, user.user_id, user.org_id)  # M7.1
-    examples = resolve_enabled_examples(session, user.user_id, user.org_id)  # M7.2
     result, model_used, usage = call_claude(
         filename=source.filename,
         raw_text=source.raw_text,
         api_key=effective_key,
         model=effective_model,
-        prompt_suffix=suffix,
-        few_shot_examples=examples,
     )
 
-    row = persist_extraction(
+    # M14.18 — single-lens system; rerun persists via the explainer helper.
+    row = persist_explainer_extraction(
         session,
-        result=result,
+        filename=source.filename,
+        raw_text=source.raw_text,
+        explainer_result=result,
         model_used=model_used,
+        live=usage is not None,
         user_id=user.user_id,
         org_id=user.org_id,
         project_id=source.project_id,
@@ -368,44 +365,12 @@ def rerun_extraction(
         extraction_id=row.id,
         action="rerun",
         model=model_used,
-        live=result.live,
+        live=usage is not None,
         usage=usage,
     )
     return extraction_to_record(row)
 
 
-
-
-# ---------------- import (M2.4.5 migration) ----------------
-
-
-@router.post("/import", response_model=ExtractionRecord, status_code=201)
-def import_extraction(
-    payload: ExtractionImport, session: SessionDep, user: UserDep
-) -> ExtractionRecord:
-    """Insert a record verbatim from a localStorage migration push.
-
-    Idempotent on `id`: a second push of the same id returns the existing row,
-    *but only if it belongs to the current user*. Cross-user id collisions
-    return 409 — practically impossible (ids carry 6 random hex chars + ms
-    timestamp) but worth being explicit about.
-    """
-    existing = session.get(Extraction, payload.id)
-    if existing is not None:
-        if not in_scope(existing, user):
-            raise HTTPException(status_code=409, detail="Extraction id collision")
-        return extraction_to_record(existing)
-
-    row = persist_extraction(
-        session,
-        result=payload.payload,
-        model_used="imported",
-        user_id=user.user_id,
-        org_id=user.org_id,
-        extraction_id=payload.id,
-        created_at=payload.saved_at or datetime.now(timezone.utc),
-    )
-    return extraction_to_record(row)
 
 
 # ---------------- gap state ----------------

@@ -19,21 +19,12 @@ const Account = lazy(() => import('./pages/Account.jsx'))
 const Documents = lazy(() => import('./pages/Documents.jsx'))
 const Project = lazy(() => import('./pages/Project.jsx'))
 const Settings = lazy(() => import('./pages/Settings.jsx'))
-const ModelsPage = lazy(() => import('./pages/Settings.jsx').then((m) => ({ default: m.ModelsPage })))
-const ToolsPage = lazy(() => import('./pages/Settings.jsx').then((m) => ({ default: m.ToolsPage })))
-const IntegrationsPage = lazy(() => import('./pages/Settings.jsx').then((m) => ({ default: m.IntegrationsPage })))
 const SupportPage = lazy(() => import('./pages/Settings.jsx').then((m) => ({ default: m.SupportPage })))
 const ShareView = lazy(() => import('./pages/ShareView.jsx'))
 const CompareView = lazy(() => import('./pages/CompareView.jsx'))
 const SignInPage = lazy(() => import('./pages/SignInPage.jsx'))
 const SignUpPage = lazy(() => import('./pages/SignUpPage.jsx'))
 const Landing = lazy(() => import('./pages/Landing.jsx'))
-const PushToJiraModal = lazy(() => import('./components/PushToJiraModal.jsx'))
-const PushToLinearModal = lazy(() => import('./components/PushToLinearModal.jsx'))
-const PushToGitHubModal = lazy(() => import('./components/PushToGitHubModal.jsx'))
-const PushToSlackModal = lazy(() => import('./components/PushToSlackModal.jsx'))
-const PushToNotionModal = lazy(() => import('./components/PushToNotionModal.jsx'))
-const SaveExampleModal = lazy(() => import('./components/SaveExampleModal.jsx'))
 import PaywallModal from './components/PaywallModal.jsx'
 import Sidebar from './components/Sidebar.jsx'
 import TopBar from './components/TopBar.jsx'
@@ -901,17 +892,6 @@ function AuthedApp() {
   // (a different page) and never sees this state.
   const [shareOpen, setShareOpen] = useState(false)
   // M6.2 — push-to-Jira modal toggle. Same pattern as ShareModal.
-  const [pushJiraOpen, setPushJiraOpen] = useState(false)
-  // M6.3 — push-to-Linear modal toggle. Parallel to Jira.
-  const [pushLinearOpen, setPushLinearOpen] = useState(false)
-  // M6.4 — push-to-GitHub modal toggle. Same pattern.
-  const [pushGitHubOpen, setPushGitHubOpen] = useState(false)
-  // M6.6 — push-to-Slack modal toggle.
-  const [pushSlackOpen, setPushSlackOpen] = useState(false)
-  // M6.5 — push-to-Notion modal toggle.
-  const [pushNotionOpen, setPushNotionOpen] = useState(false)
-  // M7.2 — save-as-few-shot-example modal.
-  const [saveExampleOpen, setSaveExampleOpen] = useState(false)
   const handleRegenSection = async (section) => {
     if (!extractionId || regenBusy) return
     if (!window.confirm(`Replace your ${section} with a fresh draft from Claude?`)) return
@@ -1029,12 +1009,6 @@ function AuthedApp() {
           onReset={reset}
           onRerun={handleRerun}
           onShare={extractionId ? () => setShareOpen(true) : undefined}
-          onPushToJira={extractionId ? () => setPushJiraOpen(true) : undefined}
-          onPushToLinear={extractionId ? () => setPushLinearOpen(true) : undefined}
-          onPushToGitHub={extractionId ? () => setPushGitHubOpen(true) : undefined}
-          onPushToSlack={extractionId ? () => setPushSlackOpen(true) : undefined}
-          onPushToNotion={extractionId ? () => setPushNotionOpen(true) : undefined}
-          onSaveAsExample={extractionId ? () => setSaveExampleOpen(true) : undefined}
           currentVersion={versions.find((v) => v.id === extractionId)?.version}
         />
         <Suspense fallback={<RouteFallback />}>
@@ -1080,9 +1054,6 @@ function AuthedApp() {
               Integrations/Support are first-class top-level routes
               reachable from the Sidebar nav. */}
           <Route path="/settings" element={<Settings />} />
-          <Route path="/models" element={<ModelsPage />} />
-          <Route path="/tools" element={<ToolsPage />} />
-          <Route path="/integrations" element={<IntegrationsPage />} />
           <Route path="/support" element={<SupportPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
@@ -1109,33 +1080,6 @@ function AuthedApp() {
       {shareOpen && extractionId && (
         <ShareModal extractionId={extractionId} onClose={() => setShareOpen(false)} />
       )}
-      {/* Lazy-loaded modals — Suspense fallback is null because the
-          parent click feedback (button press) covers the brief async gap
-          while the chunk fetches. */}
-      <Suspense fallback={null}>
-        {pushJiraOpen && extraction && (
-          <PushToJiraModal extraction={extraction} onClose={() => setPushJiraOpen(false)} />
-        )}
-        {pushLinearOpen && extraction && (
-          <PushToLinearModal extraction={extraction} onClose={() => setPushLinearOpen(false)} />
-        )}
-        {pushGitHubOpen && extraction && (
-          <PushToGitHubModal extraction={extraction} onClose={() => setPushGitHubOpen(false)} />
-        )}
-        {pushSlackOpen && extraction && (
-          <PushToSlackModal extraction={extraction} onClose={() => setPushSlackOpen(false)} />
-        )}
-        {pushNotionOpen && extraction && (
-          <PushToNotionModal extraction={extraction} onClose={() => setPushNotionOpen(false)} />
-        )}
-        {saveExampleOpen && extractionId && (
-          <SaveExampleModal
-            extractionId={extractionId}
-            defaultName={extraction?.filename || ''}
-            onClose={() => setSaveExampleOpen(false)}
-          />
-        )}
-      </Suspense>
     </div>
     </AppProvider>
   )

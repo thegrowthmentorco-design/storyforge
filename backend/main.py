@@ -28,12 +28,10 @@ from auth.deps import (
 )
 from db.session import get_session, init_db
 from models import ExtractionRecord
-from routers import api_tokens as api_tokens_router
 from routers import billing as billing_router
 from routers import comments as comments_router
 from routers import chat as chat_router
 from routers import extractions as extractions_router
-from routers import integrations as integrations_router
 from routers import me as me_router
 from routers import projects as projects_router
 from routers import share as share_router
@@ -46,10 +44,8 @@ from services.extractions import (
     record_usage,
     save_upload,
 )
-from services.few_shot import resolve_enabled_examples
 from services.ingest import combine_raw_texts, ingest_file
 from services.limits import enforce_limits
-from services.prompts import resolve_prompt_suffix
 from services.obs import install_json_logging, install_request_id, install_sentry
 from services.onboarding import welcome_check
 
@@ -134,12 +130,6 @@ app.include_router(chat_router.router, dependencies=_protected_deps)
 app.include_router(projects_router.router, dependencies=_protected_deps)
 app.include_router(me_router.router, dependencies=_protected_deps)
 app.include_router(comments_router.router, dependencies=_protected_deps)
-app.include_router(integrations_router.router, dependencies=_protected_deps)
-# M6.2.d — Jira OAuth callback is unauthenticated at the route layer
-# (Atlassian's browser redirect arrives without an Authorization header).
-# CSRF state validates the user inside the handler.
-app.include_router(integrations_router.unauth_router)
-app.include_router(api_tokens_router.router, dependencies=_protected_deps)
 # M4.6: share has split posture — owner endpoints are auth+ownership, the
 # public read uses token only. Mounted as two separate routers in share.py.
 app.include_router(share_router.owner_router, dependencies=_protected_deps)
@@ -298,15 +288,11 @@ async def extract(
     from services.lenses import normalize as normalize_lens
     effective_lens = normalize_lens(lens)
 
-    suffix = resolve_prompt_suffix(session, user.user_id, user.org_id)  # M7.1
-    examples = resolve_enabled_examples(session, user.user_id, user.org_id)  # M7.2
     result, model_used, usage = call_claude(
         filename=source_name,
         raw_text=raw_text,
         api_key=effective_key,
         model=effective_model,
-        prompt_suffix=suffix,
-        few_shot_examples=examples,
         lens=effective_lens,
     )
 
@@ -451,14 +437,6 @@ async def extract_stream(
     enforce_limits(session, user, raw_text=raw_text, model=effective_model)
 
     # M7.1 — resolve the user's saved prompt suffix during pre-flight (while
-    # the request-scoped session is still alive). Snapshot into a local so
-    # the generator's fresh session doesn't have to refetch.
-    effective_suffix = resolve_prompt_suffix(session, user.user_id, user.org_id)
-    # M7.2 — same lifecycle reasoning for few-shot examples. Snapshot a
-    # plain list of (id, name, input_text, expected_payload) so the
-    # generator doesn't reach into the closing session.
-    effective_examples = resolve_enabled_examples(session, user.user_id, user.org_id)
-
     # Mint id up front so the start event can carry it (the frontend uses it
     # to wire the in-flight extraction to the persisted row on `complete`).
     extraction_id = mint_extraction_id()
@@ -501,7 +479,6 @@ async def extract_stream(
                 raw_text=raw_text,
                 api_key=effective_key,
                 model=effective_model,
-                prompt_suffix=effective_suffix,
             )
 
             for ev in stream_iter:

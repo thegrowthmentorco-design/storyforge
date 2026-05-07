@@ -67,29 +67,8 @@ def current_user(
     if not token:
         raise HTTPException(status_code=401, detail="Empty bearer token")
 
-    # ----- API token path (M6.7) ------------------------------------------
-    if token.startswith(_API_TOKEN_PREFIXES):
-        # Local import to avoid circulars (services/api_tokens imports
-        # db.models, which is fine, but keeping this lazy keeps the
-        # auth module dep graph minimal).
-        from services.api_tokens import find_active_by_plaintext, touch
-        row = find_active_by_plaintext(session, token)
-        if row is None:
-            raise HTTPException(status_code=401, detail="Invalid or revoked API token")
-        # Bump last_used_at — best-effort, doesn't fail the request on error.
-        touch(session, row)
-        return CurrentUser(
-            user_id=row.user_id,
-            org_id=row.org_id,
-            # API tokens don't carry org_role — Clerk-only concept. Routes
-            # that need org_role (none today) would have to fall back.
-            org_role=None,
-            # M6.7.b — read-only tokens stamp 'ro'; the enforce dep below
-            # rejects non-safe HTTP methods when this is 'ro'.
-            token_scope=row.scope or "rw",
-            # M6.7.c — token id keys the per-token rate-limit bucket.
-            token_id=row.id,
-        )
+    # M14.18.fix — API-token path removed alongside Tools/Integrations.
+    # All requests now route through Clerk JWT verification.
 
     # ----- Clerk JWT path (M3.1) ------------------------------------------
     try:
