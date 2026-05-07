@@ -5,27 +5,22 @@ Each lens is a self-contained module with a clear contract:
   - Defines its own prompt template
   - Exports an extractor function (signature varies by lens)
 
-The dispatcher in `services/extractions.call_claude` branches on the
-`lens` parameter and routes to the right module. Adding a new lens =
-add a module here + register it below + add a frontend renderer.
-
-Available lenses:
-  - 'stories' : the original BRD → user-stories extraction (default for
-                back-compat with pre-M14.1 rows)
-  - 'dossier' : M14.1 — 4-act narrated document understanding
+M14.18 — collapsed to a single lens (Document Explainer). Earlier
+multi-lens experiment (stories / dossier / pipeline) was removed in
+favor of a focused two-deliverable transformation. Pre-existing rows
+with lens='stories' / 'dossier' / 'pipeline' remain in the DB but no
+longer have a renderer; they're effectively orphaned until manually
+re-extracted.
 """
 from __future__ import annotations
 
-from services.lenses import dossier, explainer, pipeline, stories
+from services.lenses import explainer
 
 LENSES = {
-    "stories": stories,
-    "dossier": dossier,
-    "pipeline": pipeline,  # M14.17 — multi-agent router/extractor/specialists/synthesizer/critic
-    "explainer": explainer,  # M14.18 — Document Explainer (plain-english + management pitch)
+    "explainer": explainer,
 }
 
-DEFAULT_LENS = "explainer"  # M14.18 — new uploads default to the Document Explainer.
+DEFAULT_LENS = "explainer"
 
 VALID_LENSES = set(LENSES.keys())
 

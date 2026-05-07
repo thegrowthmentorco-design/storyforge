@@ -17,12 +17,9 @@ from auth.deps import CurrentUser, current_user
 from db.models import Extraction, GapState, Project
 from db.session import get_session
 from models import (
-    DossierEditPatch,
-    DossierRegenRequest,
     ExtractionImport,
     ExtractionPatch,
     ExtractionRecord,
-    ExtractionRegenRequest,
     ExtractionRerunRequest,
     ExtractionSummary,
     ExtractionVersion,
@@ -45,7 +42,6 @@ from services.extractions import (
 from services.few_shot import resolve_enabled_examples
 from services.limits import enforce_limits
 from services.prompts import resolve_prompt_suffix
-from services.regen import regen_section
 from services.scope import apply_scope, in_scope
 
 log = logging.getLogger("storyforge.extractions")
@@ -177,95 +173,6 @@ def patch_extraction(
     if patch.gaps is not None:
         row.gaps = [g.model_dump() for g in patch.gaps]
 
-    session.add(row)
-    session.commit()
-    session.refresh(row)
-    return extraction_to_record(row)
-
-
-# ---------------- M14.7 — dossier edit-in-place ----------------
-
-
-_REVISION_CAP = 50
-
-
-def _walk_dossier_path(payload: dict, path: str):
-    """Walk a dotted path through `payload`, returning (parent, last_key).
-
-    Raises HTTPException(400) if the path doesn't resolve. Numeric segments
-    are interpreted as list indices; everything else is dict keys. We split
-    only on '.' — the schema doesn't use dotted keys so this is unambiguous.
-    """
-    parts = path.split(".")
-    if not parts or parts == [""]:
-        raise HTTPException(status_code=400, detail="path cannot be empty")
-    cur = payload
-    for seg in parts[:-1]:
-        if isinstance(cur, list):
-            try:
-                idx = int(seg)
-            except ValueError:
-                raise HTTPException(status_code=400, detail=f"path expects index, got {seg!r}")
-            if idx < 0 or idx >= len(cur):
-                raise HTTPException(status_code=400, detail=f"index out of range: {seg}")
-            cur = cur[idx]
-        elif isinstance(cur, dict):
-            if seg not in cur:
-                raise HTTPException(status_code=400, detail=f"unknown segment: {seg}")
-            cur = cur[seg]
-        else:
-            raise HTTPException(status_code=400, detail=f"cannot descend into scalar at {seg}")
-    last = parts[-1]
-    if isinstance(cur, list):
-        try:
-            idx = int(last)
-        except ValueError:
-            raise HTTPException(status_code=400, detail=f"path expects index, got {last!r}")
-        if idx < 0 or idx >= len(cur):
-            raise HTTPException(status_code=400, detail=f"index out of range: {last}")
-        return cur, idx
-    if isinstance(cur, dict):
-        if last not in cur:
-            raise HTTPException(status_code=400, detail=f"unknown segment: {last}")
-        return cur, last
-    raise HTTPException(status_code=400, detail="terminal path is not addressable")
-
-
-@router.patch("/{extraction_id}/dossier", response_model=ExtractionRecord)
-def patch_dossier(
-    extraction_id: str, patch: DossierEditPatch, session: SessionDep, user: UserDep
-) -> ExtractionRecord:
-    """Edit one node in a dossier's lens_payload (M14.7).
-
-    Walks the dotted `path`, swaps the value, appends a revision entry.
-    Only valid for rows with lens='dossier' and a non-null lens_payload.
-    """
-    row = _owned_extraction(session, extraction_id, user)
-    if row.lens != "dossier" or row.lens_payload is None:
-        raise HTTPException(status_code=400, detail="extraction has no editable dossier payload")
-
-    # Deep-copy so we don't mutate the SQLModel attribute in place — JSON
-    # columns won't always detect in-place dict mutation as dirty.
-    import copy
-    payload = copy.deepcopy(row.lens_payload)
-
-    parent, key = _walk_dossier_path(payload, patch.path)
-    before = copy.deepcopy(parent[key])
-    parent[key] = patch.value
-
-    revisions = list(row.dossier_revisions or [])
-    revisions.append({
-        "ts": datetime.now(timezone.utc).isoformat(),
-        "user_id": user.user_id,
-        "path": patch.path,
-        "before": before,
-        "after": patch.value,
-    })
-    if len(revisions) > _REVISION_CAP:
-        revisions = revisions[-_REVISION_CAP:]
-
-    row.lens_payload = payload
-    row.dossier_revisions = revisions
     session.add(row)
     session.commit()
     session.refresh(row)
@@ -467,191 +374,6 @@ def rerun_extraction(
     return extraction_to_record(row)
 
 
-# ---------------- regen one section (M4.4) ----------------
-
-
-@router.post("/{extraction_id}/regen", response_model=ExtractionRecord)
-def regen_extraction_section(
-    extraction_id: str,
-    payload: ExtractionRegenRequest,
-    session: SessionDep,
-    user: UserDep,
-    x_anthropic_key: str | None = Header(default=None, alias="X-Anthropic-Key"),
-    x_storyforge_model: str | None = Header(default=None, alias="X-Storyforge-Model"),
-) -> ExtractionRecord:
-    """Regenerate one section (stories / nfrs / gaps) on the same row.
-
-    Counts as one Claude call against the user's monthly quota — same as
-    rerun. The other sections + brief + actors are passed to the model as
-    *stable context* so the regen respects the user's M4.1 inline edits.
-
-    No new extraction row is created (unlike `/rerun`); the existing row's
-    JSON column for the target section is replaced in place. Versioning
-    semantics: regen is treated as a refinement of the same logical
-    extraction, not a fork. Use `/rerun` if you want a snapshot.
-    """
-    row = _owned_extraction(session, extraction_id, user)
-
-    effective_key, stored_model = resolve_user_byok(session, user.user_id, x_anthropic_key)
-    effective_model = x_storyforge_model or stored_model
-
-    # Same plan gates as /api/extract — regen is a paid Claude call.
-    enforce_limits(session, user, raw_text=row.raw_text or "", model=effective_model)
-
-    suffix = resolve_prompt_suffix(session, user.user_id, user.org_id)  # M7.1
-    new_items, model_used, usage = regen_section(
-        section=payload.section,
-        filename=row.filename,
-        raw_text=row.raw_text or "",
-        brief=row.brief or {},
-        actors=row.actors or [],
-        stories=row.stories or [],
-        nfrs=row.nfrs or [],
-        gaps=row.gaps or [],
-        api_key=effective_key,
-        model=effective_model,
-        prompt_suffix=suffix,
-    )
-
-    # Write back. Use setattr because the section name comes from a Literal
-    # — the type checker is happy with str access on the SQLModel attrs.
-    setattr(row, payload.section, new_items)
-    session.add(row)
-    session.commit()
-    session.refresh(row)
-
-    # Record the call. live=True when api_key was set; mock-mode regen is
-    # a no-op return of the current data, no Claude charge.
-    record_usage(
-        session,
-        user_id=user.user_id,
-        org_id=user.org_id,
-        extraction_id=row.id,
-        action=f"regen_{payload.section}",
-        model=model_used,
-        live=usage is not None,
-        usage=usage,
-    )
-    return extraction_to_record(row)
-
-
-# ---------------- M14.8 — dossier section regen ----------------
-
-
-@router.post("/{extraction_id}/dossier/regen", response_model=ExtractionRecord)
-def regen_dossier_section(
-    extraction_id: str,
-    payload: DossierRegenRequest,
-    session: SessionDep,
-    user: UserDep,
-    x_anthropic_key: str | None = Header(default=None, alias="X-Anthropic-Key"),
-    x_storyforge_model: str | None = Header(default=None, alias="X-Storyforge-Model"),
-) -> ExtractionRecord:
-    """Re-run Claude against ONE section of a dossier and swap it in place.
-
-    Cheaper than a full /rerun (one section's worth of tokens vs all 14+).
-    Counts as one Claude call against the user's quota. Updates lens_payload
-    in place and appends a revision entry tagged 'regen' so the edit log
-    shows where AI-rewrites happened vs human edits (M14.7).
-    """
-    row = _owned_extraction(session, extraction_id, user)
-    if row.lens != "dossier" or row.lens_payload is None:
-        raise HTTPException(status_code=400, detail="extraction is not a dossier")
-
-    from services.lenses.regen_section import REGEN_REGISTRY, regen_section
-    if payload.section not in REGEN_REGISTRY:
-        raise HTTPException(
-            status_code=400,
-            detail=f"unknown section '{payload.section}'; valid: {list(REGEN_REGISTRY.keys())}",
-        )
-
-    effective_key, stored_model = resolve_user_byok(session, user.user_id, x_anthropic_key)
-    effective_model = x_storyforge_model or stored_model
-    enforce_limits(session, user, raw_text=row.raw_text, model=effective_model)
-
-    suffix = resolve_prompt_suffix(session, user.user_id, user.org_id)
-
-    new_value, usage = regen_section(
-        section_key=payload.section,
-        filename=row.filename,
-        raw_text=row.raw_text,
-        current_dossier=row.lens_payload,
-        api_key=effective_key,
-        model=effective_model,
-        prompt_suffix=suffix,
-    )
-
-    import copy
-    payload_dict = copy.deepcopy(row.lens_payload)
-    _, _, _, dump_path = REGEN_REGISTRY[payload.section]
-    before = copy.deepcopy(payload_dict.get(dump_path))
-    payload_dict[dump_path] = new_value
-
-    revisions = list(row.dossier_revisions or [])
-    revisions.append({
-        "ts": datetime.now(timezone.utc).isoformat(),
-        "user_id": user.user_id,
-        "path": dump_path,
-        "before": before,
-        "after": new_value,
-        "kind": "regen",
-    })
-    if len(revisions) > _REVISION_CAP:
-        revisions = revisions[-_REVISION_CAP:]
-
-    row.lens_payload = payload_dict
-    row.dossier_revisions = revisions
-    session.add(row)
-    session.commit()
-    session.refresh(row)
-
-    record_usage(
-        session,
-        user_id=user.user_id,
-        org_id=user.org_id,
-        extraction_id=row.id,
-        action=f"regen_dossier_{payload.section}",
-        model=effective_model or row.model_used,
-        live=usage is not None,
-        usage=usage,
-    )
-    return extraction_to_record(row)
-
-
-# ---------------- M14.10 — diff two dossier versions ----------------
-
-
-@router.get("/{extraction_id}/diff/{prior_id}")
-def diff_dossier(
-    extraction_id: str, prior_id: str, session: SessionDep, user: UserDep,
-):
-    """Section-by-section diff between two dossier extractions.
-
-    `extraction_id` = the "after" (newer) version. `prior_id` = the "before"
-    (older). Both must belong to the caller and both must have lens='dossier'.
-    Versioning is loose: callers don't have to be on the same root_id chain
-    (e.g. a manually re-uploaded v2 of the same doc lands as a separate row
-    without auto-link), so we don't enforce the relationship — just that the
-    user owns both.
-    """
-    after = _owned_extraction(session, extraction_id, user)
-    before = _owned_extraction(session, prior_id, user)
-    if after.lens != "dossier" or before.lens != "dossier":
-        raise HTTPException(status_code=400, detail="diff requires two dossier extractions")
-    if after.lens_payload is None or before.lens_payload is None:
-        raise HTTPException(status_code=400, detail="one or both extractions are missing dossier payload")
-
-    from services.dossier_diff import diff_dossiers
-    result = diff_dossiers(before.lens_payload, after.lens_payload)
-    return {
-        "before_id": before.id,
-        "before_filename": before.filename,
-        "before_created_at": before.created_at.isoformat(),
-        "after_id": after.id,
-        "after_filename": after.filename,
-        "after_created_at": after.created_at.isoformat(),
-        **result,
-    }
 
 
 # ---------------- import (M2.4.5 migration) ----------------

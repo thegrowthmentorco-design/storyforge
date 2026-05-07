@@ -116,10 +116,7 @@ const ARTIFACTS_PREVIEW = [
 // ============================================================================
 
 const MODES = [
-  { value: 'explainer', label: 'Document Explainer (recommended)', desc: 'Plain-English breakdown + a management-ready pitch with real numbers' },
-  { value: 'dossier', label: 'Full dossier', desc: 'Brief, mindmap, gaps, action items, user stories — the full understanding pass' },
-  { value: 'pipeline', label: 'Multi-agent pipeline', desc: 'Router classifies the doc, picks specialists, synthesizer + critic refine the output' },
-  { value: 'stories', label: 'User stories only', desc: 'Lean output — actors, stories, acceptance criteria, NFRs, gaps' },
+  { value: 'explainer', label: 'Document Explainer', desc: 'Plain-English breakdown + a management-ready pitch with real numbers' },
   { value: '_soon_brd', label: 'BRD summary (soon)', desc: 'Coming soon', disabled: true },
   { value: '_soon_gap', label: 'Gap analysis (soon)', desc: 'Coming soon', disabled: true },
   { value: '_soon_tech', label: 'Technical spec (soon)', desc: 'Coming soon', disabled: true },

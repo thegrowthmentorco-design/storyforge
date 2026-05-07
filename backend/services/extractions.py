@@ -22,7 +22,7 @@ from sqlalchemy import update
 from sqlmodel import Session, select
 
 from db.models import Comment, Extraction, ExtractionView, GapState, Project, UsageLog
-from extract import extract_requirements, resolve_model
+from extract import resolve_model
 from models import (
     ExtractionPayload,
     ExtractionRecord,
@@ -244,69 +244,6 @@ def persist_extraction(
     return row
 
 
-def persist_dossier_extraction(
-    session: Session,
-    *,
-    filename: str,
-    raw_text: str,
-    dossier,  # services.lenses.dossier.DocumentDossier
-    model_used: str,
-    live: bool,
-    user_id: str = "local",
-    org_id: str | None = None,
-    project_id: str | None = None,
-    extraction_id: str | None = None,
-    created_at: datetime | None = None,
-    source_file_path: str | None = None,
-    source_file_paths: list[str] | None = None,
-    root_id: str | None = None,
-) -> Extraction:
-    """Insert one Extraction row from a DocumentDossier (M14.1).
-
-    Schema-shape decision: stories-shape JSON columns (brief / actors /
-    stories / nfrs / gaps) are populated with empty defaults. The full
-    dossier JSON lives in `lens_payload`; `lens='dossier'` tells the
-    frontend which renderer to mount.
-
-    *Folded user-stories carve-out* (M14.0 pick (b)): if the dossier's
-    `user_stories` list is non-empty (i.e. the doc was requirements-shaped
-    so the model populated it), we ALSO mirror those stories into the
-    legacy `stories` column. That keeps any back-compat code path that
-    reads `extraction.stories` directly working without dossier-awareness.
-    """
-    payload = dossier.model_dump()
-    folded_stories = payload.get("user_stories") or []
-
-    row = Extraction(
-        id=extraction_id or mint_extraction_id(),
-        filename=filename,
-        raw_text=raw_text,
-        model_used=model_used,
-        live=live,
-        user_id=user_id,
-        org_id=org_id,
-        project_id=project_id,
-        source_file_path=source_file_path,
-        source_file_paths=list(source_file_paths or []),
-        root_id=root_id,
-        created_at=created_at or datetime.now(timezone.utc),
-        # Stories-shape columns: brief mirrors dossier.brief; user_stories
-        # mirror to the stories column for back-compat; actors/nfrs/gaps
-        # left empty (those are stories-lens-only concepts).
-        brief=payload.get("brief") or {"summary": "", "tags": []},
-        actors=[],
-        stories=folded_stories,
-        nfrs=[],
-        gaps=[],
-        lens="dossier",
-        lens_payload=payload,
-    )
-    session.add(row)
-    session.commit()
-    session.refresh(row)
-    return row
-
-
 def persist_explainer_extraction(
     session: Session,
     *,
@@ -354,67 +291,6 @@ def persist_explainer_extraction(
         nfrs=[],
         gaps=[],
         lens="explainer",
-        lens_payload=payload,
-    )
-    session.add(row)
-    session.commit()
-    session.refresh(row)
-    return row
-
-
-def persist_pipeline_extraction(
-    session: Session,
-    *,
-    filename: str,
-    raw_text: str,
-    pipeline_result,  # services.lenses.pipeline.PipelineResult
-    model_used: str,
-    live: bool,
-    user_id: str = "local",
-    org_id: str | None = None,
-    project_id: str | None = None,
-    extraction_id: str | None = None,
-    created_at: datetime | None = None,
-    source_file_path: str | None = None,
-    source_file_paths: list[str] | None = None,
-    root_id: str | None = None,
-) -> Extraction:
-    """Insert one Extraction row from a PipelineResult (M14.17).
-
-    Stories-shape columns (brief / actors / stories / nfrs / gaps) get
-    empty defaults — the pipeline doesn't produce those. The full
-    PipelineResult JSON lives in lens_payload; lens='pipeline' tells
-    the frontend which renderer to mount.
-    """
-    payload = pipeline_result.model_dump(mode="json")
-    # Mirror a minimal brief into the legacy column so any stories-shape
-    # back-compat code path doesn't choke on an empty brief — the pipeline's
-    # synthesizer "summary" (when present) makes a reasonable proxy.
-    synth_sections = payload.get("synthesizer", {}).get("sections", {}) or {}
-    summary_proxy = (
-        synth_sections.get("summary")
-        or (payload.get("router", {}) or {}).get("rationale")
-        or "Pipeline extraction."
-    )
-    row = Extraction(
-        id=extraction_id or mint_extraction_id(),
-        filename=filename,
-        raw_text=raw_text,
-        model_used=model_used,
-        live=live,
-        user_id=user_id,
-        org_id=org_id,
-        project_id=project_id,
-        source_file_path=source_file_path,
-        source_file_paths=list(source_file_paths or []),
-        root_id=root_id,
-        created_at=created_at or datetime.now(timezone.utc),
-        brief={"summary": summary_proxy, "tags": []},
-        actors=[],
-        stories=[],
-        nfrs=[],
-        gaps=[],
-        lens="pipeline",
         lens_payload=payload,
     )
     session.add(row)
@@ -638,47 +514,16 @@ def call_claude(
     lens = normalize_lens(lens)
 
     try:
-        if lens == "explainer":
-            # M14.18 — Document Explainer. Single Claude call producing
-            # plain-english breakdown + management pitch.
-            from services.lenses.explainer import explain_document
-            result, usage = explain_document(
-                filename, raw_text,
-                api_key=api_key, model=model,
-                prompt_suffix=prompt_suffix,
-            )
-            live = usage is not None
-        elif lens == "pipeline":
-            # M14.17 — multi-agent pipeline. Returns a PipelineResult that
-            # gets stored as-is in lens_payload. Live always (mock path
-            # inside the orchestrator just returns placeholder content).
-            from services.lenses.pipeline import run_pipeline
-            result, usage = run_pipeline(
-                filename=filename, raw_text=raw_text,
-                user_query=None,  # M14.17.future-work — pass user prompt through
-                api_key=api_key, model=model,
-            )
-            live = api_key is not None
-        elif lens == "dossier":
-            from services.lenses.dossier import extract_dossier
-            result, usage = extract_dossier(
-                filename, raw_text,
-                api_key=api_key, model=model,
-                prompt_suffix=prompt_suffix,
-            )
-            # Treat dossier as 'live' if a usage came back (real Claude call).
-            # Mock path (no api_key) returns usage=None and the mock dossier
-            # already has placeholder content telegraphing mock mode.
-            live = usage is not None
-        else:
-            # stories lens (default, back-compat)
-            result, usage = extract_requirements(
-                filename, raw_text,
-                api_key=api_key, model=model,
-                prompt_suffix=prompt_suffix,
-                few_shot_examples=few_shot_examples,
-            )
-            live = result.live
+        # M14.18 — single-lens system. All paths route to the Document
+        # Explainer; the lens parameter exists for API back-compat with
+        # earlier callers (it's normalized to "explainer" upstream).
+        from services.lenses.explainer import explain_document
+        result, usage = explain_document(
+            filename, raw_text,
+            api_key=api_key, model=model,
+            prompt_suffix=prompt_suffix,
+        )
+        live = usage is not None
     except anthropic.AuthenticationError:
         log.warning("anthropic authentication failed")
         detail = (

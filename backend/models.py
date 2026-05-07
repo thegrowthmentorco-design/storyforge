@@ -169,34 +169,6 @@ class ExtractionPatch(BaseModel):
     gaps: list[Gap] | None = None
 
 
-class DossierRegenRequest(BaseModel):
-    """POST /api/extractions/{id}/dossier/regen body (M14.8).
-
-    Re-runs Claude against ONE section of the dossier and replaces it
-    in lens_payload. Whole-dossier rerun is the existing /api/extract
-    flow; this is the cheaper per-section variant.
-    """
-    model_config = ConfigDict(extra="forbid")
-    section: str  # one of regen_section.REGEN_REGISTRY keys
-
-
-class DossierEditPatch(BaseModel):
-    """PATCH /api/extractions/{id}/dossier body (M14.7).
-
-    Partial update against extraction.lens_payload. `path` is a dot-and-
-    index walk through the JSON (e.g. "brief.summary", "tldr_ladder.one_line",
-    "glossary.0.definition"). `value` replaces whatever is at that path.
-    The route walks lens_payload, validates the path resolves, swaps in the
-    new value, and appends one entry to dossier_revisions.
-
-    No structural mutations (no creating/deleting array elements) — keep
-    the contract narrow so the column stays Pydantic-validatable on read.
-    """
-    model_config = ConfigDict(extra="forbid")
-    path: str
-    value: Any
-
-
 class ExtractionImport(BaseModel):
     """POST /api/extractions/import — bulk import from localStorage migration."""
     model_config = ConfigDict(extra="forbid")
@@ -386,14 +358,6 @@ class ExtractionRerunRequest(BaseModel):
     # Future: per-request system prompt overrides go here.
 
 
-class ExtractionRegenRequest(BaseModel):
-    """POST /api/extractions/{id}/regen body (M4.4)."""
-    model_config = ConfigDict(extra="forbid")
-    # The section name is also a path segment; we keep it in the body so the
-    # frontend doesn't need three endpoints. Validation matches services.regen
-    # — only stories / nfrs / gaps are regenerable; brief + actors are short
-    # enough to edit inline (M4.1).
-    section: Literal["stories", "nfrs", "gaps"]
 
 
 # ----- Comments (M4.5) -----

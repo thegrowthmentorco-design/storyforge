@@ -52,7 +52,6 @@ from services.limits import enforce_limits
 from services.prompts import resolve_prompt_suffix
 from services.obs import install_json_logging, install_request_id, install_sentry
 from services.onboarding import welcome_check
-from services.streaming import stream_extraction
 
 MAX_BYTES = 10 * 1024 * 1024  # 10 MB
 SUPPORTED_EXT = {
@@ -332,75 +331,24 @@ async def extract(
     # persist_extraction (existing path); dossier rows go through
     # persist_dossier_extraction which writes lens_payload + folds the
     # user_stories list back into the legacy stories column.
-    if effective_lens == "explainer":
-        # M14.18 — Document Explainer. Single-call lens; output stored
-        # as-is in lens_payload.
-        from services.extractions import persist_explainer_extraction
-        row = persist_explainer_extraction(
-            session,
-            filename=source_name,
-            raw_text=raw_text,
-            explainer_result=result,
-            model_used=model_used,
-            live=usage is not None,
-            user_id=user.user_id,
-            org_id=user.org_id,
-            project_id=project_id or None,
-            extraction_id=extraction_id,
-            source_file_path=source_path,
-            source_file_paths=source_paths,
-        )
-        live_flag = usage is not None
-    elif effective_lens == "pipeline":
-        # M14.17 — pipeline result stored as-is in lens_payload. Stories-shape
-        # columns (brief / actors / stories / nfrs / gaps) get empty defaults
-        # since the pipeline doesn't produce those.
-        from services.extractions import persist_pipeline_extraction
-        row = persist_pipeline_extraction(
-            session,
-            filename=source_name,
-            raw_text=raw_text,
-            pipeline_result=result,
-            model_used=model_used,
-            live=usage is not None,
-            user_id=user.user_id,
-            org_id=user.org_id,
-            project_id=project_id or None,
-            extraction_id=extraction_id,
-            source_file_path=source_path,
-            source_file_paths=source_paths,
-        )
-        live_flag = usage is not None
-    elif effective_lens == "dossier":
-        from services.extractions import persist_dossier_extraction
-        row = persist_dossier_extraction(
-            session,
-            filename=source_name,
-            raw_text=raw_text,
-            dossier=result,
-            model_used=model_used,
-            live=usage is not None,  # mock dossier returns usage=None
-            user_id=user.user_id,
-            org_id=user.org_id,
-            project_id=project_id or None,
-            extraction_id=extraction_id,
-            source_file_path=source_path,
-            source_file_paths=source_paths,
-        )
-        live_flag = usage is not None
-    else:
-        row = persist_extraction(
-            session,
-            result=result,
-            model_used=model_used,
-            user_id=user.user_id,
-            org_id=user.org_id,
-            project_id=project_id or None,
-            extraction_id=extraction_id,
-            source_file_path=source_path,
-            source_file_paths=source_paths,
-        )
-        live_flag = result.live
+    # M14.18 — single-lens system. All paths persist via the explainer
+    # helper; stories-shape columns get default empties.
+    from services.extractions import persist_explainer_extraction
+    row = persist_explainer_extraction(
+        session,
+        filename=source_name,
+        raw_text=raw_text,
+        explainer_result=result,
+        model_used=model_used,
+        live=usage is not None,
+        user_id=user.user_id,
+        org_id=user.org_id,
+        project_id=project_id or None,
+        extraction_id=extraction_id,
+        source_file_path=source_path,
+        source_file_paths=source_paths,
+    )
+    live_flag = usage is not None
 
     record_usage(
         session,
@@ -545,56 +493,21 @@ async def extract_stream(
             # M14.1.c — branch the streamer by lens. Both yield identical SSE
             # event shapes (start / usage / complete / error) so the client
             # doesn't need to know which lens is running.
-            if effective_lens == "explainer":
-                # M14.18 — Document Explainer. Single Claude call wrapped
-                # with a heartbeat so the SSE stream survives slow runs.
-                from services.streaming_explainer import stream_explainer_extraction
-                stream_iter = stream_explainer_extraction(
-                    filename=source_name,
-                    raw_text=raw_text,
-                    api_key=effective_key,
-                    model=effective_model,
-                    prompt_suffix=effective_suffix,
-                )
-            elif effective_lens == "pipeline":
-                # M14.17 — multi-agent pipeline; runs blocking but emits
-                # `stage` events as each agent finishes.
-                from services.streaming_pipeline import stream_pipeline_extraction
-                stream_iter = stream_pipeline_extraction(
-                    filename=source_name,
-                    raw_text=raw_text,
-                    api_key=effective_key,
-                    model=effective_model,
-                    prompt_suffix=effective_suffix,
-                )
-            elif effective_lens == "dossier":
-                from services.streaming_dossier import stream_dossier_extraction
-                stream_iter = stream_dossier_extraction(
-                    filename=source_name,
-                    raw_text=raw_text,
-                    api_key=effective_key,
-                    model=effective_model,
-                    prompt_suffix=effective_suffix,
-                )
-            else:
-                stream_iter = stream_extraction(
-                    filename=source_name,
-                    raw_text=raw_text,
-                    api_key=effective_key,
-                    model=effective_model,
-                    prompt_suffix=effective_suffix,
-                    few_shot_examples=effective_examples,
-                )
+            # M14.18 — single-lens system; all extractions go through the
+            # Document Explainer streaming wrapper.
+            from services.streaming_explainer import stream_explainer_extraction
+            stream_iter = stream_explainer_extraction(
+                filename=source_name,
+                raw_text=raw_text,
+                api_key=effective_key,
+                model=effective_model,
+                prompt_suffix=effective_suffix,
+            )
 
             for ev in stream_iter:
                 etype = ev["type"]
                 if etype == "usage":
                     yield _sse("usage", {"input": ev["input"], "output": ev["output"], "max": ev["max"]})
-                elif etype == "section_ready":
-                    # M14.14 — progressive section reveal. Frontend uses these
-                    # to mount sections of the dossier as they finish streaming
-                    # rather than waiting for the full payload.
-                    yield _sse("section_ready", {"key": ev["key"], "value": ev["value"]})
                 elif etype == "stage":
                     # M14.17 — pipeline stage events (router done, specialist X
                     # finished, critic verdict, etc.). Frontend ExtractionProgress
@@ -609,70 +522,23 @@ async def extract_stream(
                     # scoped one is closed by now (see note at the top of the
                     # handler).
                     with _Session(_engine) as s:
-                        if effective_lens == "explainer":
-                            from services.extractions import persist_explainer_extraction
-                            row = persist_explainer_extraction(
-                                s,
-                                filename=source_name,
-                                raw_text=raw_text,
-                                explainer_result=ev["result"],
-                                model_used=ev["model_used"],
-                                live=ev["usage"] is not None,
-                                user_id=_user_id,
-                                org_id=_org_id,
-                                project_id=_project_id,
-                                extraction_id=extraction_id,
-                                source_file_path=source_path,
-                                source_file_paths=source_paths,
-                            )
-                            live_flag = ev["usage"] is not None
-                        elif effective_lens == "pipeline":
-                            from services.extractions import persist_pipeline_extraction
-                            row = persist_pipeline_extraction(
-                                s,
-                                filename=source_name,
-                                raw_text=raw_text,
-                                pipeline_result=ev["result"],
-                                model_used=ev["model_used"],
-                                live=ev["usage"] is not None,
-                                user_id=_user_id,
-                                org_id=_org_id,
-                                project_id=_project_id,
-                                extraction_id=extraction_id,
-                                source_file_path=source_path,
-                                source_file_paths=source_paths,
-                            )
-                            live_flag = ev["usage"] is not None
-                        elif effective_lens == "dossier":
-                            from services.extractions import persist_dossier_extraction
-                            row = persist_dossier_extraction(
-                                s,
-                                filename=source_name,
-                                raw_text=raw_text,
-                                dossier=ev["result"],
-                                model_used=ev["model_used"],
-                                live=ev["usage"] is not None,
-                                user_id=_user_id,
-                                org_id=_org_id,
-                                project_id=_project_id,
-                                extraction_id=extraction_id,
-                                source_file_path=source_path,
-                                source_file_paths=source_paths,
-                            )
-                            live_flag = ev["usage"] is not None
-                        else:
-                            row = persist_extraction(
-                                s,
-                                result=ev["result"],
-                                model_used=ev["model_used"],
-                                user_id=_user_id,
-                                org_id=_org_id,
-                                project_id=_project_id,
-                                extraction_id=extraction_id,
-                                source_file_path=source_path,
-                                source_file_paths=source_paths,
-                            )
-                            live_flag = ev["result"].live
+                        # M14.18 — single-lens persistence path.
+                        from services.extractions import persist_explainer_extraction
+                        row = persist_explainer_extraction(
+                            s,
+                            filename=source_name,
+                            raw_text=raw_text,
+                            explainer_result=ev["result"],
+                            model_used=ev["model_used"],
+                            live=ev["usage"] is not None,
+                            user_id=_user_id,
+                            org_id=_org_id,
+                            project_id=_project_id,
+                            extraction_id=extraction_id,
+                            source_file_path=source_path,
+                            source_file_paths=source_paths,
+                        )
+                        live_flag = ev["usage"] is not None
                         record_usage(
                             s,
                             user_id=_user_id,

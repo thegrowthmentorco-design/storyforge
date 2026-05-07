@@ -1,7 +1,7 @@
 import React, { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import { SignedIn, SignedOut, useAuth, useOrganization, useUser } from '@clerk/clerk-react'
-import { extractStream, getMePlanApi, listCommentsApi, listProjectsApi, listVersionsApi, markExtractionSeenApi, patchExtractionApi, regenSectionApi, rerunExtractionApi, setTokenGetter } from './api.js'
+import { extractStream, getMePlanApi, listCommentsApi, listProjectsApi, listVersionsApi, markExtractionSeenApi, patchExtractionApi, rerunExtractionApi, setTokenGetter } from './api.js'
 import { getExtraction } from './lib/store.js'
 import { migrateLocalStorageOnce } from './lib/migrate.js'
 import { getSettings, setSettings } from './lib/settings.js'
@@ -15,7 +15,6 @@ import { identifyUser, track } from './lib/analytics.js'
 // chunk only carries the studio (the always-mounted home page).
 // Settings exports four named pages from the same module; they all
 // share one chunk because they're in the same file.
-const DossierPane = lazy(() => import('./components/dossier/DossierPane.jsx'))
 const Account = lazy(() => import('./pages/Account.jsx'))
 const Documents = lazy(() => import('./pages/Documents.jsx'))
 const Project = lazy(() => import('./pages/Project.jsx'))
@@ -39,9 +38,6 @@ import PaywallModal from './components/PaywallModal.jsx'
 import Sidebar from './components/Sidebar.jsx'
 import TopBar from './components/TopBar.jsx'
 import EmptyState from './components/EmptyState.jsx'
-import ExtractionProgress from './components/ExtractionProgress.jsx'
-import PipelineProgress from './components/PipelineProgress.jsx'
-const PipelinePane = lazy(() => import('./components/pipeline/PipelinePane.jsx'))
 const ExplainerPane = lazy(() => import('./components/explainer/ExplainerPane.jsx'))
 import SourcePane from './components/SourcePane.jsx'
 import ArtifactsPane from './components/ArtifactsPane.jsx'
@@ -123,6 +119,59 @@ function prettySectionName(key) {
  * full-card LoadingState once any section has rendered, so the user sees
  * real content + a thin progress signal rather than a "loading…" wall.
  */
+/**
+ * M14.18 — shown when an extraction's lens isn't 'explainer' (legacy
+ * dossier / pipeline / stories rows). The renderers for those have
+ * been removed; the row's data still exists in the DB but there's
+ * no view for it. Prompt to re-extract.
+ */
+function LegacyExtractionNotice({ extraction, onReset }) {
+  return (
+    <div style={{
+      flex: 1, display: 'grid', placeItems: 'center', padding: 32,
+      background: 'var(--bg)',
+    }}>
+      <div style={{
+        maxWidth: 520, padding: 28,
+        background: 'var(--bg-elevated)',
+        border: '1px solid var(--border)',
+        borderRadius: 'var(--radius-lg)',
+        boxShadow: 'var(--shadow-md)',
+        textAlign: 'center',
+      }}>
+        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.16em',
+                      color: 'var(--accent-strong)', marginBottom: 12 }}>
+          LEGACY EXTRACTION
+        </div>
+        <h2 style={{ margin: 0, fontFamily: 'var(--font-display)',
+                     fontSize: 22, fontWeight: 600, color: 'var(--text-strong)',
+                     marginBottom: 10 }}>
+          {extraction?.filename || 'This extraction'}
+        </h2>
+        <p style={{ fontSize: 14, lineHeight: 1.6, color: 'var(--text-muted)',
+                    margin: '0 0 20px' }}>
+          This document was extracted with the older{' '}
+          <code style={{ fontFamily: 'var(--font-mono)', fontSize: 12,
+                         padding: '1px 6px', borderRadius: 4,
+                         background: 'var(--bg-subtle)' }}>
+            {extraction?.lens || 'legacy'}
+          </code>{' '}
+          renderer, which has been retired. Upload it again to see the
+          Document Explainer's plain-English breakdown + management pitch.
+        </p>
+        <button type="button" onClick={onReset} style={{
+          padding: '10px 22px', fontSize: 14, fontWeight: 500,
+          background: 'var(--accent-strong)', color: '#fff',
+          border: 'none', borderRadius: 'var(--radius-sm)',
+          cursor: 'pointer', fontFamily: 'inherit',
+        }}>
+          Upload a document
+        </button>
+      </div>
+    </div>
+  )
+}
+
 function StreamingProgressStrip({ filename, usage, latestSection, sectionsReady, onStop }) {
   const out = usage?.output ?? 0
   const max = usage?.max ?? 16000
@@ -997,144 +1046,26 @@ function AuthedApp() {
                 {!extraction && !loading && (
                   <EmptyState onSubmit={handleExtract} loading={loading} />
                 )}
-                {/* M14.14.c — loading dispatch.
-                    Dossier-lens: rich document-aware ExtractionProgress
-                    card that shows current Act + section strip + next acts.
-                    Stays visible throughout streaming (we don't flip to
-                    partial DossierPane mid-stream — the rich card is more
-                    informative than a half-rendered dossier).
-                    Stories-lens: legacy LoadingState (different stages). */}
-                {loading && pendingLens === 'pipeline' && (
-                  <PipelineProgress
-                    filename={pendingName}
-                    stageEvents={stageEvents}
-                    onStop={handleStopExtract}
-                  />
-                )}
-                {loading && pendingLens === 'dossier' && (
-                  <ExtractionProgress
-                    filename={pendingName}
-                    partialDossier={partialDossier}
-                    latestSectionKey={latestSectionKey}
-                    onStop={handleStopExtract}
-                  />
-                )}
-                {loading && pendingLens !== 'dossier' && pendingLens !== 'pipeline' && (
-                  /* M14.18 — explainer + stories use LoadingState. Explainer
-                     stages are token-threshold-based since the lens is a
-                     single Claude call. */
+                {/* M14.18 — single-lens dispatch. Document Explainer is
+                    the only renderer; old-lens rows surface a re-upload
+                    prompt. */}
+                {loading && (
                   <LoadingState
                     filename={pendingName}
                     usage={streamUsage}
                     latestSection={latestSectionKey}
-                    sectionsReady={partialDossier ? Object.keys(partialDossier).length : 0}
+                    sectionsReady={0}
                     lens={pendingLens}
                     onStop={handleStopExtract}
                   />
                 )}
-                {extraction && !loading && extraction.lens === 'explainer' ? (
-                  /* M14.18 — Document Explainer. Plain-English + Management Pitch. */
+                {extraction && !loading && extraction.lens === 'explainer' && (
                   <div className="body" ref={studioBodyRef} style={{ flexDirection: 'column' }}>
                     <ExplainerPane extraction={extraction} />
                   </div>
-                ) : extraction && !loading && extraction.lens === 'pipeline' ? (
-                  /* M14.17 — pipeline lens. Template-aware renderer dispatches
-                     on synthesizer.template (agenda_act, contract_decide, etc). */
-                  <div className="body" ref={studioBodyRef} style={{ flexDirection: 'column' }}>
-                    <PipelinePane extraction={extraction} />
-                  </div>
-                ) : extraction && !loading && extraction.lens === 'dossier' ? (
-                  /* M14.1.b — dossier lens uses a single full-width pane.
-                     SourcePane / ResizeHandle / GapsRail are stories-only
-                     concepts (artifacts → source linking, gap drilldown).
-                     The DossierPane reads extraction.lens_payload directly. */
-                  <div className="body" ref={studioBodyRef} style={{ flexDirection: 'column' }}>
-                    <DossierPane extraction={extraction} onUpdate={setExtraction} />
-                  </div>
-                ) : extraction && !loading && (
-                  isNarrow ? (
-                    /* M8.6 — narrow layout: tab strip + one pane. The
-                       side GapsRail also gates on !isNarrow below — at
-                       narrow widths gaps live in the 'gaps' tab here
-                       at full body width. */
-                    <div
-                      className="body"
-                      ref={studioBodyRef}
-                      style={{ flexDirection: 'column' }}
-                    >
-                      <NarrowPaneTabs
-                        active={narrowPane}
-                        onChange={setNarrowPane}
-                        gapCount={extraction.gaps?.length || 0}
-                      />
-                      {narrowPane === 'source' && (
-                        <SourcePane
-                          extraction={extraction}
-                          selectedQuote={selectedQuote}
-                          onPickArtifact={pickArtifact}
-                          width="100%"
-                        />
-                      )}
-                      {narrowPane === 'artifacts' && (
-                        <ArtifactsPane
-                          extraction={extraction}
-                          onPickQuote={pickQuote}
-                          selectedArtifact={selectedArtifact}
-                          onUpdate={updateExtraction}
-                          onRegenSection={handleRegenSection}
-                          regenBusy={regenBusy}
-                          comments={comments}
-                          onCommentCreate={onCommentCreate}
-                          onCommentPatch={onCommentPatch}
-                          onCommentDelete={onCommentDelete}
-                        />
-                      )}
-                      {narrowPane === 'gaps' && (
-                        <GapsRail
-                          gaps={extraction.gaps}
-                          extractionId={extractionId}
-                          onPickQuote={pickQuote}
-                          onUpdate={(nextGaps) => updateExtraction({ gaps: nextGaps })}
-                          onRegen={() => handleRegenSection('gaps')}
-                          regenBusy={regenBusy === 'gaps'}
-                          rawText={extraction.raw_text}
-                          width="100%"
-                          comments={comments}
-                          commentHandlers={{ onCreate: onCommentCreate, onPatch: onCommentPatch, onDelete: onCommentDelete }}
-                          selectedArtifact={selectedArtifact}
-                        />
-                      )}
-                    </div>
-                  ) : (
-                    <div className="body" ref={studioBodyRef}>
-                      <SourcePane
-                        extraction={extraction}
-                        selectedQuote={selectedQuote}
-                        onPickArtifact={pickArtifact}
-                        width={`${(sourceRatio * 100).toFixed(2)}%`}
-                      />
-                      {/* M8.2 — persisted resizable split. Min 20% / max 70%
-                          keeps both panes always usable. */}
-                      <ResizeHandle
-                        containerRef={studioBodyRef}
-                        onChange={setSourceRatio}
-                        min={0.20}
-                        max={0.70}
-                      />
-                      <ArtifactsPane
-                        extraction={extraction}
-                        onPickQuote={pickQuote}
-                        selectedArtifact={selectedArtifact}
-                        onUpdate={updateExtraction}
-                        onRegenSection={handleRegenSection}
-                        regenBusy={regenBusy}
-                        comments={comments}
-                        onCommentCreate={onCommentCreate}
-                        onCommentPatch={onCommentPatch}
-                        onCommentDelete={onCommentDelete}
-                      />
-                    </div>
-                  )
+                )}
+                {extraction && !loading && extraction.lens !== 'explainer' && (
+                  <LegacyExtractionNotice extraction={extraction} onReset={reset} />
                 )}
               </>
             }

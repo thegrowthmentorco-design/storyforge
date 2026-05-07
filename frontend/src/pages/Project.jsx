@@ -4,7 +4,6 @@ import {
   deleteProjectApi,
   patchExtractionApi,
   patchProjectApi,
-  synthesizeProjectApi,
 } from '../api.js'
 import {
   deleteExtraction,
@@ -267,26 +266,6 @@ export default function Project() {
     restoreExtraction(record)
   }
 
-  // M14.12 — fire cross-doc synthesis. New row lands in this project; we
-  // restore it so the user goes straight to the merged dossier view.
-  const [synthesizing, setSynthesizing] = useState(false)
-  const dossierCount = records.filter((r) => r.lens === 'dossier').length
-  const canSynthesize = dossierCount >= 2 && !synthesizing
-  const onSynthesize = async () => {
-    if (!canSynthesize) return
-    setSynthesizing(true)
-    try {
-      const merged = await synthesizeProjectApi(id)
-      toast.success(`Synthesized ${dossierCount} docs into one dossier`)
-      await refresh()
-      restoreExtraction(merged)
-    } catch (e) {
-      toast.error(e.message || 'Synthesis failed')
-    } finally {
-      setSynthesizing(false)
-    }
-  }
-
   const onRemoveFromProject = async (record, e) => {
     e.stopPropagation()
     try {
@@ -363,18 +342,6 @@ export default function Project() {
         <NameEditor value={project.name} onSave={onRename} />
         <Badge tone="neutral">{records.length}</Badge>
         <div style={{ flex: 1 }} />
-        {dossierCount >= 2 && (
-          <Button
-            variant="primary"
-            size="sm"
-            icon={<Sparkles size={13} />}
-            onClick={onSynthesize}
-            disabled={!canSynthesize}
-            title={`Run cross-doc synthesis across ${dossierCount} dossier extractions`}
-          >
-            {synthesizing ? 'Synthesizing…' : `Synthesize (${dossierCount} docs)`}
-          </Button>
-        )}
         <Button variant="ghost" size="sm" icon={<Trash size={13} />} onClick={onDeleteProject}>
           Delete project
         </Button>

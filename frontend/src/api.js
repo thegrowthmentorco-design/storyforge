@@ -313,48 +313,6 @@ export async function patchExtractionApi(id, patch) {
   return jsonOrThrow(res)
 }
 
-/**
- * M14.10 — Diff two dossier extractions. Returns
- * {before_id, after_id, sections: [...], summary: {...}}.
- */
-export async function diffDossierApi(afterId, priorId) {
-  const res = await apiFetch(
-    `/api/extractions/${encodeURIComponent(afterId)}/diff/${encodeURIComponent(priorId)}`,
-  )
-  return jsonOrThrow(res)
-}
-
-/**
- * M14.8 — Re-run Claude against ONE dossier section. Returns the full
- * updated ExtractionRecord with the new lens_payload + a new revision
- * entry tagged kind: 'regen'.
- */
-export async function regenDossierSectionApi(id, section) {
-  const res = await apiFetch(`/api/extractions/${encodeURIComponent(id)}/dossier/regen`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ section }),
-  })
-  return jsonOrThrow(res)
-}
-
-/**
- * M14.7 — Patch one node in a dossier's lens_payload.
- *
- * `path` is a dot-walk through the JSON ("brief.summary",
- * "tldr_ladder.one_line", "glossary.0.definition"). `value` replaces
- * the node at that path. Returns the full updated ExtractionRecord with
- * the new lens_payload + dossier_revisions log.
- */
-export async function patchDossierApi(id, path, value) {
-  const res = await apiFetch(`/api/extractions/${encodeURIComponent(id)}/dossier`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ path, value }),
-  })
-  return jsonOrThrow(res)
-}
-
 /** Bulk-import a localStorage record. Idempotent on the same id. */
 export async function importExtractionApi(record) {
   const res = await apiFetch('/api/extractions/import', {
@@ -429,19 +387,6 @@ export async function rerunExtractionApi(id) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: '{}',
-  })
-  return jsonOrThrow(res)
-}
-
-/** Regenerate one section (stories / nfrs / gaps) on the same row.
- *  Returns the updated full ExtractionRecord. The other sections + brief
- *  + actors stay as the user has them — the model treats them as stable
- *  context (M4.4). Counts as one Claude call against the user's quota. */
-export async function regenSectionApi(id, section) {
-  const res = await apiFetch(`/api/extractions/${encodeURIComponent(id)}/regen`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ section }),
   })
   return jsonOrThrow(res)
 }
@@ -978,20 +923,6 @@ export async function patchProjectApi(id, patch) {
 
 export async function deleteProjectApi(id) {
   const res = await apiFetch(`/api/projects/${encodeURIComponent(id)}`, { method: 'DELETE' })
-  return jsonOrThrow(res)
-}
-
-/**
- * M14.12 — Run cross-doc synthesis on every dossier extraction in a
- * project. Returns a new ExtractionRecord (lens='dossier') containing
- * the merged dossier. Frontend should navigate to /extractions/{id} on
- * success.
- */
-export async function synthesizeProjectApi(projectId) {
-  const res = await apiFetch(
-    `/api/projects/${encodeURIComponent(projectId)}/synthesize`,
-    { method: 'POST' },
-  )
   return jsonOrThrow(res)
 }
 
