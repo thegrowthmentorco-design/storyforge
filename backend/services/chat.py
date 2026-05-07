@@ -122,14 +122,6 @@ def _explainer_digest(payload: dict) -> str:
         if pitch.get("closer"):
             out.append(f"  CLOSER: {pitch['closer']}")
 
-    # Flagged issues — the model already noted these; the user might
-    # ask about them. Helpful as priors.
-    flagged = payload.get("flagged_issues") or []
-    if flagged:
-        out.append("\nFLAGGED ISSUES (ambiguities / missing info noted by the explainer):")
-        for f in flagged[:8]:
-            out.append(f"  - {f}")
-
     return "\n".join(out)
 
 

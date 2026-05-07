@@ -124,5 +124,4 @@ def _mock(filename: str, raw_text: str) -> ExplainerOutput:
             whats_new=[],
             closer="Set up the key, upload again, and the document gets a proper explanation.",
         ),
-        flagged_issues=["No Anthropic API key configured — output is placeholder."],
     )

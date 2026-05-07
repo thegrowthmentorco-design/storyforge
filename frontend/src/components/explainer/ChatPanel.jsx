@@ -83,7 +83,10 @@ export default function ChatPanel({ extractionId }) {
 
     try {
       const assistantMsg = await sendChatMessageStream(extractionId, trimmed, {
-        onText: (delta) => setStreamingText((prev) => prev + delta),
+        // SSE 'text' events carry {delta: string}; readSSE JSON-parses the
+        // data field so we receive the object — pull out the delta.
+        // (Earlier bug: appending the object stringified to "[object Object]".)
+        onText: (ev) => setStreamingText((prev) => prev + (ev?.delta || '')),
         signal: controller.signal,
       })
       // Backend `complete` event carries the assistant message; the user

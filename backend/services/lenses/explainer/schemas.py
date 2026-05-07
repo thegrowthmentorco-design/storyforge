@@ -83,12 +83,14 @@ class ExplainerMetadata(BaseModel):
 
 
 class ExplainerOutput(BaseModel):
-    """Full explainer payload — what gets stored in lens_payload."""
+    """Full explainer payload — what gets stored in lens_payload.
+
+    M14.18.fix — removed flagged_issues. Earlier versions surfaced
+    ambiguities and missing-info as a static "Gaps & questions" callout
+    above the explanation; the chat panel now handles those queries on
+    demand, so we drop the static block entirely.
+    """
     model_config = ConfigDict(extra="forbid")
     metadata: ExplainerMetadata
     plain_english: PlainEnglishExplanation
     management_pitch: ManagementPitch
-    flagged_issues: list[str] = Field(
-        default_factory=list,
-        description="Ambiguities, conflicts between sections, or critical info missing from the source. Each is a complete sentence stating the issue. Empty list if none.",
-    )

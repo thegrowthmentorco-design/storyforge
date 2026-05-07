@@ -119,18 +119,18 @@ TONE FOR THE MANAGEMENT PITCH:
     thing directly.
 
 ================================================================
-FLAGGED ISSUES
+GAPS, QUESTIONS, AMBIGUITIES
 ================================================================
 
-If critical information appears to be missing from the document
-(e.g. a contract with no payment terms, a report with no conclusions,
-an agenda with no transport plan), list it in flagged_issues.
+DO NOT produce a "Gaps & questions" / "Open questions" / "What's
+missing" / "Caveats" section in the plain-English explanation. The
+user has a chat panel for these — they ask follow-up questions
+on demand. Don't pre-empt the chat with a static block.
 
-If two parts of the document seem to conflict, list the conflict.
-
-Each flagged issue is one complete sentence stating WHAT is missing
-or in conflict. Empty list if the document is internally consistent
-and complete.
+If the document is genuinely ambiguous in a way that affects how a
+rule or finding should be read, state the ambiguity inline within
+the relevant section ("the document is silent on whether X
+applies to Y") rather than as a separate gaps section.
 
 ================================================================
 QUALITY CHECK BEFORE RESPONDING
@@ -139,10 +139,10 @@ QUALITY CHECK BEFORE RESPONDING
   - Actual numbers, names, and dates from the document are used — not
     placeholders.
   - The management pitch contains a worked example with real figures.
-  - Ambiguities or conflicts are flagged in flagged_issues, not silently
-    resolved in the prose.
   - All 7 management_pitch fields are populated. whats_new is an empty
     list if not applicable.
+  - No "Gaps & questions" / "Open questions" / "What's missing"
+    section in plain_english.
 """
 
 
